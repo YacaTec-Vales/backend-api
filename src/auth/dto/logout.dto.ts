@@ -11,6 +11,7 @@
  */
 
 import { IsOptional, IsString, MinLength } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
 
 /**
  * Cuerpo de la peticion de logout.
@@ -19,6 +20,12 @@ import { IsOptional, IsString, MinLength } from 'class-validator';
  */
 export class LogoutDto {
   /** Refresh token a revocar explicitamente (opcional, >=16 chars). */
+  @ApiProperty({
+    required: false,
+    description:
+      'Refresh token a revocar explicitamente (opcional, >=16 chars).',
+    minLength: 16,
+  })
   @IsOptional()
   @IsString()
   @MinLength(16)
