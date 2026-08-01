@@ -1,3 +1,21 @@
+/**
+ * @fileoverview Definicion del schema Drizzle para PostgreSQL.
+ *
+ * Mapea cada tabla del schema `app` a un objeto Drizzle. Los tipos
+ * `UserEntity`, `RoleEntity`, etc. son inferidos a partir de este
+ * archivo y los consumen los repositorios.
+ *
+ * Convenciones aplicadas:
+ *  - camelCase en TypeScript, snake_case en SQL.
+ *  - PKs UUID con `gen_random_uuid()` (extencion pgcrypto).
+ *  - Timestamps con `timezone: true`.
+ *  - FKs con `onDelete: cascade` donde aplique.
+ *
+ * @module database
+ * @author Equipo de desarrollo Mis Vales
+ * @since 1.0.0
+ */
+
 import {
   pgSchema,
   uuid,
@@ -11,15 +29,24 @@ import {
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
+/**
+ * Schema Postgres donde viven todas las tablas del backend.
+ * Equivalente a `CREATE SCHEMA IF NOT EXISTS app`.
+ */
 export const appSchema = pgSchema('app');
 
-export const userStatusValues = [
-  'ACTIVO',
-  'INACTIVO',
-  'SUSPENDIDO',
-] as const;
+/**
+ * Valores validos del campo `user_status` en `app.user`.
+ */
+export const userStatusValues = ['ACTIVO', 'INACTIVO', 'SUSPENDIDO'] as const;
+/** Tipo TypeScript para `user_status`. */
 export type UserStatus = (typeof userStatusValues)[number];
 
+/**
+ * Valores validos del campo `role_code` en `app.user` y la PK de
+ * `app.role`. Misma lista que `USER_TYPE_VALUES` en
+ * `shared/types/auth.types.ts`.
+ */
 export const userTypeValues = [
   'GERENTE_GENERAL',
   'GERENTE_SUCURSAL',
@@ -29,12 +56,28 @@ export const userTypeValues = [
   'CAJERO',
   'ADMINISTRADOR',
 ] as const;
+/** Tipo TypeScript para `role_code`. */
 export type UserType = (typeof userTypeValues)[number];
 
-export const userStatus = (): typeof userStatusValues[number] => 'ACTIVO';
+/**
+ * Helper de defaults que devuelve `'ACTIVO'`. Se pasa a la columna
+ * `user_status` cuando se construye la tabla.
+ */
+export const userStatus = (): (typeof userStatusValues)[number] => 'ACTIVO';
 
+/**
+ * Tabla `app.user`. Modelo principal del sistema.
+ *
+ * Campos relevantes para autenticacion:
+ *  - `passwordHash`: Argon2id (puede ser null en usuarios sin password).
+ *  - `tokenVersion`: contador que invalida todos los JWT al incrementarse.
+ *  - `failedLoginCount` / `lockedUntil`: control de lockout.
+ *  - `mfaEnabled`: flag rapido para saber si el usuario tiene TOTP.
+ */
 export const users = appSchema.table('user', {
-  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   roleCode: text('role_code').$type<UserType>().notNull(),
   branchId: uuid('branch_id'),
   firstName: text('first_name').notNull(),
@@ -44,30 +87,53 @@ export const users = appSchema.table('user', {
   phone: text('phone'),
   username: text('username'),
   passwordHash: text('password_hash'),
-  userStatus: text('user_status').$type<UserStatus>().notNull().default('ACTIVO'),
-  personalData: jsonb('personal_data').notNull().default(sql`'{}'::jsonb`),
+  userStatus: text('user_status')
+    .$type<UserStatus>()
+    .notNull()
+    .default('ACTIVO'),
+  personalData: jsonb('personal_data')
+    .notNull()
+    .default(sql`'{}'::jsonb`),
   lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
   isActive: boolean('is_active').notNull().default(true),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
   tokenVersion: integer('token_version').notNull().default(1),
-  passwordChangedAt: timestamp('password_changed_at', { withTimezone: true }).notNull().defaultNow(),
+  passwordChangedAt: timestamp('password_changed_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
   failedLoginCount: integer('failed_login_count').notNull().default(0),
   lockedUntil: timestamp('locked_until', { withTimezone: true }),
   mfaEnabled: boolean('mfa_enabled').notNull().default(false),
 });
 
+/**
+ * Tabla `app.role`. Catalogo de roles del sistema. La PK `code`
+ * coincide con `users.role_code`.
+ */
 export const roles = appSchema.table('role', {
   code: text('code').primaryKey().$type<UserType>(),
   name: text('name').notNull(),
   description: text('description'),
   isActive: boolean('is_active').notNull().default(true),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
 });
 
+/**
+ * Tabla `app.permission`. Catalogo de permisos atomicos del sistema.
+ * Cada rol recibe un subconjunto via `role_permission`.
+ */
 export const permissions = appSchema.table('permission', {
-  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   code: text('code').notNull().unique(),
   module: text('module').notNull(),
   action: text('action').notNull(),
@@ -75,86 +141,164 @@ export const permissions = appSchema.table('permission', {
   description: text('description'),
   isSensitive: boolean('is_sensitive').notNull().default(false),
   isActive: boolean('is_active').notNull().default(true),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
 });
 
+/**
+ * Tabla `app.role_permission`. Relacion N:M entre roles y permisos.
+ * `isGrant = false` deniega un permiso que de otro modo vendria por rol.
+ */
 export const rolePermissions = appSchema.table('role_permission', {
-  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   roleCode: text('role_code').$type<UserType>().notNull(),
   permissionId: uuid('permission_id').notNull(),
   isGrant: boolean('is_grant').notNull().default(true),
   assignedBy: uuid('assigned_by'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
 });
 
-export const userPermissionOverrides = appSchema.table('user_permission_override', {
-  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-  userId: uuid('user_id').notNull(),
-  permissionId: uuid('permission_id').notNull(),
-  isGrant: boolean('is_grant').notNull(),
-  scope: jsonb('scope'),
-  authorizedBy: uuid('authorized_by').notNull(),
-  authorizationId: uuid('authorization_id'),
-  validFrom: timestamp('valid_from', { withTimezone: true }).notNull().defaultNow(),
-  validUntil: timestamp('valid_until', { withTimezone: true }),
-  reason: text('reason'),
-  isActive: boolean('is_active').notNull().default(true),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
+/**
+ * Tabla `app.user_permission_override`. Concede o deniega permisos
+ * puntuales a un usuario, con ventana de validez y scope opcional.
+ */
+export const userPermissionOverrides = appSchema.table(
+  'user_permission_override',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    userId: uuid('user_id').notNull(),
+    permissionId: uuid('permission_id').notNull(),
+    isGrant: boolean('is_grant').notNull(),
+    scope: jsonb('scope'),
+    authorizedBy: uuid('authorized_by').notNull(),
+    authorizationId: uuid('authorization_id'),
+    validFrom: timestamp('valid_from', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    validUntil: timestamp('valid_until', { withTimezone: true }),
+    reason: text('reason'),
+    isActive: boolean('is_active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+);
 
+/**
+ * Tabla `app.branch`. Sucursales de la red (matriz o regular).
+ * `managerUserId` apunta al gerente asignado.
+ */
 export const branches = appSchema.table('branch', {
-  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   name: text('name').notNull(),
-  branchType: text('branch_type').$type<'MATRIZ' | 'SUCURSAL'>().notNull().default('SUCURSAL'),
+  branchType: text('branch_type')
+    .$type<'MATRIZ' | 'SUCURSAL'>()
+    .notNull()
+    .default('SUCURSAL'),
   esMatriz: boolean('es_matriz').notNull().default(false),
   address: text('address'),
   managerUserId: uuid('manager_user_id'),
   isActive: boolean('is_active').notNull().default(true),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
 });
 
+/**
+ * Tabla `app.refresh_token`. Sesiones persistidas del usuario.
+ *
+ * Modelo que reemplaza al JWT refresh clasico: cada sesion tiene
+ * un `id` (UUID) y un `tokenHash` (Argon2id del token opaco). El
+ * `replacedBy` permite encadenar rotaciones.
+ */
 export const refreshTokens = appSchema.table('refresh_token', {
-  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
   tokenHash: text('token_hash').notNull().unique(),
   userAgent: text('user_agent'),
   ipAddress: inet('ip_address'),
   device: text('device'),
-  issuedAt: timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
+  issuedAt: timestamp('issued_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
   revokedReason: text('revoked_reason'),
-  replacedBy: uuid('replaced_by').references((): AnyPgColumn => refreshTokens.id),
+  replacedBy: uuid('replaced_by').references(
+    (): AnyPgColumn => refreshTokens.id,
+  ),
 });
 
+/**
+ * Tabla `app.password_reset_token`. Tokens de un solo uso para
+ * recuperacion de contrasena. TTL 30 minutos.
+ */
 export const passwordResetTokens = appSchema.table('password_reset_token', {
-  id: uuid('id').primaryKey().default(sql`gen_random_uuid()`),
-  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
   tokenHash: text('token_hash').notNull().unique(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   usedAt: timestamp('used_at', { withTimezone: true }),
   ipAddress: inet('ip_address'),
   userAgent: text('user_agent'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
 });
 
+/**
+ * Tabla `app.mfa_credential`. Credencial TOTP del usuario.
+ *
+ * Almacena:
+ *  - `secretEncrypted`: secret TOTP cifrado con AES-256-GCM (formato `iv.tag.enc`).
+ *  - `backupCodesHash`: array JSON con Argon2id de los backup codes.
+ *
+ * 1:1 con `users` (PK = userId).
+ */
 export const mfaCredentials = appSchema.table('mfa_credential', {
-  userId: uuid('user_id').primaryKey().references(() => users.id, { onDelete: 'cascade' }),
+  userId: uuid('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
   secretEncrypted: text('secret_encrypted').notNull(),
-  backupCodesHash: jsonb('backup_codes_hash').notNull().default(sql`'[]'::jsonb`),
-  enabledAt: timestamp('enabled_at', { withTimezone: true }).notNull().defaultNow(),
+  backupCodesHash: jsonb('backup_codes_hash')
+    .notNull()
+    .default(sql`'[]'::jsonb`),
+  enabledAt: timestamp('enabled_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
   lastUsedCounter: integer('last_used_counter').notNull().default(0),
 });
 
+// Tipos inferidos para uso por repositorios y servicios.
 export type UserEntity = typeof users.$inferSelect;
 export type NewUserEntity = typeof users.$inferInsert;
 export type RefreshTokenEntity = typeof refreshTokens.$inferSelect;
 export type NewRefreshTokenEntity = typeof refreshTokens.$inferInsert;
 export type PasswordResetTokenEntity = typeof passwordResetTokens.$inferSelect;
-export type NewPasswordResetTokenEntity = typeof passwordResetTokens.$inferInsert;
+export type NewPasswordResetTokenEntity =
+  typeof passwordResetTokens.$inferInsert;
 export type MfaCredentialEntity = typeof mfaCredentials.$inferSelect;
 export type NewMfaCredentialEntity = typeof mfaCredentials.$inferInsert;
 export type RoleEntity = typeof roles.$inferSelect;

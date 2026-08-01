@@ -1,3 +1,21 @@
+/**
+ * @fileoverview Guards globales de autenticacion y autorizacion por rol.
+ *
+ * Este archivo concentra:
+ *  - `JwtAuthGuard`: valida el Bearer token, valida `iss`/`aud`,
+ *    hidrata `request.user` con un `RequestUser`.
+ *  - `RolesGuard`: bloquea si el rol del usuario no esta en la
+ *    metadata `auth:roles` del handler.
+ *
+ * Ambos guards estan registrados como `APP_GUARD` en `app.module.ts`,
+ * por lo que se ejecutan en TODAS las rutas (incluidas las publicas;
+ * el `JwtAuthGuard` se autoexime si encuentra `@Public`).
+ *
+ * @module shared/guards
+ * @author Equipo de desarrollo Mis Vales
+ * @since 1.0.0
+ */
+
 import {
   CanActivate,
   ExecutionContext,
@@ -12,6 +30,17 @@ import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 import type { UserType } from '../types/auth.types';
 
+/**
+ * Forma minima del usuario autenticado disponible en `request.user`.
+ *
+ * Es un subconjunto de `AuthenticatedUser` con solo los claims
+ * que viven en el JWT. Para datos adicionales (displayName, email,
+ * permissions), use `AuthService.getAuthenticatedUser` o el
+ * decorador `@CurrentUser()` con un servicio que los cargue.
+ *
+ * @see AuthenticatedUser
+ * @see JwtPayload
+ */
 export interface RequestUser {
   id: string;
   username: string;
@@ -23,6 +52,22 @@ export interface RequestUser {
   exp?: number;
 }
 
+/**
+ * Guard global que exige un Bearer JWT valido en cada peticion.
+ *
+ * - Si el handler (o su clase) esta marcado con `@Public`, retorna
+ *   `true` sin verificar el token.
+ * - Si no hay header `Authorization: Bearer ...`, lanza
+ *   `AUTH.MISSING_TOKEN`.
+ * - Si el token no pasa `verifyAsync` con issuer/audience, lanza
+ *   `AUTH.INVALID_TOKEN`.
+ * - Si el token es valido, mapea los claims a `RequestUser` y los
+ *   asigna a `request.user` para su uso por los decoradores y
+ *   servicios.
+ *
+ * @see Public
+ * @see RequestUser
+ */
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   constructor(
@@ -31,6 +76,15 @@ export class JwtAuthGuard implements CanActivate {
     private readonly config: ConfigService,
   ) {}
 
+  /**
+   * Punto de entrada del guard. Decapita la metadata publica, extrae
+   * el token, verifica firma y estampa `request.user`.
+   *
+   * @param context - Contexto de ejecucion de NestJS.
+   * @returns `true` si la peticion debe continuar.
+   * @throws {UnauthorizedException} `AUTH.MISSING_TOKEN` si no hay Bearer.
+   * @throws {UnauthorizedException} `AUTH.INVALID_TOKEN` si la verificacion falla.
+   */
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
@@ -39,7 +93,8 @@ export class JwtAuthGuard implements CanActivate {
     if (isPublic) return true;
 
     const request = context.switchToHttp().getRequest();
-    const authorization = request.headers['authorization'] as string | undefined;
+    const authorization = request.headers['authorization'] as
+      string | undefined;
     const token = this.extractBearerToken(authorization);
 
     if (!token) {
@@ -74,6 +129,13 @@ export class JwtAuthGuard implements CanActivate {
     }
   }
 
+  /**
+   * Separa el prefijo `Bearer` del token. Solo acepta el esquema
+   * `Bearer`; cualquier otro encabezado es rechazado.
+   *
+   * @param authorization - Header HTTP Authorization crudo.
+   * @returns El token JWT puro o `null` si el formato no es valido.
+   */
   private extractBearerToken(authorization: string | undefined): string | null {
     if (!authorization) return null;
     const [type, token] = authorization.split(' ');
@@ -82,10 +144,31 @@ export class JwtAuthGuard implements CanActivate {
   }
 }
 
+/**
+ * Guard global que aplica la metadata `@Roles(...)` a la peticion.
+ *
+ * Si el handler no declara roles permitidos, retorna `true`. Si el
+ * usuario no esta autenticado lanza `AUTH.NOT_AUTHENTICATED`, y si
+ * su rol no esta en la lista, lanza `AUTH.ROLE_NOT_ALLOWED`.
+ *
+ * Hoy en dia ningun endpoint del sistema usa este guard (la
+ * autorizacion es por permisos). Se conserva para uso futuro.
+ *
+ * @see Roles
+ */
 @Injectable()
 export class RolesGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
+  /**
+   * Punto de entrada del guard. Compara el rol del usuario contra
+   * la metadata `auth:roles`.
+   *
+   * @param context - Contexto de ejecucion de NestJS.
+   * @returns `true` si la peticion debe continuar.
+   * @throws {ForbiddenException} `AUTH.NOT_AUTHENTICATED` si no hay usuario.
+   * @throws {ForbiddenException} `AUTH.ROLE_NOT_ALLOWED` si el rol no esta permitido.
+   */
   canActivate(context: ExecutionContext): boolean {
     const required = this.reflector.getAllAndOverride<UserType[]>(ROLES_KEY, [
       context.getHandler(),

@@ -1,3 +1,15 @@
+/**
+ * @fileoverview Repositorio de permisos y roles.
+ *
+ * Combina `app.role_permission` (permisos por rol) y
+ * `app.user_permission_override` (overrides por usuario) para
+ * devolver lo que `PermissionCacheService` necesita.
+ *
+ * @module database/repositories
+ * @author Equipo de desarrollo Mis Vales
+ * @since 1.0.0
+ */
+
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq, gt, isNull, lte, or, sql } from 'drizzle-orm';
 import { DRIZZLE, type Drizzle } from '../drizzle.provider';
@@ -12,10 +24,21 @@ import {
   userPermissionOverrides,
 } from '../schema';
 
+/**
+ * Acceso de bajo nivel a la consulta de permisos efectivos.
+ * Inyectado en `PermissionCacheService`.
+ */
 @Injectable()
 export class PermissionRepository {
   constructor(@Inject(DRIZZLE) private readonly db: Drizzle) {}
 
+  /**
+   * Lista los permisos otorgados por un rol. Solo permisos activos
+   * y con `isGrant = true`.
+   *
+   * @param roleCode - Codigo del rol.
+   * @returns Arreglo de permisos.
+   */
   async findRolePermissions(roleCode: string): Promise<PermissionEntity[]> {
     return this.db
       .select({
@@ -30,7 +53,10 @@ export class PermissionRepository {
         createdAt: permissions.createdAt,
       })
       .from(permissions)
-      .innerJoin(rolePermissions, eq(rolePermissions.permissionId, permissions.id))
+      .innerJoin(
+        rolePermissions,
+        eq(rolePermissions.permissionId, permissions.id),
+      )
       .where(
         and(
           sql`${rolePermissions.roleCode} = ${roleCode}`,
@@ -40,6 +66,19 @@ export class PermissionRepository {
       );
   }
 
+  /**
+   * Lista los overrides de permisos aplicables a un usuario.
+   *
+   * Filtra por:
+   *  - El usuario.
+   *  - Override activo.
+   *  - `validFrom <= now`.
+   *  - `validUntil IS NULL` o `validUntil > now`.
+   *
+   * @param userId - UUID del usuario.
+   * @returns Arreglo `{ code, isGrant }`. Si `isGrant = false`,
+   *   se interpreta como DENY del permiso.
+   */
   async findUserOverrides(
     userId: string,
   ): Promise<Array<{ code: string; isGrant: boolean }>> {
@@ -66,6 +105,12 @@ export class PermissionRepository {
       );
   }
 
+  /**
+   * Busca un rol por codigo.
+   *
+   * @param code - Codigo del rol.
+   * @returns Rol o `null`.
+   */
   async findRoleByCode(code: string): Promise<RoleEntity | null> {
     const [row] = await this.db
       .select()
@@ -75,6 +120,15 @@ export class PermissionRepository {
     return row ?? null;
   }
 
+  /**
+   * Busca un usuario basico (incluyendo `deletedAt`) por UUID.
+   *
+   * Usado por `PermissionCacheService` para conocer el `roleCode`
+   * del usuario antes de pedir permisos por rol.
+   *
+   * @param id - UUID del usuario.
+   * @returns Usuario o `null`.
+   */
   async findUserBasic(id: string): Promise<UserEntity | null> {
     const [row] = await this.db
       .select()

@@ -1,3 +1,22 @@
+/**
+ * @fileoverview Modulo raiz de la aplicacion.
+ *
+ * Compone todos los modulos funcionales y registra los guards
+ * globales en el orden en que deben ejecutarse:
+ *
+ *  1. `ThrottlerGuard` (rate limit).
+ *  2. `JwtAuthGuard` (autenticacion).
+ *  3. `RolesGuard` (autorizacion por rol; sin uso actual).
+ *  4. `PermissionsGuard` (autorizacion por permiso).
+ *
+ * Carga la configuracion con validacion Joi y aplica las
+ * factories `appConfig`, `authConfig`, `mailConfig` y `mfaConfig`.
+ *
+ * @module app
+ * @author Equipo de desarrollo Mis Vales
+ * @since 1.0.0
+ */
+
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
@@ -20,12 +39,13 @@ import { MfaModule } from './mfa/mfa.module';
 import { MailModule } from './mail/mail.module';
 import { HealthModule } from './health/health.module';
 
-import {
-  JwtAuthGuard,
-  RolesGuard,
-} from './shared/guards/auth.guards';
+import { JwtAuthGuard, RolesGuard } from './shared/guards/auth.guards';
 import { PermissionsGuard } from './shared/guards/permissions.guard';
 
+/**
+ * Modulo raiz. Importa config, modulos funcionales y registra
+ * los guards globales con `APP_GUARD`.
+ */
 @Module({
   imports: [
     ConfigModule.forRoot({

@@ -1,3 +1,16 @@
+/**
+ * @fileoverview Repositorio de la tabla `app.password_reset_token`.
+ *
+ * Tokens de un solo uso para la recuperacion de contrasena. Cada
+ * token tiene un TTL fijo (30 minutos) y se marca como usado al
+ * consumirse. Se invalida el resto de tokens pendientes del mismo
+ * usuario al aplicar el reset.
+ *
+ * @module database/repositories
+ * @author Equipo de desarrollo Mis Vales
+ * @since 1.0.0
+ */
+
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 import { DRIZZLE, type Drizzle } from '../drizzle.provider';
@@ -7,11 +20,24 @@ import {
   type PasswordResetTokenEntity,
 } from '../schema';
 
+/**
+ * Acceso de bajo nivel a la tabla `app.password_reset_token`.
+ * Inyectado en `PasswordResetService`.
+ */
 @Injectable()
 export class PasswordResetTokenRepository {
   constructor(@Inject(DRIZZLE) private readonly db: Drizzle) {}
 
-  async create(data: NewPasswordResetTokenEntity): Promise<PasswordResetTokenEntity> {
+  /**
+   * Crea un token de recuperacion. Se persiste el hash del token,
+   * nunca el token en claro.
+   *
+   * @param data - Datos del token (sin id, generado por PG).
+   * @returns Token creado.
+   */
+  async create(
+    data: NewPasswordResetTokenEntity,
+  ): Promise<PasswordResetTokenEntity> {
     const [row] = await this.db
       .insert(passwordResetTokens)
       .values(data)
@@ -19,6 +45,12 @@ export class PasswordResetTokenRepository {
     return row;
   }
 
+  /**
+   * Busca un token pendiente (no usado y no expirado) por su hash.
+   *
+   * @param tokenHash - Hash Argon2id del token.
+   * @returns Token o `null`.
+   */
   async findActiveByTokenHash(
     tokenHash: string,
   ): Promise<PasswordResetTokenEntity | null> {
@@ -36,6 +68,11 @@ export class PasswordResetTokenRepository {
     return row ?? null;
   }
 
+  /**
+   * Marca un token como usado (`usedAt = now()`).
+   *
+   * @param id - UUID del token.
+   */
   async markUsed(id: string): Promise<void> {
     await this.db
       .update(passwordResetTokens)
@@ -43,6 +80,13 @@ export class PasswordResetTokenRepository {
       .where(eq(passwordResetTokens.id, id));
   }
 
+  /**
+   * Invalida todos los tokens pendientes de un usuario. Llamado
+   * tras un reset exitoso para evitar que tokens viejos sean
+   * utilizables.
+   *
+   * @param userId - UUID del usuario.
+   */
   async invalidateForUser(userId: string): Promise<void> {
     await this.db
       .update(passwordResetTokens)
