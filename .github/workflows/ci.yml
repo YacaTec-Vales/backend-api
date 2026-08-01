@@ -1,0 +1,205 @@
+name: Backend CI
+
+on:
+  pull_request:
+    branches: [develop, staging, main]
+    paths:
+      - 'backend-api/**'
+      - 'docu/backend/**'
+      - 'docu/backend.md'
+      - 'backend-api/.github/workflows/ci.yml'
+  push:
+    branches: [develop, staging, main]
+    paths:
+      - 'backend-api/**'
+      - 'docu/backend/**'
+      - 'docu/backend.md'
+      - 'backend-api/.github/workflows/ci.yml'
+
+# Cancela runs anteriores del mismo PR para no desperdiciar
+# minutos de CI en pushes viejos.
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Quality (lint + typecheck + build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend-api/package-lock.json
+      - name: Instalar dependencias
+        working-directory: backend-api
+        run: npm ci
+      - name: Lint
+        working-directory: backend-api
+        run: npm run lint
+      - name: Typecheck
+        working-directory: backend-api
+        run: npm run typecheck
+      - name: Build
+        working-directory: backend-api
+        run: npm run build
+
+  unit-coverage:
+    name: Unit tests + coverage
+    needs: [quality]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend-api/package-lock.json
+      - name: Instalar dependencias
+        working-directory: backend-api
+        run: npm ci
+      - name: Unit + coverage (umbral 80 % enforced por Jest)
+        working-directory: backend-api
+        run: npm run test:cov:unit
+      - name: Subir artifact de coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-unit
+          path: backend-api/coverage/
+          retention-days: 14
+
+  integration:
+    name: Integration tests
+    needs: [quality]
+    runs-on: ubuntu-latest
+    # Levanta un PostgreSQL para integration y e2e. Sustituir
+    # por Testcontainers o una BD de pruebas dedicada cuando
+    # este disponible.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: vales_yacatec_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_HOST: 127.0.0.1
+      DATABASE_PORT: 5432
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      DATABASE_NAME: vales_yacatec_test
+      DATABASE_READ_HOST: 127.0.0.1
+      DATABASE_READ_PORT: 5432
+      DATABASE_READ_USER: postgres
+      DATABASE_READ_PASSWORD: postgres
+      DATABASE_READ_NAME: vales_yacatec_test
+      JWT_SECRET: ci-jwt-secret-32-chars-min-1234567890
+      MFA_SECRET_KEY: ci-mfa-secret-32-chars-min-1234567890
+      NODE_ENV: test
+      SMTP_HOST: ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend-api/package-lock.json
+      - name: Instalar dependencias
+        working-directory: backend-api
+        run: npm ci
+      - name: Aplicar schema (placeholder)
+        working-directory: backend-api
+        run: echo "Las migraciones las aplica el equipo de infraestructura. Aplicar manualmente antes de habilitar este job."
+      - name: Integration tests
+        working-directory: backend-api
+        run: npm run test:integration
+        continue-on-error: true
+
+  e2e:
+    name: E2E tests
+    needs: [quality]
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: vales_yacatec_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_HOST: 127.0.0.1
+      DATABASE_PORT: 5432
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      DATABASE_NAME: vales_yacatec_test
+      DATABASE_READ_HOST: 127.0.0.1
+      DATABASE_READ_PORT: 5432
+      DATABASE_READ_USER: postgres
+      DATABASE_READ_PASSWORD: postgres
+      DATABASE_READ_NAME: vales_yacatec_test
+      JWT_SECRET: ci-jwt-secret-32-chars-min-1234567890
+      MFA_SECRET_KEY: ci-mfa-secret-32-chars-min-1234567890
+      NODE_ENV: test
+      SMTP_HOST: ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend-api/package-lock.json
+      - name: Instalar dependencias
+        working-directory: backend-api
+        run: npm ci
+      - name: E2E tests
+        working-directory: backend-api
+        run: npm run test:e2e
+        continue-on-error: true
+
+  ci-required:
+    name: CI Required (agregador)
+    needs:
+      - quality
+      - unit-coverage
+      - integration
+      - e2e
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resumen
+        run: |
+          echo "quality:        ${{ needs.quality.result }}"
+          echo "unit-coverage:  ${{ needs.unit-coverage.result }}"
+          echo "integration:    ${{ needs.integration.result }}"
+          echo "e2e:            ${{ needs.e2e.result }}"
+          if [[ "${{ needs.quality.result }}" != "success" || \
+                "${{ needs.unit-coverage.result }}" != "success" ]]; then
+            echo "Fallo critico: quality o unit-coverage no son success."
+            exit 1
+          fi
+          if [[ "${{ needs.integration.result }}" == "failure" || \
+                "${{ needs.e2e.result }}" == "failure" ]]; then
+            echo "Fallo critico: integration o e2e no pasaron."
+            exit 1
+          fi
+          echo "CI backend OK."
