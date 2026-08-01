@@ -26,7 +26,7 @@ import { authenticator } from 'otplib';
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 import { eq } from 'drizzle-orm';
 import { DRIZZLE, type Drizzle } from '../database/drizzle.provider';
-import { mfaCredentials } from '../database/schema';
+import { mfaCredentials, users } from '../database/schema';
 import { nanoid } from 'nanoid';
 import { PasswordService } from '../auth/services/password.service';
 import { MFA_CONFIG } from '../database/tokens';
@@ -112,9 +112,10 @@ export class MfaService {
         },
       });
 
-    await this.db.execute(
-      `UPDATE app."user" SET mfa_enabled = true, updated_at = now() WHERE id = '${userId}'`,
-    );
+    await this.db
+      .update(users)
+      .set({ mfaEnabled: true, updatedAt: new Date() })
+      .where(eq(users.id, userId));
 
     return { otpauthUrl, backupCodes };
   }
@@ -182,9 +183,10 @@ export class MfaService {
     await this.db
       .delete(mfaCredentials)
       .where(eq(mfaCredentials.userId, userId));
-    await this.db.execute(
-      `UPDATE app."user" SET mfa_enabled = false, updated_at = now() WHERE id = '${userId}'`,
-    );
+    await this.db
+      .update(users)
+      .set({ mfaEnabled: false, updatedAt: new Date() })
+      .where(eq(users.id, userId));
   }
 
   /**
