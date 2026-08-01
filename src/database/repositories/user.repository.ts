@@ -10,6 +10,9 @@
  *    con la baja logica.
  *  - Los updates que cambian contrasena incrementan `tokenVersion`
  *    para invalidar JWTs activos.
+ *  - **Conexiones**: cada metodo elige `writeDb` (INSERT/UPDATE/DELETE)
+ *    o `readDb` (SELECT). Los `returning()` post-UPDATE se ejecutan
+ *    en `writeDb` para evitar replicacion lag.
  *
  * @module database/repositories
  * @author Equipo de desarrollo Mis Vales
@@ -18,7 +21,12 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq, isNull, sql } from 'drizzle-orm';
-import { DRIZZLE, type Drizzle } from '../drizzle.provider';
+import {
+  DRIZZLE_WRITE,
+  DRIZZLE_READ,
+  type DrizzleWrite,
+  type DrizzleRead,
+} from '../drizzle.provider';
 import { users, type UserEntity } from '../schema';
 
 /**
@@ -27,7 +35,10 @@ import { users, type UserEntity } from '../schema';
  */
 @Injectable()
 export class UserRepository {
-  constructor(@Inject(DRIZZLE) private readonly db: Drizzle) {}
+  constructor(
+    @Inject(DRIZZLE_WRITE) private readonly writeDb: DrizzleWrite,
+    @Inject(DRIZZLE_READ) private readonly readDb: DrizzleRead,
+  ) {}
 
   /**
    * Busca un usuario activo por UUID.
@@ -36,7 +47,7 @@ export class UserRepository {
    * @returns Entidad o `null` si no existe o esta borrado.
    */
   async findById(id: string): Promise<UserEntity | null> {
-    const [row] = await this.db
+    const [row] = await this.readDb
       .select()
       .from(users)
       .where(and(eq(users.id, id), isNull(users.deletedAt)))
@@ -51,7 +62,7 @@ export class UserRepository {
    * @returns Entidad o `null`.
    */
   async findByUsername(username: string): Promise<UserEntity | null> {
-    const [row] = await this.db
+    const [row] = await this.readDb
       .select()
       .from(users)
       .where(and(eq(users.username, username), isNull(users.deletedAt)))
@@ -66,7 +77,7 @@ export class UserRepository {
    * @returns Entidad o `null`.
    */
   async findByEmail(email: string): Promise<UserEntity | null> {
-    const [row] = await this.db
+    const [row] = await this.readDb
       .select()
       .from(users)
       .where(and(eq(users.email, email), isNull(users.deletedAt)))
@@ -83,7 +94,7 @@ export class UserRepository {
   async findByUsernameOrEmail(
     usernameOrEmail: string,
   ): Promise<UserEntity | null> {
-    const [row] = await this.db
+    const [row] = await this.readDb
       .select()
       .from(users)
       .where(
@@ -105,6 +116,9 @@ export class UserRepository {
    *  - Incrementa `tokenVersion` (invalida todos los JWT del usuario).
    *  - Actualiza `passwordChangedAt` y `updatedAt`.
    *
+   * El `returning()` se evalua en el pool WRITE para mantener
+   * consistencia inmediata (evita replicacion lag).
+   *
    * @param id - UUID del usuario.
    * @param passwordHash - Hash Argon2id de la nueva contrasena.
    * @returns Entidad actualizada o `null` si no existe.
@@ -113,7 +127,7 @@ export class UserRepository {
     id: string,
     passwordHash: string,
   ): Promise<UserEntity | null> {
-    const [row] = await this.db
+    const [row] = await this.writeDb
       .update(users)
       .set({
         passwordHash,
@@ -135,7 +149,7 @@ export class UserRepository {
    * @param id - UUID del usuario.
    */
   async bumpTokenVersion(id: string): Promise<void> {
-    await this.db
+    await this.writeDb
       .update(users)
       .set({
         tokenVersion: sql`${users.tokenVersion} + 1`,
@@ -151,7 +165,7 @@ export class UserRepository {
    * @param id - UUID del usuario.
    */
   async recordSuccessfulLogin(id: string): Promise<void> {
-    await this.db
+    await this.writeDb
       .update(users)
       .set({
         lastLoginAt: new Date(),
@@ -176,7 +190,7 @@ export class UserRepository {
     maxAttempts: number,
     lockoutMinutes: number,
   ): Promise<UserEntity | null> {
-    const [row] = await this.db
+    const [row] = await this.writeDb
       .update(users)
       .set({
         failedLoginCount: sql`${users.failedLoginCount} + 1`,
@@ -196,7 +210,7 @@ export class UserRepository {
    * @param enabled - Nuevo valor del flag.
    */
   async setMfaEnabled(id: string, enabled: boolean): Promise<void> {
-    await this.db
+    await this.writeDb
       .update(users)
       .set({ mfaEnabled: enabled, updatedAt: new Date() })
       .where(eq(users.id, id));

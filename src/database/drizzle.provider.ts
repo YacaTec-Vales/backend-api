@@ -1,9 +1,14 @@
 /**
- * @fileoverview Provider del cliente Drizzle ORM y holder del Pool.
+ * @fileoverview Providers del cliente Drizzle ORM y holders de los Pools.
  *
- * Construye un `pg.Pool` con la configuracion de `database.config`
- * y devuelve una `Drizzle` (NodePgDatabase) para que los repos
- * inyecten. El `DrizzlePoolHolder` cierra el pool al apagado.
+ * Construye dos `pg.Pool`:
+ *  - `DRIZZLE_WRITE` → conexiones para INSERT/UPDATE/DELETE.
+ *  - `DRIZZLE_READ`  → conexiones para SELECT.
+ *
+ * Los repositorios inyectan **ambos** clientes y eligen por método
+ * segun su semantica (ver `estilos/conexion-lectura-escritura.md`).
+ *
+ * El `DrizzlePoolHolder` cierra los dos pools al apagado.
  *
  * @module database
  * @author Equipo de desarrollo Mis Vales
@@ -12,77 +17,174 @@
 
 import { drizzle, NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
-import { DATABASE_CONFIG } from './tokens';
-import { ConfigService } from '@nestjs/config';
+import { DATABASE_CONFIG, DATABASE_READ_CONFIG } from './tokens';
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
-import type { DatabaseConfig } from '../config/database.config';
+import type {
+  DatabaseConfig,
+  DatabaseReadConfig,
+} from '../config/database.config';
 import * as schema from './schema';
 
 /**
- * Token de inyeccion del cliente Drizzle. Inyectado en los
- * repositorios con `@Inject(DRIZZLE)`.
+ * Token de inyeccion del cliente Drizzle de ESCRITURA. Inyectado en
+ * los repositorios con `@Inject(DRIZZLE_WRITE)` para metodos que
+ * ejecutan `insert/update/delete`.
  */
-export const DRIZZLE = Symbol('DRIZZLE');
+export const DRIZZLE_WRITE = Symbol('DRIZZLE_WRITE');
 
 /**
- * Tipo del cliente Drizzle configurado con el schema `app`.
+ * Token de inyeccion del cliente Drizzle de LECTURA. Inyectado en
+ * los repositorios con `@Inject(DRIZZLE_READ)` para metodos que
+ * ejecutan `select`.
  */
-export type Drizzle = NodePgDatabase<typeof schema>;
+export const DRIZZLE_READ = Symbol('DRIZZLE_READ');
 
 /**
- * Factory del provider `DRIZZLE`. Es asincrona porque la
- * inicializacion del `pg.Pool` puede fallar (credenciales, host).
+ * Tipo del cliente Drizzle de escritura configurado con el schema `app`.
+ */
+export type DrizzleWrite = NodePgDatabase<typeof schema>;
+
+/**
+ * Tipo del cliente Drizzle de lectura configurado con el schema `app`.
  *
- * @returns Cliente Drizzle listo para queries tipadas.
+ * Es el mismo tipo que `DrizzleWrite`; se exporta aparte para que el
+ * tipo del parametro en cada repo exprese la intencion.
  */
-export const drizzleProvider = {
-  provide: DRIZZLE,
-  inject: [DATABASE_CONFIG, ConfigService],
-  useFactory: (cfg: DatabaseConfig, configService: ConfigService): Drizzle => {
-    const poolMax = configService.get<number>('database.poolMax', 10);
-    const poolMin = configService.get<number>('database.poolMin', 2);
-    const pool = new Pool({
+export type DrizzleRead = NodePgDatabase<typeof schema>;
+
+/**
+ * Mantiene referencias a los `Pool` WRITE y READ para cerrarlos al
+ * apagado. Es necesario porque `Pool` no expone el lifecycle de
+ * NestJS.
+ *
+ * Las factories de los providers Drizzle llaman a `registerPool()`
+ * para que cada pool quede registrado antes del shutdown.
+ *
+ * Se declara antes que las factories para que `inject: [...]` pueda
+ * referenciarla (forward reference en TS).
+ */
+@Injectable()
+export class DrizzlePoolHolder implements OnModuleDestroy {
+  private pools: Pool[] = [];
+
+  /**
+   * Registra un pool activo para que pueda cerrarse en el destroy.
+   *
+   * @param pool - Pool de `pg` activo.
+   */
+  registerPool(pool: Pool): void {
+    this.pools.push(pool);
+  }
+
+  /**
+   * Lifecycle hook de NestJS. Cierra todos los pools registrados.
+   * Llamado durante el graceful shutdown.
+   */
+  async onModuleDestroy(): Promise<void> {
+    for (const pool of this.pools) {
+      await pool.end();
+    }
+    this.pools = [];
+  }
+}
+
+/**
+ * Parametros internos para construir un `pg.Pool` con logging consistente.
+ */
+interface BuildPoolParams {
+  host: string;
+  port: number;
+  user: string;
+  password: string;
+  database: string;
+  ssl: boolean;
+  poolMin: number;
+  poolMax: number;
+  label: string;
+}
+
+/**
+ * Construye un `pg.Pool` con manejo de errores uniforme. Usado por
+ * `drizzleWriteProvider` y `drizzleReadProvider`.
+ *
+ * @param params - Parametros de conexion y etiqueta para logs.
+ * @returns Pool listo para envolver con Drizzle.
+ */
+function buildPool(params: BuildPoolParams): Pool {
+  const pool = new Pool({
+    host: params.host,
+    port: params.port,
+    user: params.user,
+    password: params.password,
+    database: params.database,
+    ssl: params.ssl ? { rejectUnauthorized: false } : false,
+    max: params.poolMax,
+    min: params.poolMin,
+  });
+  pool.on('error', (err: Error) => {
+    console.error(`[${params.label}] unexpected error`, err);
+  });
+  return pool;
+}
+
+/**
+ * Factory del provider `DRIZZLE_WRITE`. Construye un `pg.Pool` con la
+ * configuracion de `database.config`, lo registra en el
+ * `DrizzlePoolHolder` para el shutdown limpio, y devuelve un cliente
+ * Drizzle listo para queries de escritura.
+ *
+ * @returns Cliente Drizzle conectado al pool de escritura.
+ */
+export const drizzleWriteProvider = {
+  provide: DRIZZLE_WRITE,
+  inject: [DATABASE_CONFIG, DrizzlePoolHolder],
+  useFactory: (
+    cfg: DatabaseConfig,
+    holder: DrizzlePoolHolder,
+  ): DrizzleWrite => {
+    const pool = buildPool({
       host: cfg.host,
       port: cfg.port,
       user: cfg.user,
       password: cfg.password,
       database: cfg.database,
-      ssl: cfg.ssl ? { rejectUnauthorized: false } : false,
-      max: poolMax,
-      min: poolMin,
+      ssl: cfg.ssl,
+      poolMin: cfg.poolMin,
+      poolMax: cfg.poolMax,
+      label: 'pg-pool-write',
     });
-    pool.on('error', (err: Error) => {
-      console.error('[pg-pool] unexpected error', err);
-    });
+    holder.registerPool(pool);
     return drizzle(pool, { schema });
   },
 };
 
 /**
- * Mantiene una referencia al `Pool` para cerrarlo al apagado.
- * Es necesario porque `Pool` no expone el lifecycle de NestJS.
+ * Factory del provider `DRIZZLE_READ`. Construye un `pg.Pool` con la
+ * configuracion de `databaseRead.config`, lo registra en el
+ * `DrizzlePoolHolder` para el shutdown limpio, y devuelve un cliente
+ * Drizzle listo para queries de lectura.
+ *
+ * @returns Cliente Drizzle conectado al pool de lectura.
  */
-@Injectable()
-export class DrizzlePoolHolder implements OnModuleDestroy {
-  private pool: Pool | null = null;
-
-  /**
-   * Registra el pool activo para que pueda cerrarse en el destroy.
-   *
-   * @param pool - Pool de `pg` activo.
-   */
-  registerPool(pool: Pool): void {
-    this.pool = pool;
-  }
-
-  /**
-   * Lifecycle hook de NestJS. Cierra el pool si fue registrado.
-   * Llamado durante el graceful shutdown.
-   */
-  async onModuleDestroy(): Promise<void> {
-    if (this.pool) {
-      await this.pool.end();
-      this.pool = null;
-    }
-  }
-}
+export const drizzleReadProvider = {
+  provide: DRIZZLE_READ,
+  inject: [DATABASE_READ_CONFIG, DrizzlePoolHolder],
+  useFactory: (
+    cfg: DatabaseReadConfig,
+    holder: DrizzlePoolHolder,
+  ): DrizzleRead => {
+    const pool = buildPool({
+      host: cfg.host,
+      port: cfg.port,
+      user: cfg.user,
+      password: cfg.password,
+      database: cfg.database,
+      ssl: cfg.ssl,
+      poolMin: cfg.poolMin,
+      poolMax: cfg.poolMax,
+      label: 'pg-pool-read',
+    });
+    holder.registerPool(pool);
+    return drizzle(pool, { schema });
+  },
+};

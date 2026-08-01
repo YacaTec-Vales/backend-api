@@ -8,6 +8,9 @@
  * Es el unico que sabe como distinguir sesiones activas vs
  * revocadas, y como encadenar rotaciones (`replacedBy`).
  *
+ * Conexiones: cada metodo elige `writeDb` (INSERT/UPDATE/DELETE) o
+ * `readDb` (SELECT).
+ *
  * @module database/repositories
  * @author Equipo de desarrollo Mis Vales
  * @since 1.0.0
@@ -15,7 +18,12 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq, isNull, sql } from 'drizzle-orm';
-import { DRIZZLE, type Drizzle } from '../drizzle.provider';
+import {
+  DRIZZLE_WRITE,
+  DRIZZLE_READ,
+  type DrizzleWrite,
+  type DrizzleRead,
+} from '../drizzle.provider';
 import {
   refreshTokens,
   type RefreshTokenEntity,
@@ -28,7 +36,10 @@ import {
  */
 @Injectable()
 export class RefreshTokenRepository {
-  constructor(@Inject(DRIZZLE) private readonly db: Drizzle) {}
+  constructor(
+    @Inject(DRIZZLE_WRITE) private readonly writeDb: DrizzleWrite,
+    @Inject(DRIZZLE_READ) private readonly readDb: DrizzleRead,
+  ) {}
 
   /**
    * Inserta una nueva sesion.
@@ -37,7 +48,10 @@ export class RefreshTokenRepository {
    * @returns Sesion creada tal cual quedo persistida.
    */
   async create(data: NewRefreshTokenEntity): Promise<RefreshTokenEntity> {
-    const [row] = await this.db.insert(refreshTokens).values(data).returning();
+    const [row] = await this.writeDb
+      .insert(refreshTokens)
+      .values(data)
+      .returning();
     return row;
   }
 
@@ -48,7 +62,7 @@ export class RefreshTokenRepository {
    * @returns Entidad o `null`.
    */
   async findActiveById(id: string): Promise<RefreshTokenEntity | null> {
-    const [row] = await this.db
+    const [row] = await this.readDb
       .select()
       .from(refreshTokens)
       .where(eq(refreshTokens.id, id))
@@ -63,7 +77,7 @@ export class RefreshTokenRepository {
    * @returns Arreglo de sesiones activas.
    */
   async findActiveByUserId(userId: string): Promise<RefreshTokenEntity[]> {
-    return this.db
+    return this.readDb
       .select()
       .from(refreshTokens)
       .where(
@@ -82,7 +96,7 @@ export class RefreshTokenRepository {
   async findActiveByTokenHash(
     tokenHash: string,
   ): Promise<RefreshTokenEntity | null> {
-    const [row] = await this.db
+    const [row] = await this.readDb
       .select()
       .from(refreshTokens)
       .where(eq(refreshTokens.tokenHash, tokenHash))
@@ -103,7 +117,7 @@ export class RefreshTokenRepository {
     reason: string,
     replacedBy: string | null = null,
   ): Promise<void> {
-    await this.db
+    await this.writeDb
       .update(refreshTokens)
       .set({
         revokedAt: sql`now()`,
@@ -119,7 +133,7 @@ export class RefreshTokenRepository {
    * @param id - UUID de la sesion.
    */
   async markLastUsed(id: string): Promise<void> {
-    await this.db
+    await this.writeDb
       .update(refreshTokens)
       .set({ lastUsedAt: sql`now()` })
       .where(eq(refreshTokens.id, id));
@@ -133,7 +147,7 @@ export class RefreshTokenRepository {
    * @param reason - Razon de revocacion.
    */
   async revokeAllForUser(userId: string, reason: string): Promise<void> {
-    await this.db
+    await this.writeDb
       .update(refreshTokens)
       .set({ revokedAt: sql`now()`, revokedReason: reason })
       .where(
@@ -155,7 +169,7 @@ export class RefreshTokenRepository {
     keepId: string,
     reason: string,
   ): Promise<void> {
-    await this.db
+    await this.writeDb
       .update(refreshTokens)
       .set({ revokedAt: sql`now()`, revokedReason: reason })
       .where(

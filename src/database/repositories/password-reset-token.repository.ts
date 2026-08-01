@@ -6,6 +6,9 @@
  * consumirse. Se invalida el resto de tokens pendientes del mismo
  * usuario al aplicar el reset.
  *
+ * Conexiones: cada metodo elige `writeDb` (INSERT/UPDATE/DELETE) o
+ * `readDb` (SELECT).
+ *
  * @module database/repositories
  * @author Equipo de desarrollo Mis Vales
  * @since 1.0.0
@@ -13,7 +16,12 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
-import { DRIZZLE, type Drizzle } from '../drizzle.provider';
+import {
+  DRIZZLE_WRITE,
+  DRIZZLE_READ,
+  type DrizzleWrite,
+  type DrizzleRead,
+} from '../drizzle.provider';
 import {
   passwordResetTokens,
   type NewPasswordResetTokenEntity,
@@ -26,7 +34,10 @@ import {
  */
 @Injectable()
 export class PasswordResetTokenRepository {
-  constructor(@Inject(DRIZZLE) private readonly db: Drizzle) {}
+  constructor(
+    @Inject(DRIZZLE_WRITE) private readonly writeDb: DrizzleWrite,
+    @Inject(DRIZZLE_READ) private readonly readDb: DrizzleRead,
+  ) {}
 
   /**
    * Crea un token de recuperacion. Se persiste el hash del token,
@@ -38,7 +49,7 @@ export class PasswordResetTokenRepository {
   async create(
     data: NewPasswordResetTokenEntity,
   ): Promise<PasswordResetTokenEntity> {
-    const [row] = await this.db
+    const [row] = await this.writeDb
       .insert(passwordResetTokens)
       .values(data)
       .returning();
@@ -54,7 +65,7 @@ export class PasswordResetTokenRepository {
   async findActiveByTokenHash(
     tokenHash: string,
   ): Promise<PasswordResetTokenEntity | null> {
-    const [row] = await this.db
+    const [row] = await this.readDb
       .select()
       .from(passwordResetTokens)
       .where(
@@ -74,7 +85,7 @@ export class PasswordResetTokenRepository {
    * @param id - UUID del token.
    */
   async markUsed(id: string): Promise<void> {
-    await this.db
+    await this.writeDb
       .update(passwordResetTokens)
       .set({ usedAt: sql`now()` })
       .where(eq(passwordResetTokens.id, id));
@@ -88,7 +99,7 @@ export class PasswordResetTokenRepository {
    * @param userId - UUID del usuario.
    */
   async invalidateForUser(userId: string): Promise<void> {
-    await this.db
+    await this.writeDb
       .update(passwordResetTokens)
       .set({ usedAt: sql`now()` })
       .where(
