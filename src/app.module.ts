@@ -38,9 +38,11 @@ import { PasswordResetModule } from './password-reset/password-reset.module';
 import { MfaModule } from './mfa/mfa.module';
 import { MailModule } from './mail/mail.module';
 import { HealthModule } from './health/health.module';
+import { UsersModule } from './users/users.module';
 
 import { JwtAuthGuard, RolesGuard } from './shared/guards/auth.guards';
 import { PermissionsGuard } from './shared/guards/permissions.guard';
+import { MustChangePasswordGuard } from './shared/guards/must-change-password.guard';
 
 /**
  * Modulo raiz. Importa config, modulos funcionales y registra
@@ -82,6 +84,7 @@ import { PermissionsGuard } from './shared/guards/permissions.guard';
     MfaModule,
     MailModule,
     HealthModule,
+    UsersModule,
   ],
   controllers: [AppController],
   providers: [
@@ -90,6 +93,7 @@ import { PermissionsGuard } from './shared/guards/permissions.guard';
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
+    { provide: APP_GUARD, useClass: MustChangePasswordGuard },
   ],
 })
 export class AppModule {}

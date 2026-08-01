@@ -42,6 +42,12 @@ export interface AuthConfig {
     maxFailedAttempts: number;
     lockoutMinutes: number;
   };
+  /**
+   * Longitud de las contrasenas temporales administrativas
+   * (alta de usuario, reset por admin). Validada por Joi
+   * contra el rango 12-128.
+   */
+  tempPasswordLength: number;
 }
 
 /**
@@ -76,4 +82,8 @@ export const authConfig = registerAs('auth', (): AuthConfig => ({
     ),
     lockoutMinutes: parseInt(process.env.AUTH_LOCKOUT_MINUTES ?? '15', 10),
   },
+  tempPasswordLength: parseInt(
+    process.env.AUTH_TEMP_PASSWORD_LENGTH ?? '16',
+    10,
+  ),
 }));

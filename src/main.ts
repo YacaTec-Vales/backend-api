@@ -88,7 +88,7 @@ async function bootstrap(): Promise<void> {
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Mis Vales Yacatec API')
     .setDescription(
-      'API REST: autenticacion (JWT + Argon2 + MFA), sesiones, recuperacion de contrasena.',
+      'API REST: autenticacion (JWT + Argon2 + MFA), sesiones, recuperacion de contrasena, gestion administrativa de usuarios.',
     )
     .setVersion('0.1.0')
     .addBearerAuth(
@@ -99,6 +99,10 @@ async function bootstrap(): Promise<void> {
     .addTag('Sessions', 'Gestion de sesiones del usuario')
     .addTag('Health', 'Liveness / readiness')
     .addTag('PasswordReset', 'Recuperacion de contrasena')
+    .addTag(
+      'Users',
+      'Gestion administrativa de usuarios (CRUD, override de permisos)',
+    )
     .addTag('App', 'Smoke tests')
     .build();
 
