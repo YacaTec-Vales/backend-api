@@ -13,9 +13,15 @@
 
 /**
  * Provider Symbol para `DatabaseConfig`. Inyectado en
- * `drizzle.provider.ts` para construir el `pg.Pool`.
+ * `drizzle.provider.ts` para construir el `pg.Pool` de escritura.
  */
 export const DATABASE_CONFIG = Symbol('DATABASE_CONFIG');
+
+/**
+ * Provider Symbol para `DatabaseReadConfig`. Inyectado en
+ * `drizzle.provider.ts` para construir el `pg.Pool` de lectura.
+ */
+export const DATABASE_READ_CONFIG = Symbol('DATABASE_READ_CONFIG');
 
 /**
  * Provider Symbol para `AuthConfig`. Inyectado en `PasswordService`,

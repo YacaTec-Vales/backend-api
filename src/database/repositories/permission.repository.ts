@@ -5,6 +5,9 @@
  * `app.user_permission_override` (overrides por usuario) para
  * devolver lo que `PermissionCacheService` necesita.
  *
+ * Es un repositorio **100% de lectura**. Inyecta unicamente el
+ * cliente de lectura (`DRIZZLE_READ`).
+ *
  * @module database/repositories
  * @author Equipo de desarrollo Mis Vales
  * @since 1.0.0
@@ -12,7 +15,7 @@
 
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq, gt, isNull, lte, or, sql } from 'drizzle-orm';
-import { DRIZZLE, type Drizzle } from '../drizzle.provider';
+import { DRIZZLE_READ, type DrizzleRead } from '../drizzle.provider';
 import {
   permissions,
   rolePermissions,
@@ -30,7 +33,7 @@ import {
  */
 @Injectable()
 export class PermissionRepository {
-  constructor(@Inject(DRIZZLE) private readonly db: Drizzle) {}
+  constructor(@Inject(DRIZZLE_READ) private readonly db: DrizzleRead) {}
 
   /**
    * Lista los permisos otorgados por un rol. Solo permisos activos
