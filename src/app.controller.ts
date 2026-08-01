@@ -11,6 +11,7 @@
  */
 
 import { Controller, Get } from '@nestjs/common';
+import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from './shared/decorators/public.decorator';
 import { AppService } from './app.service';
 
@@ -18,6 +19,7 @@ import { AppService } from './app.service';
  * Controlador raiz. Las rutas aqui definidas cuelgan del
  * prefijo global `api/v1`.
  */
+@ApiTags('App')
 @Controller()
 export class AppController {
   constructor(private readonly appService: AppService) {}
@@ -28,6 +30,13 @@ export class AppController {
    */
   @Public()
   @Get()
+  @ApiOperation({
+    summary: 'Smoke test raiz',
+    description:
+      'Devuelve un saludo estatico. Pensado para verificar que el API responde.',
+    security: [],
+  })
+  @ApiOkResponse({ description: 'Saludo estatico.', type: String })
   getHello(): string {
     return this.appService.getHello();
   }
@@ -38,6 +47,22 @@ export class AppController {
    */
   @Public()
   @Get('/auth/api-info')
+  @ApiOperation({
+    summary: 'Metadata de la API',
+    description:
+      'Devuelve el nombre, la version y los modulos publicos de la API.',
+    security: [],
+  })
+  @ApiOkResponse({
+    description: 'Metadata con `name`, `version` y `modules`.',
+    schema: {
+      example: {
+        name: 'vales-yacatec-api',
+        version: '0.1.0',
+        modules: ['auth', 'sessions', 'password-reset', 'mfa'],
+      },
+    },
+  })
   apiInfo() {
     return {
       name: 'vales-yacatec-api',
