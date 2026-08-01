@@ -41,7 +41,28 @@ async function bootstrap(): Promise<void> {
 
   app.setGlobalPrefix(appCfg.apiPrefix);
 
-  app.use(helmet());
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        // Mantener las directivas por defecto de helmet y solo
+        // abrir lo necesario para la UI de Scalar en /docs:
+        //   - 'unsafe-inline'         -> Scalar usa un <script>inline
+        //                                 para inicializar la UI.
+        //   - https://cdn.jsdelivr.net -> la UI carga su bundle
+        //                                 desde el CDN de jsDelivr.
+        // El resto de rutas sigue protegida por la CSP estricta
+        // (default-src 'self', object-src 'none', etc.).
+        directives: {
+          'script-src': [
+            "'self'",
+            "'unsafe-inline'",
+            'https://cdn.jsdelivr.net',
+          ],
+          'script-src-attr': ["'none'"],
+        },
+      },
+    }),
+  );
   app.use(compression());
 
   const corsOrigins = appCfg.corsOrigins;
