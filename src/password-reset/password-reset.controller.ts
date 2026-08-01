@@ -19,36 +19,42 @@ import {
   Req,
 } from '@nestjs/common';
 import type { Request } from 'express';
+import {
+  ApiNoContentResponse,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
 import { PasswordResetService } from './password-reset.service';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { Public } from '../shared/decorators/public.decorator';
+import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 
 /**
  * Controlador publico de recuperacion de contrasena.
  */
+@ApiTags('PasswordReset')
 @Controller('auth')
 export class PasswordResetController {
   constructor(private readonly service: PasswordResetService) {}
 
-  /**
-   * @api {post} /auth/forgot-password Solicitar recuperacion
-   * @apiName ForgotPassword
-   * @apiGroup PasswordReset
-   * @apiVersion 1.0.0
-   * @apiPermission public
-   *
-   * @apiDescription Genera un token de recuperacion y envia un
-   * correo con el enlace. Por seguridad, devuelve 204 incluso
-   * si el correo no existe en el sistema.
-   *
-   * @apiBody {String} email Correo del usuario (max 255, lowercased).
-   *
-   * @apiSuccess (204) void.
-   * @apiError (429) {Object} Rate limit.
-   */
   @Public()
   @Post('forgot-password')
+  @ApiOperation({
+    summary: 'Solicitar recuperacion',
+    description:
+      'Genera un token de recuperacion y envia un correo con el enlace. ' +
+      'Por seguridad, devuelve 204 incluso si el correo no existe en el sistema.',
+    security: [],
+  })
+  @ApiNoContentResponse({ description: 'Solicitud procesada.' })
+  @ApiResponse({
+    status: 429,
+    description: 'Rate limit.',
+    type: ErrorResponseDto,
+  })
   @HttpCode(HttpStatus.NO_CONTENT)
   async forgotPassword(
     @Body() dto: ForgotPasswordDto,
@@ -57,27 +63,26 @@ export class PasswordResetController {
     await this.service.requestReset(dto.email, this.contextFrom(req));
   }
 
-  /**
-   * @api {post} /auth/reset-password Aplicar recuperacion
-   * @apiName ResetPassword
-   * @apiGroup PasswordReset
-   * @apiVersion 1.0.0
-   * @apiPermission public
-   *
-   * @apiDescription Aplica la nueva contrasena. Valida el token,
-   * exige fortaleza, hashea y persiste, invalida todos los
-   * tokens pendientes del usuario y revoca todas las sesiones
-   * de refresh.
-   *
-   * @apiBody {String} token Token de recuperacion (16-255 chars).
-   * @apiBody {String} newPassword Nueva contrasena (8-255, validada en servicio).
-   *
-   * @apiSuccess (204) void.
-   * @apiError (401) {Object} AUTH.RESET_TOKEN_INVALID.
-   * @apiError (400) {Object} WeakPasswordError (via `INTERNAL.ERROR`).
-   */
   @Public()
   @Post('reset-password')
+  @ApiOperation({
+    summary: 'Aplicar recuperacion',
+    description:
+      'Aplica la nueva contrasena. Valida el token, exige fortaleza, hashea ' +
+      'y persiste, invalida todos los tokens pendientes del usuario y revoca ' +
+      'todas las sesiones de refresh.',
+    security: [],
+  })
+  @ApiNoContentResponse({ description: 'Contrasena actualizada.' })
+  @ApiUnauthorizedResponse({
+    description: 'AUTH.RESET_TOKEN_INVALID.',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'WeakPasswordError (INTERNAL.ERROR).',
+    type: ErrorResponseDto,
+  })
   @HttpCode(HttpStatus.NO_CONTENT)
   async resetPassword(
     @Body() dto: ResetPasswordDto,
