@@ -13,11 +13,20 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
-    "test": "jest",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run test:unit",
+    "test:unit": "jest --config test/jest-unit.json",
+    "test:unit:watch": "jest --config test/jest-unit.json --watch",
+    "test:integration": "jest --config test/jest-integration.json --runInBand",
+    "test:integration:watch": "jest --config test/jest-integration.json --watch --runInBand",
+    "test:e2e": "jest --config test/jest-e2e.json --runInBand",
+    "test:e2e:watch": "jest --config test/jest-e2e.json --watch --runInBand",
     "test:watch": "jest --watch",
-    "test:cov": "jest --coverage",
+    "test:cov": "npm run test:cov:unit",
+    "test:cov:unit": "jest --config test/jest-unit.json --coverage",
+    "test:cov:e2e": "jest --config test/jest-e2e.json --coverage --runInBand",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:ci": "npm run lint && npm run typecheck && npm run test:cov:unit && npm run test:integration && npm run build"
   },
   "dependencies": {
     "@nestjs-modules/mailer": "^2.3.7",
