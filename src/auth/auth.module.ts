@@ -1,3 +1,21 @@
+/**
+ * @fileoverview Modulo de autenticacion.
+ *
+ * Registra `AuthController` y todos los servicios que orquestan:
+ *  - Hash / verificacion de contrasenas con Argon2id.
+ *  - Emision y verificacion de JWT.
+ *  - Creacion, rotacion y revocacion de sesiones.
+ *  - Cache de permisos efectivos.
+ *
+ * Configura `JwtModule` como global (una sola instancia para toda
+ * la app) y exporta los repos y servicios para que `sessions`,
+ * `password-reset` y `mfa` los reutilicen.
+ *
+ * @module auth
+ * @author Equipo de desarrollo Mis Vales
+ * @since 1.0.0
+ */
+
 import { Module, Provider } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -14,6 +32,11 @@ import { UserRepository } from '../database/repositories/user.repository';
 import { RefreshTokenRepository } from '../database/repositories/refresh-token.repository';
 import { PermissionRepository } from '../database/repositories/permission.repository';
 
+/**
+ * Provider que expone `AuthConfig` bajo el token `AUTH_CONFIG`.
+ * Inyectado en `PasswordService`, `TokenService`, `SessionService`
+ * y `AuthService`.
+ */
 const authConfigProvider: Provider = {
   provide: AUTH_CONFIG,
   inject: [ConfigService],
@@ -21,6 +44,11 @@ const authConfigProvider: Provider = {
     config.getOrThrow<AuthConfig>('auth'),
 };
 
+/**
+ * Modulo `AuthModule`. Exporta repos y servicios para que los
+ * modulos consumidores no pierdan las dependencias registradas
+ * cuando los inyectan.
+ */
 @Module({
   imports: [
     DatabaseModule,

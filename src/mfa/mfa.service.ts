@@ -1,4 +1,26 @@
-import { Inject, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+/**
+ * @fileoverview Servicio de MFA (TOTP + backup codes).
+ *
+ * Implementa el flujo de registro y verificacion de segundo factor:
+ *  - Genera un secret TOTP y un `otpauth://` URL.
+ *  - Genera N backup codes hasheados con Argon2.
+ *  - Cifra el secret TOTP con AES-256-GCM antes de persistir.
+ *  - Verifica codigos TOTP y consume backup codes.
+ *
+ * El secret nunca se almacena en claro. La clave AES se deriva
+ * de la variable de entorno `MFA_SECRET_KEY` (ver `env.validation.ts`).
+ *
+ * @module mfa
+ * @author Equipo de desarrollo Mis Vales
+ * @since 1.0.0
+ */
+
+import {
+  Inject,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { authenticator } from 'otplib';
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
@@ -10,16 +32,29 @@ import { PasswordService } from '../auth/services/password.service';
 import { MFA_CONFIG } from '../database/tokens';
 import type { MfaConfig } from '../config/mfa.config';
 
+/**
+ * Resultado de un setup inicial de MFA. Lo consume el endpoint
+ * que mostrara el QR y los backup codes al usuario (no expuesto
+ * todavia).
+ */
 export interface MfaSetupResult {
+  /** URI estilo `otpauth://totp/...` lista para QR. */
   otpauthUrl: string;
+  /** Backup codes de un solo uso (visibles solo en este momento). */
   backupCodes: string[];
 }
 
+/** Algoritmo AES usado para cifrar el secret TOTP. */
 const AES_ALGORITHM = 'aes-256-gcm';
+/** Tamano de la clave AES en bytes. */
 const KEY_LEN = 32;
+/** Tamano del IV de AES-GCM. */
 const IV_LEN = 12;
-const TAG_LEN = 16;
 
+/**
+ * Servicio de MFA. Inyectado en el modulo `AuthModule` (cuando
+ * se expongan los endpoints de MFA).
+ */
 @Injectable()
 export class MfaService {
   private readonly logger = new Logger(MfaService.name);
@@ -34,6 +69,16 @@ export class MfaService {
     this.encryptionKey = this.deriveKey();
   }
 
+  /**
+   * Genera un secret TOTP, N backup codes, hashea y cifra, y
+   * persiste la credencial. Marca `user.mfaEnabled = true`.
+   *
+   * Es idempotente: si el usuario ya tiene credencial, hace
+   * `onConflictDoUpdate` y regenera todo.
+   *
+   * @param userId - UUID del usuario.
+   * @returns `otpauthUrl` (para QR) y `backupCodes` (visibles una vez).
+   */
   async setupForUser(userId: string): Promise<MfaSetupResult> {
     const secret = authenticator.generateSecret();
     const otpauthUrl = authenticator.keyuri(
@@ -41,7 +86,9 @@ export class MfaService {
       this.mfaConfig.issuer,
       secret,
     );
-    const backupCodes = this.generateBackupCodes(this.mfaConfig.backupCodesCount);
+    const backupCodes = this.generateBackupCodes(
+      this.mfaConfig.backupCodesCount,
+    );
     const backupCodesHash = await Promise.all(
       backupCodes.map((code) => this.passwordService.hash(code)),
     );
@@ -72,6 +119,21 @@ export class MfaService {
     return { otpauthUrl, backupCodes };
   }
 
+  /**
+   * Verifica un codigo TOTP o un backup code.
+   *
+   * Pasos:
+   *  1. Descifra el secret.
+   *  2. Valida TOTP con `otplib`. Si coincide, incrementa
+   *     `lastUsedCounter`.
+   *  3. Si no, intenta consumir un backup code (verifica contra
+   *     cada hash, elimina el consumido).
+   *
+   * @param userId - UUID del usuario.
+   * @param code - Codigo de 6 digitos (TOTP) o backup code.
+   * @returns `{ valid, consumedBackupCode }`.
+   * @throws {UnauthorizedException} `AUTH.MFA_NOT_CONFIGURED`.
+   */
   async verify(
     userId: string,
     code: string,
@@ -110,13 +172,25 @@ export class MfaService {
     return { valid: false, consumedBackupCode: false };
   }
 
+  /**
+   * Desactiva MFA para un usuario. Borra la credencial y limpia
+   * el flag `mfa_enabled`.
+   *
+   * @param userId - UUID del usuario.
+   */
   async disable(userId: string): Promise<void> {
-    await this.db.delete(mfaCredentials).where(eq(mfaCredentials.userId, userId));
+    await this.db
+      .delete(mfaCredentials)
+      .where(eq(mfaCredentials.userId, userId));
     await this.db.execute(
       `UPDATE app."user" SET mfa_enabled = false, updated_at = now() WHERE id = '${userId}'`,
     );
   }
 
+  /**
+   * Carga la credencial activa de un usuario. Privado.
+   * @param userId - UUID del usuario.
+   */
   private async findCredential(userId: string) {
     const [row] = await this.db
       .select()
@@ -126,6 +200,14 @@ export class MfaService {
     return row ?? null;
   }
 
+  /**
+   * Iera sobre los hashes de backup codes; el primero que coincide
+   * se elimina del array y se persiste.
+   * @param userId - UUID del usuario.
+   * @param hashes - Hashes Argon2id de los backup codes.
+   * @param code - Codigo a probar.
+   * @returns `true` si encontro coincidencia.
+   */
   private async consumeBackupCode(
     userId: string,
     hashes: string[],
@@ -145,12 +227,24 @@ export class MfaService {
     return false;
   }
 
+  /**
+   * Genera N backup codes de un solo uso. Usa `nanoid(10)` y
+   * reemplaza guiones/guiones bajos para evitar caracteres
+   * ambiguos.
+   * @param count - Cantidad a generar.
+   */
   private generateBackupCodes(count: number): string[] {
     return Array.from({ length: count }, () =>
       nanoid(10).replace(/[-_]/g, 'x').toUpperCase(),
     );
   }
 
+  /**
+   * Cifra el secret TOTP con AES-256-GCM. Produce un blob
+   * `iv.tag.enc` en base64.
+   * @param secret - Secret TOTP en claro.
+   * @returns String `iv.tag.enc` en base64 concatenado con `.`.
+   */
   private encryptSecret(secret: string): string {
     const iv = randomBytes(IV_LEN);
     const cipher = createCipheriv(AES_ALGORITHM, this.encryptionKey, iv);
@@ -163,6 +257,11 @@ export class MfaService {
     ].join('.');
   }
 
+  /**
+   * Inverso de `encryptSecret`. Espera el blob `iv.tag.enc`.
+   * @param blob - Blob persistido.
+   * @returns Secret TOTP en claro.
+   */
   private decryptSecret(blob: string): string {
     const [ivB64, tagB64, encB64] = blob.split('.');
     const iv = Buffer.from(ivB64, 'base64');
@@ -174,9 +273,16 @@ export class MfaService {
     return dec.toString('utf8');
   }
 
+  /**
+   * Deriva la clave AES de 32 bytes a partir de `MFA_SECRET_KEY`.
+   * Si el valor es corto, hace padding con espacios. Si esta
+   * vacio, devuelve un buffer lleno de ceros (modo inseguro;
+   * ver `env.validation.ts` para el minimo).
+   */
   private deriveKey(): Buffer {
     const raw = this.configService.get<string>('mfa.encryptionKey') ?? '';
-    if (raw.length >= 32) return Buffer.from(raw.padEnd(KEY_LEN).slice(0, KEY_LEN));
+    if (raw.length >= 32)
+      return Buffer.from(raw.padEnd(KEY_LEN).slice(0, KEY_LEN));
     return Buffer.concat([
       Buffer.from(raw),
       Buffer.alloc(KEY_LEN - raw.length, 0),

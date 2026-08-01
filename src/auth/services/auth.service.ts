@@ -1,3 +1,25 @@
+/**
+ * @fileoverview Servicio principal de autenticacion.
+ *
+ * Orquesta el flujo de identidad:
+ *  - `login`: valida credenciales, aplica lockout, crea sesion,
+ *    emite tokens.
+ *  - `refresh`: rota sesion, revalida usuario, emite tokens.
+ *  - `logout`: revoca sesion actual o la pasada por parametro.
+ *  - `getAuthenticatedUser`: revalida contra BD y devuelve
+ *    permisos efectivos.
+ *  - `changePassword`: cambia el hash, bumpea `tokenVersion`,
+ *    revoca otras sesiones, emite nuevo access token.
+ *
+ * No toca SQL directamente: delega a `UserRepository`,
+ * `RefreshTokenRepository`, `PasswordService`, `TokenService`,
+ * `SessionService` y `PermissionCacheService`.
+ *
+ * @module auth/services
+ * @author Equipo de desarrollo Mis Vales
+ * @since 1.0.0
+ */
+
 import {
   Inject,
   Injectable,
@@ -16,15 +38,12 @@ import { SessionService } from './session.service';
 import { PermissionCacheService } from './permission-cache.service';
 import { AUTH_CONFIG } from '../../database/tokens';
 import type { AuthConfig } from '../../config/auth.config';
-import type {
-  LoginContext,
-  UserType,
-} from '../../shared/types/auth.types';
-import type {
-  AuthUserResponse,
-  TokenResponse,
-} from '../dto/auth-response';
+import type { LoginContext, UserType } from '../../shared/types/auth.types';
+import type { AuthUserResponse, TokenResponse } from '../dto/auth-response';
 
+/**
+ * Servicio principal de autenticacion. Inyectado en `AuthController`.
+ */
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
@@ -40,6 +59,30 @@ export class AuthService {
     private readonly configService: ConfigService,
   ) {}
 
+  /**
+   * Inicia sesion con credenciales.
+   *
+   * Pasos:
+   *  1. Busca usuario por username o email.
+   *  2. Verifica `isActive`, `deletedAt`, `userStatus`.
+   *  3. Verifica `lockedUntil`.
+   *  4. Verifica contrasena con Argon2; si falla, registra
+   *     intento fallido y lanza `AUTH.INVALID_CREDENTIALS`.
+   *  5. Registra login exitoso.
+   *  6. Carga permisos efectivos.
+   *  7. Crea sesion (con TTL remember si aplica).
+   *  8. Firma access JWT con `sub, username, role, branchId,
+   *     tokenVersion, sessionId`.
+   *
+   * @param usernameOrEmail - Usuario o correo.
+   * @param password - Contrasena plana.
+   * @param rememberMe - Si true, TTL del refresh = 30 dias.
+   * @param context - IP, user-agent, device.
+   * @returns Par de tokens y datos del usuario.
+   * @throws {UnauthorizedException} `AUTH.INVALID_CREDENTIALS`, `AUTH.PASSWORD_NOT_SET`.
+   * @throws {ForbiddenException} `AUTH.USER_INACTIVE`.
+   * @throws {HttpException} 423 `AUTH.LOCKED`.
+   */
   async login(
     usernameOrEmail: string,
     password: string,
@@ -128,6 +171,25 @@ export class AuthService {
     };
   }
 
+  /**
+   * Rota el refresh token.
+   *
+   * Pasos:
+   *  1. `SessionService.validateAndRotate` (revoca el viejo, crea
+   *     el nuevo, detecta reuso).
+   *  2. Carga la nueva sesion y el usuario.
+   *  3. Verifica `userStatus`; si no esta activo, revoca todas
+   *     las sesiones del usuario.
+   *  4. Carga permisos efectivos.
+   *  5. Firma nuevo access token con `sessionId` rotado.
+   *
+   * @param refreshToken - Refresh token opaco.
+   * @param context - IP, UA, device (para la nueva sesion).
+   * @returns Nuevos tokens.
+   * @throws {UnauthorizedException} `AUTH.SESSION_NOT_FOUND`, `AUTH.USER_NOT_FOUND`,
+   *   `AUTH.REFRESH_NOT_FOUND`, `AUTH.REFRESH_REUSED`, `AUTH.REFRESH_EXPIRED`.
+   * @throws {ForbiddenException} `AUTH.USER_INACTIVE`.
+   */
   async refresh(
     refreshToken: string,
     context: LoginContext,
@@ -137,7 +199,9 @@ export class AuthService {
       context,
     );
 
-    const newSession = await this.refreshRepo.findActiveById(rotation.newSessionId);
+    const newSession = await this.refreshRepo.findActiveById(
+      rotation.newSessionId,
+    );
     if (!newSession) {
       throw new UnauthorizedException({
         code: 'AUTH.SESSION_NOT_FOUND',
@@ -184,6 +248,16 @@ export class AuthService {
     };
   }
 
+  /**
+   * Cierra la sesion del usuario.
+   *
+   * Si se pasa `refreshToken` y pertenece al usuario, se revoca
+   * esa sesion. Si no, se revoca la sesion del JWT.
+   *
+   * @param userId - UUID del usuario.
+   * @param sessionId - UUID de la sesion del JWT.
+   * @param refreshToken - Opcional, sesion a revocar explicitamente.
+   */
   async logout(
     userId: string,
     sessionId: string,
@@ -200,6 +274,18 @@ export class AuthService {
     await this.sessionService.revokeCurrentSession(sessionId);
   }
 
+  /**
+   * Devuelve el usuario autenticado con sus permisos efectivos.
+   *
+   * Compara `tokenVersion` contra la BD para detectar tokens
+   * obsoletos (por cambio de contrasena u override).
+   *
+   * @param userId - UUID.
+   * @param tokenVersion - Version del JWT.
+   * @param sessionId - UUID de la sesion.
+   * @returns Usuario completo.
+   * @throws {UnauthorizedException} `AUTH.USER_NOT_FOUND`, `AUTH.TOKEN_VERSION_MISMATCH`.
+   */
   async getAuthenticatedUser(
     userId: string,
     tokenVersion: number,
@@ -225,6 +311,25 @@ export class AuthService {
     return this.toAuthUserResponse(user, permissions, sessionId);
   }
 
+  /**
+   * Cambia la contrasena del usuario autenticado.
+   *
+   * Pasos:
+   *  1. Verifica la contrasena actual.
+   *  2. Valida fortaleza de la nueva.
+   *  3. Hashea y persiste (esto bumpea `tokenVersion` atomico).
+   *  4. Revoca todas las demas sesiones.
+   *  5. Recarga permisos con el nuevo `tokenVersion`.
+   *  6. Firma un nuevo access token con `tokenVersion + 1`.
+   *
+   * @param userId - UUID.
+   * @param currentPassword - Contrasena actual (plana).
+   * @param newPassword - Contrasena nueva (plana).
+   * @param sessionId - UUID de la sesion que NO debe revocarse.
+   * @returns Nuevo access token + usuario. `refreshToken` viene vacio.
+   * @throws {UnauthorizedException} `AUTH.USER_NOT_FOUND`, `AUTH.INVALID_CREDENTIALS`.
+   * @throws {WeakPasswordError} Si la nueva no cumple la politica.
+   */
   async changePassword(
     userId: string,
     currentPassword: string,
@@ -239,7 +344,10 @@ export class AuthService {
       });
     }
 
-    const ok = await this.passwordService.verify(user.passwordHash, currentPassword);
+    const ok = await this.passwordService.verify(
+      user.passwordHash,
+      currentPassword,
+    );
     if (!ok) {
       throw new UnauthorizedException({
         code: 'AUTH.INVALID_CREDENTIALS',
@@ -273,14 +381,16 @@ export class AuthService {
       refreshToken: '',
       expiresIn: this.tokenService.accessTtlSeconds(),
       tokenType: 'Bearer',
-      user: this.toAuthUserResponse(
-        user,
-        permissions,
-        sessionId,
-      ),
+      user: this.toAuthUserResponse(user, permissions, sessionId),
     };
   }
 
+  /**
+   * Mapea la entidad de usuario al shape `AuthUserResponse`.
+   * @param user - Entidad cruda.
+   * @param permissions - Conjunto de codigos efectivos.
+   * @param sessionId - UUID de la sesion.
+   */
   private toAuthUserResponse(
     user: {
       id: string;
@@ -300,7 +410,8 @@ export class AuthService {
       id: user.id,
       username: user.username ?? user.email,
       email: user.email,
-      displayName: `${user.firstName} ${user.lastNamePaternal} ${user.lastNameMaternal}`.trim(),
+      displayName:
+        `${user.firstName} ${user.lastNamePaternal} ${user.lastNameMaternal}`.trim(),
       role: user.roleCode,
       branchId: user.branchId,
       mfaEnabled: user.mfaEnabled,

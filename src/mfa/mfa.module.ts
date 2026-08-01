@@ -1,3 +1,14 @@
+/**
+ * @fileoverview Modulo de autenticacion multifactor (MFA) con TOTP.
+ *
+ * Provee `MfaService` y la inyeccion de `MFA_CONFIG`. Importa
+ * `DatabaseModule` y `AuthModule` (por `PasswordService`).
+ *
+ * @module mfa
+ * @author Equipo de desarrollo Mis Vales
+ * @since 1.0.0
+ */
+
 import { Module, Provider } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { mfaConfig, type MfaConfig } from '../config/mfa.config';
@@ -6,6 +17,10 @@ import { DatabaseModule } from '../database/database.module';
 import { AuthModule } from '../auth/auth.module';
 import { MfaService } from './mfa.service';
 
+/**
+ * Provider que expone `MfaConfig` filtrado al subconjunto
+ * `issuer, backupCodesCount`.
+ */
 const mfaConfigProvider: Provider = {
   provide: MFA_CONFIG,
   inject: [ConfigService],
@@ -18,6 +33,11 @@ const mfaConfigProvider: Provider = {
   },
 };
 
+/**
+ * Modulo MFA. Exporta `MfaService` y `MFA_CONFIG` para que el
+ * `AuthService` pueda requerirlo cuando se implementen los
+ * endpoints de MFA.
+ */
 @Module({
   imports: [DatabaseModule, AuthModule, ConfigModule.forFeature(mfaConfig)],
   providers: [mfaConfigProvider, MfaService],

@@ -1,10 +1,34 @@
-import { Inject, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+/**
+ * @fileoverview Servicio de gestion de sesiones (refresh tokens).
+ *
+ * Persiste cada sesion como una fila en `app.refresh_token` con
+ * un `tokenHash` (Argon2id). Implementa:
+ *  - Creacion de sesion con TTL normal o extendido.
+ *  - Rotacion con deteccion de reuso (si un token revocado
+ *    aparece, se cierra TODAS las sesiones del usuario).
+ *  - Revocacion individual, masiva y selectiva.
+ *  - Listado de sesiones activas.
+ *
+ * @module auth/services
+ * @author Equipo de desarrollo Mis Vales
+ * @since 1.0.0
+ */
+
+import {
+  Inject,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { RefreshTokenRepository } from '../../database/repositories/refresh-token.repository';
 import { TokenService } from './token.service';
 import { PasswordService } from './password.service';
 import type { LoginContext } from '../../shared/types/auth.types';
 
+/**
+ * Parametros para `createSession`.
+ */
 export interface SessionCreateInput {
   userId: string;
   ipAddress: string;
@@ -12,6 +36,9 @@ export interface SessionCreateInput {
   device: string;
 }
 
+/**
+ * Resultado de una rotacion exitosa.
+ */
 export interface SessionRotationResult {
   oldSessionId: string;
   newSessionId: string;
@@ -20,6 +47,9 @@ export interface SessionRotationResult {
   newExpiresAt: Date;
 }
 
+/**
+ * Forma de una sesion para devolver en listados.
+ */
 export interface SessionListItem {
   id: string;
   device: string | null;
@@ -31,6 +61,9 @@ export interface SessionListItem {
   isCurrent: boolean;
 }
 
+/**
+ * Servicio de sesiones. Inyectado en `AuthService` y `SessionsService`.
+ */
 @Injectable()
 export class SessionService {
   private readonly logger = new Logger(SessionService.name);
@@ -43,10 +76,24 @@ export class SessionService {
     private readonly configService: ConfigService,
   ) {}
 
+  /**
+   * Crea una nueva sesion para el usuario. Hashea el refresh
+   * token con Argon2id antes de persistirlo.
+   *
+   * @param input - Datos de la sesion (sin id).
+   * @param rememberMe - Si true, TTL extendido.
+   * @returns `sessionId`, `refreshToken` (en claro, una sola vez),
+   *   `refreshTokenHash` y `expiresAt`.
+   */
   async createSession(
     input: SessionCreateInput,
     rememberMe: boolean,
-  ): Promise<{ sessionId: string; refreshToken: string; refreshTokenHash: string; expiresAt: Date }> {
+  ): Promise<{
+    sessionId: string;
+    refreshToken: string;
+    refreshTokenHash: string;
+    expiresAt: Date;
+  }> {
     const { token, sessionId } = this.tokenService.generateRefreshToken();
     const refreshTokenHash = await this.passwordService.hash(token);
     const ttlSeconds = this.tokenService.refreshTtlSeconds(rememberMe);
@@ -65,6 +112,17 @@ export class SessionService {
     return { sessionId, refreshToken: token, refreshTokenHash, expiresAt };
   }
 
+  /**
+   * Valida un refresh token y emite uno nuevo. Si el token ya
+   * estaba revocado, interpreta reuso y cierra TODAS las sesiones
+   * del usuario.
+   *
+   * @param providedRefreshToken - Token opaco recibido.
+   * @param context - IP, UA, device para la sesion nueva.
+   * @returns Sesion vieja, sesion nueva, nuevo token, hash, expiry.
+   * @throws {UnauthorizedException} `AUTH.REFRESH_NOT_FOUND`,
+   *   `AUTH.REFRESH_REUSED`, `AUTH.REFRESH_EXPIRED`.
+   */
   async validateAndRotate(
     providedRefreshToken: string,
     context: Pick<LoginContext, 'ipAddress' | 'userAgent' | 'device'>,
@@ -126,6 +184,13 @@ export class SessionService {
     };
   }
 
+  /**
+   * Revoca una sesion puntual. Verifica pertenencia al usuario.
+   *
+   * @param sessionId - UUID de la sesion.
+   * @param userId - UUID del usuario dueno.
+   * @returns `true` si revoco, `false` si no existe o no pertenece.
+   */
   async revokeSession(sessionId: string, userId: string): Promise<boolean> {
     const session = await this.refreshRepo.findActiveById(sessionId);
     if (!session || session.userId !== userId || session.revokedAt) {
@@ -135,14 +200,33 @@ export class SessionService {
     return true;
   }
 
+  /**
+   * Revoca la sesion indicada por `sessionId` sin verificar
+   * propiedad. Usado en logout cuando no se pasa `refreshToken`.
+   *
+   * @param sessionId - UUID de la sesion del JWT.
+   */
   async revokeCurrentSession(sessionId: string): Promise<void> {
     await this.refreshRepo.markRevoked(sessionId, 'logout');
   }
 
+  /**
+   * Revoca TODAS las sesiones activas del usuario.
+   *
+   * @param userId - UUID del usuario.
+   * @param reason - Razon de revocacion.
+   */
   async revokeAllForUser(userId: string, reason: string): Promise<void> {
     await this.refreshRepo.revokeAllForUser(userId, reason);
   }
 
+  /**
+   * Revoca todas las sesiones activas del usuario EXCEPTO la
+   * indicada. Usado en `changePassword`.
+   *
+   * @param userId - UUID del usuario.
+   * @param keepSessionId - UUID de la sesion a conservar.
+   */
   async revokeOthersForUser(
     userId: string,
     keepSessionId: string,
@@ -154,6 +238,14 @@ export class SessionService {
     );
   }
 
+  /**
+   * Lista las sesiones activas del usuario, marcando cual es la
+   * actual segun `currentSessionId`.
+   *
+   * @param userId - UUID del usuario.
+   * @param currentSessionId - UUID de la sesion del JWT (o null).
+   * @returns Arreglo de sesiones.
+   */
   async listSessionsForUser(
     userId: string,
     currentSessionId: string | null,
