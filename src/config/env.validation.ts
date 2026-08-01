@@ -69,6 +69,13 @@ export const envValidationSchema = Joi.object({
   AUTH_MAX_FAILED_ATTEMPTS: Joi.number().integer().positive().default(5),
   AUTH_LOCKOUT_MINUTES: Joi.number().integer().positive().default(15),
 
+  // Contrasena temporal administrativa (modulo users)
+  AUTH_TEMP_PASSWORD_LENGTH: Joi.number()
+    .integer()
+    .min(12)
+    .max(128)
+    .default(16),
+
   // CORS / cookies / public URL
   CORS_ORIGINS: Joi.string().allow('').default(''),
   COOKIE_DOMAIN: Joi.string().allow('').default(''),

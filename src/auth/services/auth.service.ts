@@ -161,6 +161,7 @@ export class AuthService {
       branchId: user.branchId,
       tokenVersion: user.tokenVersion,
       sessionId: session.sessionId,
+      mustChangePassword: user.mustChangePassword,
     });
 
     return {
@@ -238,6 +239,7 @@ export class AuthService {
       branchId: user.branchId,
       tokenVersion: user.tokenVersion,
       sessionId: rotation.newSessionId,
+      mustChangePassword: user.mustChangePassword,
     });
 
     return {
@@ -357,22 +359,32 @@ export class AuthService {
     this.passwordService.validateStrength(newPassword);
 
     const newHash = await this.passwordService.hash(newPassword);
-    await this.userRepo.updatePasswordHash(user.id, newHash);
+    // El usuario esta eligiendo su propia contrasena, asi que no
+    // forzamos un cambio posterior. Esto desactiva mustChangePassword
+    // tanto si venia del alta administrativa como del reset.
+    const updated = await this.userRepo.setPassword(user.id, newHash, false);
+    if (!updated) {
+      throw new UnauthorizedException({
+        code: 'AUTH.USER_NOT_FOUND',
+        message: 'Usuario no encontrado.',
+      });
+    }
 
     await this.sessionService.revokeOthersForUser(user.id, sessionId);
 
     const permissions = await this.permissionCache.getEffectivePermissions(
       user.id,
-      user.tokenVersion + 1,
+      updated.tokenVersion,
     );
 
     const accessToken = await this.tokenService.signAccessToken({
-      sub: user.id,
-      username: user.username ?? user.email,
-      role: user.roleCode,
-      branchId: user.branchId,
-      tokenVersion: user.tokenVersion + 1,
+      sub: updated.id,
+      username: updated.username ?? updated.email,
+      role: updated.roleCode,
+      branchId: updated.branchId,
+      tokenVersion: updated.tokenVersion,
       sessionId,
+      mustChangePassword: updated.mustChangePassword,
     });
 
     return {
@@ -380,7 +392,7 @@ export class AuthService {
       refreshToken: '',
       expiresIn: this.tokenService.accessTtlSeconds(),
       tokenType: 'Bearer',
-      user: this.toAuthUserResponse(user, permissions),
+      user: this.toAuthUserResponse(updated, permissions),
     };
   }
 
@@ -401,6 +413,7 @@ export class AuthService {
       roleCode: UserType;
       branchId: string | null;
       mfaEnabled: boolean;
+      mustChangePassword: boolean;
     },
     permissions: Set<string>,
   ): AuthUserResponseDto {
@@ -413,6 +426,7 @@ export class AuthService {
       role: user.roleCode,
       branchId: user.branchId,
       mfaEnabled: user.mfaEnabled,
+      mustChangePassword: user.mustChangePassword,
       permissions: Array.from(permissions),
     };
   }

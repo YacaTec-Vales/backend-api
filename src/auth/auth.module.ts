@@ -31,6 +31,8 @@ import { PermissionCacheService } from './services/permission-cache.service';
 import { UserRepository } from '../database/repositories/user.repository';
 import { RefreshTokenRepository } from '../database/repositories/refresh-token.repository';
 import { PermissionRepository } from '../database/repositories/permission.repository';
+import { AuditLogRepository } from '../database/repositories/audit-log.repository';
+import { BranchRepository } from '../database/repositories/branch.repository';
 
 /**
  * Provider que expone `AuthConfig` bajo el token `AUTH_CONFIG`.
@@ -76,6 +78,8 @@ const authConfigProvider: Provider = {
     UserRepository,
     RefreshTokenRepository,
     PermissionRepository,
+    AuditLogRepository,
+    BranchRepository,
     PasswordService,
     TokenService,
     PermissionCacheService,
@@ -87,6 +91,8 @@ const authConfigProvider: Provider = {
     UserRepository,
     RefreshTokenRepository,
     PermissionRepository,
+    AuditLogRepository,
+    BranchRepository,
     PasswordService,
     TokenService,
     SessionService,
