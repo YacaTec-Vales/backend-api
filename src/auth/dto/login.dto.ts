@@ -19,6 +19,7 @@ import {
   MinLength,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
+import { ApiProperty } from '@nestjs/swagger';
 
 /**
  * Cuerpo de la peticion de login.
@@ -27,6 +28,10 @@ import { Transform } from 'class-transformer';
  */
 export class LoginDto {
   /** Usuario o correo electronico (3-255 chars, se trimea). */
+  @ApiProperty({
+    description: 'Usuario o correo electronico (3-255 chars, se trimea).',
+    example: 'jperez',
+  })
   @IsString()
   @MinLength(3)
   @MaxLength(255)
@@ -36,12 +41,21 @@ export class LoginDto {
   usernameOrEmail: string;
 
   /** Contrasena plana (8-255 chars). */
+  @ApiProperty({
+    description: 'Contrasena plana (8-255 chars).',
+    example: 'P@ssw0rd!',
+  })
   @IsString()
   @MinLength(8)
   @MaxLength(255)
   password: string;
 
   /** Si true, extiende TTL del refresh token. Opcional. */
+  @ApiProperty({
+    required: false,
+    default: false,
+    description: 'Si true, extiende TTL del refresh token a 30 dias.',
+  })
   @IsOptional()
   @IsBoolean()
   rememberMe?: boolean;

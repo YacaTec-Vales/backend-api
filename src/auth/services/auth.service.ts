@@ -39,7 +39,10 @@ import { PermissionCacheService } from './permission-cache.service';
 import { AUTH_CONFIG } from '../../database/tokens';
 import type { AuthConfig } from '../../config/auth.config';
 import type { LoginContext, UserType } from '../../shared/types/auth.types';
-import type { AuthUserResponse, TokenResponse } from '../dto/auth-response';
+import type {
+  AuthUserResponseDto,
+  TokenResponseDto,
+} from '../dto/auth-response.dto';
 
 /**
  * Servicio principal de autenticacion. Inyectado en `AuthController`.
@@ -88,7 +91,7 @@ export class AuthService {
     password: string,
     rememberMe: boolean,
     context: LoginContext,
-  ): Promise<TokenResponse> {
+  ): Promise<TokenResponseDto> {
     const user = await this.userRepo.findByUsernameOrEmail(usernameOrEmail);
     if (!user) {
       throw new UnauthorizedException({
@@ -191,7 +194,7 @@ export class AuthService {
   async refresh(
     refreshToken: string,
     context: LoginContext,
-  ): Promise<TokenResponse> {
+  ): Promise<TokenResponseDto> {
     const rotation = await this.sessionService.validateAndRotate(
       refreshToken,
       context,
@@ -286,7 +289,7 @@ export class AuthService {
   async getAuthenticatedUser(
     userId: string,
     tokenVersion: number,
-  ): Promise<AuthUserResponse> {
+  ): Promise<AuthUserResponseDto> {
     const user = await this.userRepo.findById(userId);
     if (!user) {
       throw new UnauthorizedException({
@@ -331,7 +334,7 @@ export class AuthService {
     currentPassword: string,
     newPassword: string,
     sessionId: string,
-  ): Promise<TokenResponse> {
+  ): Promise<TokenResponseDto> {
     const user = await this.userRepo.findById(userId);
     if (!user || !user.passwordHash) {
       throw new UnauthorizedException({
@@ -382,7 +385,7 @@ export class AuthService {
   }
 
   /**
-   * Mapea la entidad de usuario al shape `AuthUserResponse`.
+   * Mapea la entidad de usuario al shape `AuthUserResponseDto`.
    * @param user - Entidad cruda.
    * @param permissions - Conjunto de codigos efectivos.
    * @param sessionId - UUID de la sesion.
@@ -400,7 +403,7 @@ export class AuthService {
       mfaEnabled: boolean;
     },
     permissions: Set<string>,
-  ): AuthUserResponse {
+  ): AuthUserResponseDto {
     return {
       id: user.id,
       username: user.username ?? user.email,

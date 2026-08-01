@@ -7,6 +7,7 @@
  */
 
 import { IsString, MinLength } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
 
 /**
  * Cuerpo de la peticion de refresh.
@@ -15,6 +16,10 @@ import { IsString, MinLength } from 'class-validator';
  */
 export class RefreshDto {
   /** Refresh token opaco (>=16 chars). */
+  @ApiProperty({
+    description: 'Refresh token opaco (>=16 chars).',
+    minLength: 16,
+  })
   @IsString()
   @MinLength(16)
   refreshToken: string;
