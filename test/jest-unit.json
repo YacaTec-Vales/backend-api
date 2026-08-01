@@ -1,0 +1,22 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": "..",
+  "testEnvironment": "node",
+  "testMatch": ["<rootDir>/src/**/*.spec.ts"],
+  "transform": {
+    "^.+\\.(t|j)s$": "ts-jest"
+  },
+  "setupFiles": ["<rootDir>/test/setup/unit.setup.ts"],
+  "clearMocks": true,
+  "restoreMocks": true,
+  "collectCoverageFrom": [
+    "src/**/*.ts",
+    "!src/main.ts",
+    "!src/**/*.module.ts",
+    "!src/**/*.types.ts",
+    "!src/database/schema.ts",
+    "!src/**/*.d.ts"
+  ],
+  "coverageDirectory": "../coverage",
+  "testTimeout": 10000
+}

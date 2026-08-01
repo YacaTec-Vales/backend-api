@@ -2,13 +2,14 @@
   "moduleFileExtensions": ["js", "json", "ts"],
   "rootDir": "..",
   "testEnvironment": "node",
-  "testMatch": ["<rootDir>/test/e2e/**/*.e2e-spec.ts"],
+  "testMatch": ["<rootDir>/test/integration/**/*.int-spec.ts"],
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"
   },
-  "setupFiles": ["<rootDir>/test/setup/e2e.setup.ts"],
+  "setupFiles": ["<rootDir>/test/setup/integration-env.setup.ts"],
+  "globalSetup": "<rootDir>/test/setup/integration.setup.ts",
   "clearMocks": true,
   "restoreMocks": true,
   "maxWorkers": 1,
-  "testTimeout": 30000
+  "testTimeout": 60000
 }

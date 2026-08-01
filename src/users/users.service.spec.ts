@@ -10,8 +10,13 @@
  *  - Invalidacion de sesiones.
  *
  * El resto de los servicios se mockean para mantener la prueba
- * aislada de BD y SMTP. Los tests E2E en `test/users.e2e-spec.ts`
+ * aislada de BD y SMTP. Los tests E2E en `test/e2e/users.e2e-spec.ts`
  * cubren el camino completo con la BD real.
+ *
+ * Las factories `requestUserFactory` y `userAdminRowFactory` viven
+ * en `test/factories/*` para que cualquier spec del backend las
+ * reuse. Los mocks de repositorios usan los builders tipados en
+ * `test/mocks/repositories.mock.ts`.
  *
  * @module users
  * @author Equipo de desarrollo Mis Vales
@@ -40,59 +45,27 @@ import {
 import { SessionService } from '../auth/services/session.service';
 import { PermissionCacheService } from '../auth/services/permission-cache.service';
 import { MailService } from '../mail/mail.service';
-import type { RequestUser } from '../shared/guards/auth.guards';
+import { requestUserFactory } from '../../test/factories/auth.factory';
+import { userAdminRowFactory } from '../../test/factories/user.factory';
+import {
+  createAuditLogRepositoryMock,
+  createBranchRepositoryMock,
+  createPermissionRepositoryMock,
+  createRefreshTokenRepositoryMock,
+  createUserRepositoryMock,
+} from '../../test/mocks/repositories.mock';
 
 /**
- * Helper para crear un `RequestUser` minimo en los tests.
+ * Alias local de `requestUserFactory` para que los `describe` y
+ * `it` conserven el idioma previo a la migracion de factories.
  */
-const actor = (overrides: Partial<RequestUser> = {}): RequestUser => ({
-  id: '11111111-1111-1111-1111-111111111111',
-  username: 'gerente.general',
-  role: 'GERENTE_GENERAL',
-  branchId: null,
-  tokenVersion: 1,
-  sessionId: '22222222-2222-2222-2222-222222222222',
-  ...overrides,
-});
+const actor = requestUserFactory;
 
 /**
- * Fila administrativa de ejemplo para un usuario activo.
+ * Alias local de `userAdminRowFactory`. Mantiene la nomenclatura
+ * de los tests ya escritos.
  */
-const sampleRow = (
-  overrides: Partial<{
-    id: string;
-    roleCode:
-      | 'GERENTE_GENERAL'
-      | 'GERENTE_SUCURSAL'
-      | 'COORDINADOR'
-      | 'VERIFICADOR'
-      | 'DISTRIBUIDOR'
-      | 'CAJERO'
-      | 'ADMINISTRADOR';
-    branchId: string | null;
-    email: string;
-    username: string;
-  }> = {},
-) => ({
-  id: '33333333-3333-3333-3333-333333333333',
-  roleCode: 'COORDINADOR' as const,
-  branchId: '44444444-4444-4444-4444-444444444444',
-  firstName: 'Ana',
-  lastNamePaternal: 'Lopez',
-  lastNameMaternal: 'Garcia',
-  email: 'ana@yacatec.demo',
-  phone: null,
-  username: 'ana.lopez',
-  userStatus: 'ACTIVO' as const,
-  isActive: true,
-  mustChangePassword: false,
-  mfaEnabled: false,
-  lastLoginAt: null,
-  createdAt: new Date(),
-  updatedAt: new Date(),
-  lastSession: null,
-  ...overrides,
-});
+const sampleRow = userAdminRowFactory;
 
 describe('UsersService', () => {
   let service: UsersService;
@@ -111,53 +84,19 @@ describe('UsersService', () => {
    * mockeados. Se llama antes de cada test.
    */
   beforeEach(async () => {
+    userRepo = createUserRepositoryMock();
+    branchRepo = createBranchRepositoryMock();
+    permissionRepo = createPermissionRepositoryMock();
+    auditRepo = createAuditLogRepositoryMock();
+    const refreshTokenRepo = createRefreshTokenRepositoryMock();
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
-        {
-          provide: UserRepository,
-          useValue: {
-            listWithLastSessionInfo: jest.fn(),
-            findByIdWithLastSession: jest.fn(),
-            findById: jest.fn(),
-            findIdentityConflicts: jest.fn(),
-            create: jest.fn(),
-            update: jest.fn(),
-            softDelete: jest.fn(),
-            setPassword: jest.fn(),
-            setStatus: jest.fn(),
-            bumpTokenVersion: jest.fn(),
-            countByRoleAndStatus: jest.fn(),
-          },
-        },
-        {
-          provide: BranchRepository,
-          useValue: {
-            findActiveById: jest.fn(),
-            setManagerUserId: jest.fn(),
-          },
-        },
-        {
-          provide: PermissionRepository,
-          useValue: {
-            findRolePermissions: jest.fn(),
-            findPermissionByCode: jest.fn(),
-            listOverridesForUser: jest.fn(),
-            grantOverride: jest.fn(),
-            revokeOverride: jest.fn(),
-          },
-        },
-        {
-          provide: AuditLogRepository,
-          useValue: {
-            runWithContext: jest.fn(async (_ctx, work) => work({})),
-            logEvent: jest.fn(),
-          },
-        },
-        {
-          provide: RefreshTokenRepository,
-          useValue: {},
-        },
+        { provide: UserRepository, useValue: userRepo },
+        { provide: BranchRepository, useValue: branchRepo },
+        { provide: PermissionRepository, useValue: permissionRepo },
+        { provide: AuditLogRepository, useValue: auditRepo },
+        { provide: RefreshTokenRepository, useValue: refreshTokenRepo },
         {
           provide: PasswordService,
           useValue: {
@@ -201,10 +140,6 @@ describe('UsersService', () => {
     }).compile();
 
     service = module.get(UsersService);
-    userRepo = module.get(UserRepository);
-    branchRepo = module.get(BranchRepository);
-    permissionRepo = module.get(PermissionRepository);
-    auditRepo = module.get(AuditLogRepository);
     passwordService = module.get(PasswordService);
     sessionService = module.get(SessionService);
     permissionCache = module.get(PermissionCacheService);
