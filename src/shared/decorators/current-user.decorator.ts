@@ -1,6 +1,42 @@
+/**
+ * @fileoverview Decorador de parametro `@CurrentUser` para acceder
+ * al usuario autenticado en los handlers HTTP.
+ *
+ * El `JwtAuthGuard` global popula `request.user` con un objeto
+ * `AuthenticatedUser`. Este decorador expone ese objeto (o un campo
+ * especifico) a la firma del controller.
+ *
+ * @module shared/decorators
+ * @author Equipo de desarrollo Mis Vales
+ * @since 1.0.0
+ */
+
 import { createParamDecorator, ExecutionContext } from '@nestjs/common';
 import type { AuthenticatedUser } from '../types/auth.types';
 
+/**
+ * Decorador de parametro que extrae el usuario autenticado de la
+ * peticion. Si se le pasa el nombre de una propiedad, devuelve
+ * solo esa propiedad; si no, devuelve el objeto completo.
+ *
+ * Advertencia: devuelve `undefined` si el `JwtAuthGuard` no ha
+ * corrido antes (por ejemplo, en un endpoint `@Public`). No use
+ * este decorador sin un guard que valide la peticion.
+ *
+ * @example
+ * ```ts
+ * @UseGuards(JwtAuthGuard)
+ * @Get('profile')
+ * profile(@CurrentUser() user: AuthenticatedUser) { ... }
+ *
+ * @Get('me-id')
+ * meId(@CurrentUser('id') userId: string) { ... }
+ * ```
+ *
+ * @param data - Propiedad opcional de `AuthenticatedUser` a extraer.
+ * @param ctx - Contexto de ejecucion de NestJS.
+ * @returns El usuario completo, una propiedad, o `undefined`.
+ */
 export const CurrentUser = createParamDecorator(
   (data: keyof AuthenticatedUser | undefined, ctx: ExecutionContext) => {
     const request = ctx.switchToHttp().getRequest();

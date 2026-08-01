@@ -1,3 +1,15 @@
+/**
+ * @fileoverview Bootstrap de la aplicacion NestJS.
+ *
+ * Configura middlewares globales (helmet, compression), CORS,
+ * prefijo de la API, validation pipe global, filtro de
+ * excepciones global e interceptor de logging.
+ *
+ * @module app
+ * @author Equipo de desarrollo Mis Vales
+ * @since 1.0.0
+ */
+
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { Logger, ValidationPipe } from '@nestjs/common';
@@ -8,6 +20,10 @@ import { AllExceptionsFilter } from './shared/filters/all-exceptions.filter';
 import { RequestLoggingInterceptor } from './shared/interceptors/request-logging.interceptor';
 import type { AppConfig } from './config/app.config';
 
+/**
+ * Crea la aplicacion, aplica configuracion transversal y la
+ * pone a escuchar. Llamado al final del archivo.
+ */
 async function bootstrap(): Promise<void> {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule, {

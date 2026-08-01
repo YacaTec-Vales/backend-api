@@ -1,12 +1,40 @@
+/**
+ * @fileoverview Repositorio de la tabla `app.user`.
+ *
+ * Encapsula todas las queries Drizzle sobre usuarios. La capa de
+ * servicio (auth, sessions, password-reset) nunca escribe SQL
+ * directo: depende de este repositorio.
+ *
+ * Convenciones:
+ *  - Todas las busquedas filtran `deletedAt IS NULL` para coherencia
+ *    con la baja logica.
+ *  - Los updates que cambian contrasena incrementan `tokenVersion`
+ *    para invalidar JWTs activos.
+ *
+ * @module database/repositories
+ * @author Equipo de desarrollo Mis Vales
+ * @since 1.0.0
+ */
+
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { DRIZZLE, type Drizzle } from '../drizzle.provider';
 import { users, type UserEntity } from '../schema';
 
+/**
+ * Acceso de bajo nivel a la tabla `app.user`.
+ * Inyectado en `AuthService`, `PasswordResetService` y `SessionsService`.
+ */
 @Injectable()
 export class UserRepository {
   constructor(@Inject(DRIZZLE) private readonly db: Drizzle) {}
 
+  /**
+   * Busca un usuario activo por UUID.
+   *
+   * @param id - UUID del usuario.
+   * @returns Entidad o `null` si no existe o esta borrado.
+   */
   async findById(id: string): Promise<UserEntity | null> {
     const [row] = await this.db
       .select()
@@ -16,6 +44,12 @@ export class UserRepository {
     return row ?? null;
   }
 
+  /**
+   * Busca un usuario activo por `username`.
+   *
+   * @param username - Username textual.
+   * @returns Entidad o `null`.
+   */
   async findByUsername(username: string): Promise<UserEntity | null> {
     const [row] = await this.db
       .select()
@@ -25,6 +59,12 @@ export class UserRepository {
     return row ?? null;
   }
 
+  /**
+   * Busca un usuario activo por correo.
+   *
+   * @param email - Correo electronico.
+   * @returns Entidad o `null`.
+   */
   async findByEmail(email: string): Promise<UserEntity | null> {
     const [row] = await this.db
       .select()
@@ -34,7 +74,15 @@ export class UserRepository {
     return row ?? null;
   }
 
-  async findByUsernameOrEmail(usernameOrEmail: string): Promise<UserEntity | null> {
+  /**
+   * Busca un usuario por username O email. Usado en login.
+   *
+   * @param usernameOrEmail - Cualquiera de los dos.
+   * @returns Entidad o `null`.
+   */
+  async findByUsernameOrEmail(
+    usernameOrEmail: string,
+  ): Promise<UserEntity | null> {
     const [row] = await this.db
       .select()
       .from(users)
@@ -48,6 +96,19 @@ export class UserRepository {
     return row ?? null;
   }
 
+  /**
+   * Actualiza el hash de contrasena de un usuario.
+   *
+   * Efectos colaterales:
+   *  - Resetea `failedLoginCount` a 0.
+   *  - Limpia `lockedUntil`.
+   *  - Incrementa `tokenVersion` (invalida todos los JWT del usuario).
+   *  - Actualiza `passwordChangedAt` y `updatedAt`.
+   *
+   * @param id - UUID del usuario.
+   * @param passwordHash - Hash Argon2id de la nueva contrasena.
+   * @returns Entidad actualizada o `null` si no existe.
+   */
   async updatePasswordHash(
     id: string,
     passwordHash: string,
@@ -67,6 +128,12 @@ export class UserRepository {
     return row ?? null;
   }
 
+  /**
+   * Incrementa `tokenVersion` sin tocar la contrasena. Usado cuando
+   * un administrador invalida todas las sesiones de un usuario.
+   *
+   * @param id - UUID del usuario.
+   */
   async bumpTokenVersion(id: string): Promise<void> {
     await this.db
       .update(users)
@@ -77,6 +144,12 @@ export class UserRepository {
       .where(eq(users.id, id));
   }
 
+  /**
+   * Marca un login exitoso. Resetea contador de fallos y
+   * actualiza `lastLoginAt`.
+   *
+   * @param id - UUID del usuario.
+   */
   async recordSuccessfulLogin(id: string): Promise<void> {
     await this.db
       .update(users)
@@ -89,6 +162,15 @@ export class UserRepository {
       .where(eq(users.id, id));
   }
 
+  /**
+   * Suma 1 a `failedLoginCount` y aplica `lockedUntil` si se
+   * alcanza el limite. La condicion de lockout esta en SQL.
+   *
+   * @param id - UUID del usuario.
+   * @param maxAttempts - Maximo de intentos antes de bloquear.
+   * @param lockoutMinutes - Minutos de bloqueo si se supera el limite.
+   * @returns Entidad resultante (con nuevo contador) o `null`.
+   */
   async registerFailedLogin(
     id: string,
     maxAttempts: number,
@@ -106,6 +188,13 @@ export class UserRepository {
     return row ?? null;
   }
 
+  /**
+   * Cambia el flag `mfaEnabled`. Lo usan `MfaService.setupForUser`
+   * y `MfaService.disable`.
+   *
+   * @param id - UUID del usuario.
+   * @param enabled - Nuevo valor del flag.
+   */
   async setMfaEnabled(id: string, enabled: boolean): Promise<void> {
     await this.db
       .update(users)

@@ -1,11 +1,27 @@
+/**
+ * @fileoverview Modulo de mail.
+ *
+ * Configura `MailerModule` de `@nestjs-modules/mailer` con
+ * plantillas Handlebars en `src/mail/templates`. Si no hay
+ * `SMTP_HOST` configurado, opera en modo degradado: las
+ * plantillas estan pero los correos no salen.
+ *
+ * @module mail
+ * @author Equipo de desarrollo Mis Vales
+ * @since 1.0.0
+ */
+
 import { Module, Provider } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { mailConfig, type MailConfig } from '../config/mail.config';
-import { MAIL_CONFIG } from '../database/tokens';
+import { MAIL_CONFIG } from './mail.tokens';
 import { MailService } from './mail.service';
 import { join } from 'path';
 
+/**
+ * Forma del provider de MailConfig expuesto en este modulo.
+ */
 export interface MailConfigShape {
   host: string;
   port: number;
@@ -16,8 +32,13 @@ export interface MailConfigShape {
   enabled: boolean;
 }
 
+/** Token legacy; conserva compatibilidad con consumidores. */
 export const MAIL_CONFIG_PROVIDER = 'MAIL_CONFIG_PROVIDER';
 
+/**
+ * Provider que expone `MailConfigShape` bajo el token `MAIL_CONFIG`.
+ * Calcula `enabled` segun la presencia de `host`.
+ */
 const mailConfigProvider: Provider = {
   provide: MAIL_CONFIG,
   inject: [ConfigService],
@@ -36,6 +57,11 @@ const mailConfigProvider: Provider = {
   },
 };
 
+/**
+ * Modulo de mail. Importa `ConfigModule.forFeature(mailConfig)`
+ * y `MailerModule.forRootAsync`. Exporta `MailService` y
+ * `MAIL_CONFIG`.
+ */
 @Module({
   imports: [
     ConfigModule.forFeature(mailConfig),
