@@ -3,8 +3,8 @@
 /node_modules
 /build
 
-# Compodoc generated site
-/docs
+# OpenAPI spec export (cuando se genere localmente)
+/openapi.json
 
 # Logs
 logs
