@@ -27,11 +27,24 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Request } from 'express';
+import {
+  ApiBearerAuth,
+  ApiForbiddenResponse,
+  ApiHeader,
+  ApiNoContentResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
 import { AuthService } from './services/auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { LogoutDto } from './dto/logout.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { AuthUserResponseDto, TokenResponseDto } from './dto/auth-response.dto';
+import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import { Public } from '../shared/decorators/public.decorator';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
 import { JwtAuthGuard, type RequestUser } from '../shared/guards/auth.guards';
@@ -48,50 +61,46 @@ const DEVICE_HEADER = 'x-client-app';
  * Controlador de identidad. Ruta base: `/auth` (prefija `api/v1`).
  * Los endpoints publicos estan marcados con `@Public`.
  */
+@ApiTags('Auth')
+@ApiBearerAuth('bearer')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  /**
-   * @api {post} /auth/login Iniciar sesion
-   * @apiName LoginUser
-   * @apiGroup Auth
-   * @apiVersion 1.0.0
-   * @apiPermission public
-   *
-   * @apiDescription Inicia sesion con usuario o correo + contrasena.
-   * Aplica lockout por intentos fallidos, valida `userStatus`,
-   * `isActive` y `deletedAt`. Emite access JWT y un refresh token
-   * opaco (almacenado como hash).
-   *
-   * @apiHeader {String} x-client-app Identificador del frontend (`Tecu|Calipx|Poch`).
-   *
-   * @apiBody {String} usernameOrEmail Usuario o correo (3-255 chars, se trimea).
-   * @apiBody {String} password Contrasena plana (8-255 chars).
-   * @apiBody {Boolean} [rememberMe=false] Si true, extiende TTL del refresh a 30 dias.
-   *
-   * @apiSuccess (200) {Object} respuesta Tokens y datos del usuario.
-   * @apiSuccess (200) {String} respuesta.accessToken JWT de acceso.
-   * @apiSuccess (200) {String} respuesta.refreshToken Refresh opaco.
-   * @apiSuccess (200) {Number} respuesta.expiresIn TTL del access en segundos.
-   * @apiSuccess (200) {String="Bearer"} respuesta.tokenType.
-   * @apiSuccess (200) {Object} respuesta.user Datos del usuario.
-   * @apiSuccess (200) {String[]} respuesta.user.permissions Codigos efectivos.
-   *
-   * @apiError (401) {Object} AUTH.INVALID_CREDENTIALS Credenciales invalidas.
-   * @apiError (401) {Object} AUTH.PASSWORD_NOT_SET Cuenta sin contrasena.
-   * @apiError (403) {Object} AUTH.USER_INACTIVE Cuenta inactiva.
-   * @apiError (423) {Object} AUTH.LOCKED Cuenta bloqueada temporalmente.
-   * @apiError (429) {Object} Demasiadas solicitudes (rate limit).
-   *
-   * @apiExample {curl} Ejemplo:
-   *   curl -X POST http://localhost:3000/api/v1/auth/login \
-   *     -H "Content-Type: application/json" \
-   *     -H "x-client-app: Tecu" \
-   *     -d '{"usernameOrEmail":"jperez","password":"P@ssw0rd!","rememberMe":true}'
-   */
   @Public()
   @Post('login')
+  @ApiOperation({
+    summary: 'Iniciar sesion',
+    description:
+      'Inicia sesion con usuario o correo + contrasena. Aplica lockout por ' +
+      'intentos fallidos, valida `userStatus`, `isActive` y `deletedAt`. ' +
+      'Emite access JWT y un refresh token opaco (almacenado como hash).',
+    security: [],
+  })
+  @ApiHeader({
+    name: 'x-client-app',
+    required: false,
+    description: 'Identificador del frontend (`Tecu|Calipx|Poch`).',
+  })
+  @ApiOkResponse({ type: TokenResponseDto })
+  @ApiUnauthorizedResponse({
+    description: 'AUTH.INVALID_CREDENTIALS o AUTH.PASSWORD_NOT_SET.',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description: 'AUTH.USER_INACTIVE.',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 423,
+    description: 'AUTH.LOCKED.',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 429,
+    description: 'Rate limit.',
+    type: ErrorResponseDto,
+  })
   @HttpCode(HttpStatus.OK)
   login(@Body() dto: LoginDto, @Req() req: Request) {
     return this.authService.login(
@@ -102,32 +111,37 @@ export class AuthController {
     );
   }
 
-  /**
-   * @api {post} /auth/refresh Renovar tokens
-   * @apiName RefreshTokens
-   * @apiGroup Auth
-   * @apiVersion 1.0.0
-   * @apiPermission public
-   *
-   * @apiDescription Rota el refresh token (revoca el viejo y crea
-   * uno nuevo). Si el token presentado ya estaba revocado, el
-   * sistema interpreta reuso y cierra TODAS las sesiones del usuario.
-   *
-   * @apiHeader {String} x-client-app Identificador del frontend.
-   *
-   * @apiBody {String} refreshToken Refresh token opaco (>=16 chars).
-   *
-   * @apiSuccess (200) {Object} respuesta Nuevos tokens.
-   *
-   * @apiError (401) {Object} AUTH.REFRESH_NOT_FOUND Token no existe.
-   * @apiError (401) {Object} AUTH.REFRESH_REUSED Reuso detectado, sesiones cerradas.
-   * @apiError (401) {Object} AUTH.REFRESH_EXPIRED Token expirado.
-   * @apiError (401) {Object} AUTH.USER_NOT_FOUND Usuario no encontrado.
-   * @apiError (403) {Object} AUTH.USER_INACTIVE Cuenta inactiva.
-   * @apiError (429) {Object} Rate limit.
-   */
   @Public()
   @Post('refresh')
+  @ApiOperation({
+    summary: 'Renovar tokens',
+    description:
+      'Rota el refresh token (revoca el viejo y crea uno nuevo). ' +
+      'Si el token presentado ya estaba revocado, el sistema interpreta ' +
+      'reuso y cierra TODAS las sesiones del usuario.',
+    security: [],
+  })
+  @ApiHeader({
+    name: 'x-client-app',
+    required: false,
+    description: 'Identificador del frontend.',
+  })
+  @ApiOkResponse({ type: TokenResponseDto })
+  @ApiUnauthorizedResponse({
+    description:
+      'AUTH.REFRESH_NOT_FOUND, AUTH.REFRESH_REUSED, AUTH.REFRESH_EXPIRED ' +
+      'o AUTH.USER_NOT_FOUND.',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description: 'AUTH.USER_INACTIVE.',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 429,
+    description: 'Rate limit.',
+    type: ErrorResponseDto,
+  })
   @HttpCode(HttpStatus.OK)
   refresh(@Body() dto: RefreshDto, @Req() req: Request) {
     return this.authService.refresh(
@@ -136,30 +150,30 @@ export class AuthController {
     );
   }
 
-  /**
-   * @api {post} /auth/logout Cerrar sesion
-   * @apiName LogoutUser
-   * @apiGroup Auth
-   * @apiVersion 1.0.0
-   * @apiPermission jwt
-   *
-   * @apiDescription Cierra la sesion actual. Si se pasa el
-   * `refreshToken` en el body, se revoca esa sesion especifica
-   * (si pertenece al usuario). Si no, se revoca la sesion del
-   * JWT.
-   *
-   * @apiHeader {String} Authorization Bearer JWT.
-   * @apiHeader {String} x-client-app Identificador del frontend.
-   *
-   * @apiBody {String} [refreshToken] Refresh token a revocar.
-   *
-   * @apiSuccess (204) void Sesion revocada.
-   *
-   * @apiError (401) {Object} AUTH.* Token invalido.
-   * @apiError (429) {Object} Rate limit.
-   */
   @UseGuards(JwtAuthGuard)
   @Post('logout')
+  @ApiOperation({
+    summary: 'Cerrar sesion',
+    description:
+      'Cierra la sesion actual. Si se pasa `refreshToken` en el body, se ' +
+      'revoca esa sesion especifica (si pertenece al usuario). Si no, se ' +
+      'revoca la sesion del JWT.',
+  })
+  @ApiHeader({
+    name: 'x-client-app',
+    required: false,
+    description: 'Identificador del frontend.',
+  })
+  @ApiNoContentResponse({ description: 'Sesion revocada.' })
+  @ApiUnauthorizedResponse({
+    description: 'AUTH.* — token invalido.',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 429,
+    description: 'Rate limit.',
+    type: ErrorResponseDto,
+  })
   @HttpCode(HttpStatus.NO_CONTENT)
   async logout(
     @CurrentUser() user: RequestUser,
@@ -168,56 +182,44 @@ export class AuthController {
     await this.authService.logout(user.id, user.sessionId, dto.refreshToken);
   }
 
-  /**
-   * @api {get} /auth/me Perfil autenticado
-   * @apiName GetMe
-   * @apiGroup Auth
-   * @apiVersion 1.0.0
-   * @apiPermission jwt
-   *
-   * @apiDescription Devuelve el usuario autenticado con sus
-   * permisos efectivos. Verifica `tokenVersion` contra la BD;
-   * si no coincide, lanza `AUTH.TOKEN_VERSION_MISMATCH`.
-   *
-   * @apiHeader {String} Authorization Bearer JWT.
-   *
-   * @apiSuccess (200) {Object} user Datos del usuario.
-   * @apiSuccess (200) {String[]} user.permissions.
-   *
-   * @apiError (401) {Object} AUTH.USER_NOT_FOUND.
-   * @apiError (401) {Object} AUTH.TOKEN_VERSION_MISMATCH.
-   */
   @UseGuards(JwtAuthGuard)
   @Get('me')
+  @ApiOperation({
+    summary: 'Perfil autenticado',
+    description:
+      'Devuelve el usuario autenticado con sus permisos efectivos. ' +
+      'Verifica `tokenVersion` contra la BD; si no coincide, lanza ' +
+      '`AUTH.TOKEN_VERSION_MISMATCH`.',
+  })
+  @ApiOkResponse({ type: AuthUserResponseDto })
+  @ApiUnauthorizedResponse({
+    description: 'AUTH.USER_NOT_FOUND o AUTH.TOKEN_VERSION_MISMATCH.',
+    type: ErrorResponseDto,
+  })
   me(@CurrentUser() user: RequestUser) {
     return this.authService.getAuthenticatedUser(user.id, user.tokenVersion);
   }
 
-  /**
-   * @api {post} /auth/change-password Cambiar contrasena
-   * @apiName ChangePassword
-   * @apiGroup Auth
-   * @apiVersion 1.0.0
-   * @apiPermission jwt
-   *
-   * @apiDescription Cambia la contrasena del usuario autenticado.
-   * Valida la contrasena actual, exige fortaleza en la nueva,
-   * bumpea `tokenVersion` y revoca todas las demas sesiones.
-   * Devuelve un nuevo access token con `tokenVersion + 1`.
-   *
-   * @apiHeader {String} Authorization Bearer JWT.
-   *
-   * @apiBody {String} currentPassword Contrasena actual (8-255 chars).
-   * @apiBody {String} newPassword Nueva contrasena (8-255 chars, politica local).
-   *
-   * @apiSuccess (200) {Object} respuesta Nuevo access token + usuario.
-   * @apiSuccess (200) {String} respuesta.refreshToken Cadena vacia (no se emite nuevo refresh).
-   *
-   * @apiError (401) {Object} AUTH.INVALID_CREDENTIALS.
-   * @apiError (401) {Object} AUTH.USER_NOT_FOUND.
-   */
   @UseGuards(JwtAuthGuard)
   @Post('change-password')
+  @ApiOperation({
+    summary: 'Cambiar contrasena',
+    description:
+      'Cambia la contrasena del usuario autenticado. Valida la contrasena ' +
+      'actual, exige fortaleza en la nueva, bumpea `tokenVersion` y revoca ' +
+      'todas las demas sesiones. Devuelve un nuevo access token con ' +
+      '`tokenVersion + 1`. El `refreshToken` viene vacio.',
+  })
+  @ApiOkResponse({ type: TokenResponseDto })
+  @ApiUnauthorizedResponse({
+    description: 'AUTH.INVALID_CREDENTIALS o AUTH.USER_NOT_FOUND.',
+    type: ErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'WeakPasswordError (validacion de fortaleza).',
+    type: ErrorResponseDto,
+  })
   @HttpCode(HttpStatus.OK)
   changePassword(
     @CurrentUser() user: RequestUser,
