@@ -164,7 +164,6 @@ export class AuthController {
   async logout(
     @CurrentUser() user: RequestUser,
     @Body() dto: LogoutDto,
-    @Req() req: Request,
   ): Promise<void> {
     await this.authService.logout(user.id, user.sessionId, dto.refreshToken);
   }
@@ -191,11 +190,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @Get('me')
   me(@CurrentUser() user: RequestUser) {
-    return this.authService.getAuthenticatedUser(
-      user.id,
-      user.tokenVersion,
-      user.sessionId,
-    );
+    return this.authService.getAuthenticatedUser(user.id, user.tokenVersion);
   }
 
   /**

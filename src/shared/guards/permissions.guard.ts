@@ -24,7 +24,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { PERMISSIONS_KEY } from '../decorators/permissions.decorator';
 import { PermissionCacheService } from '../../auth/services/permission-cache.service';
-import type { RequestUser } from './auth.guards';
+import type { AuthenticatedRequest } from './auth.guards';
 
 /**
  * Guard global que exige los permisos finos declarados en el handler.
@@ -60,8 +60,8 @@ export class PermissionsGuard implements CanActivate {
     );
     if (!required || required.length === 0) return true;
 
-    const request = context.switchToHttp().getRequest();
-    const user: RequestUser | undefined = request.user;
+    const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
+    const user = request.user;
     if (!user) {
       throw new UnauthorizedException({
         code: 'AUTH.NOT_AUTHENTICATED',

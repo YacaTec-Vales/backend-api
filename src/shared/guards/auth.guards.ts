@@ -26,9 +26,18 @@ import {
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import type { Request } from 'express';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { ROLES_KEY } from '../decorators/roles.decorator';
-import type { UserType } from '../types/auth.types';
+import type { UserType, JwtPayload } from '../types/auth.types';
+
+/**
+ * Extension tipada de `Request` con el usuario autenticado que
+ * `JwtAuthGuard` popula tras una verificacion exitosa.
+ */
+export interface AuthenticatedRequest extends Request {
+  user?: RequestUser;
+}
 
 /**
  * Forma minima del usuario autenticado disponible en `request.user`.
@@ -92,9 +101,8 @@ export class JwtAuthGuard implements CanActivate {
     ]);
     if (isPublic) return true;
 
-    const request = context.switchToHttp().getRequest();
-    const authorization = request.headers['authorization'] as
-      string | undefined;
+    const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
+    const authorization = request.headers['authorization'];
     const token = this.extractBearerToken(authorization);
 
     if (!token) {
@@ -105,11 +113,11 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     try {
-      const payload = await this.jwtService.verifyAsync(token, {
+      const payload = await this.jwtService.verifyAsync<JwtPayload>(token, {
         issuer: this.config.get<string>('auth.jwt.issuer'),
         audience: this.config.get<string>('auth.jwt.audience'),
       });
-      const user: RequestUser = {
+      request.user = {
         id: payload.sub,
         username: payload.username,
         role: payload.role,
@@ -119,7 +127,6 @@ export class JwtAuthGuard implements CanActivate {
         iat: payload.iat,
         exp: payload.exp,
       };
-      request.user = user;
       return true;
     } catch {
       throw new UnauthorizedException({
@@ -176,8 +183,8 @@ export class RolesGuard implements CanActivate {
     ]);
     if (!required || required.length === 0) return true;
 
-    const request = context.switchToHttp().getRequest();
-    const user: RequestUser | undefined = request.user;
+    const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
+    const user = request.user;
     if (!user) {
       throw new ForbiddenException({
         code: 'AUTH.NOT_AUTHENTICATED',

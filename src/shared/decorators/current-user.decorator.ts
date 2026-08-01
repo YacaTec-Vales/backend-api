@@ -3,7 +3,7 @@
  * al usuario autenticado en los handlers HTTP.
  *
  * El `JwtAuthGuard` global popula `request.user` con un objeto
- * `AuthenticatedUser`. Este decorador expone ese objeto (o un campo
+ * `RequestUser`. Este decorador expone ese objeto (o un campo
  * especifico) a la firma del controller.
  *
  * @module shared/decorators
@@ -12,7 +12,7 @@
  */
 
 import { createParamDecorator, ExecutionContext } from '@nestjs/common';
-import type { AuthenticatedUser } from '../types/auth.types';
+import type { AuthenticatedRequest, RequestUser } from '../guards/auth.guards';
 
 /**
  * Decorador de parametro que extrae el usuario autenticado de la
@@ -27,20 +27,20 @@ import type { AuthenticatedUser } from '../types/auth.types';
  * ```ts
  * @UseGuards(JwtAuthGuard)
  * @Get('profile')
- * profile(@CurrentUser() user: AuthenticatedUser) { ... }
+ * profile(@CurrentUser() user: RequestUser) { ... }
  *
  * @Get('me-id')
  * meId(@CurrentUser('id') userId: string) { ... }
  * ```
  *
- * @param data - Propiedad opcional de `AuthenticatedUser` a extraer.
+ * @param data - Propiedad opcional de `RequestUser` a extraer.
  * @param ctx - Contexto de ejecucion de NestJS.
  * @returns El usuario completo, una propiedad, o `undefined`.
  */
 export const CurrentUser = createParamDecorator(
-  (data: keyof AuthenticatedUser | undefined, ctx: ExecutionContext) => {
-    const request = ctx.switchToHttp().getRequest();
-    const user: AuthenticatedUser | undefined = request.user;
+  (data: keyof RequestUser | undefined, ctx: ExecutionContext) => {
+    const request = ctx.switchToHttp().getRequest<AuthenticatedRequest>();
+    const user = request.user;
     if (!user) return undefined;
     return data ? user[data] : user;
   },

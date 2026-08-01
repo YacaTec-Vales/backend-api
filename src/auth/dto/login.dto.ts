@@ -30,7 +30,9 @@ export class LoginDto {
   @IsString()
   @MinLength(3)
   @MaxLength(255)
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
   usernameOrEmail: string;
 
   /** Contrasena plana (8-255 chars). */
