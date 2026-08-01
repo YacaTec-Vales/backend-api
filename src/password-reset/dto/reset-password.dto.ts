@@ -10,6 +10,7 @@
  */
 
 import { IsString, MaxLength, MinLength } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
 
 /**
  * Cuerpo de la peticion de aplicacion de reset.
@@ -18,12 +19,22 @@ import { IsString, MaxLength, MinLength } from 'class-validator';
  */
 export class ResetPasswordDto {
   /** Token de recuperacion (16-255 chars). */
+  @ApiProperty({
+    description: 'Token de recuperacion (16-255 chars).',
+    minLength: 16,
+    maxLength: 255,
+  })
   @IsString()
   @MinLength(16)
   @MaxLength(255)
   token: string;
 
   /** Nueva contrasena (8-255 chars, validada en servicio). */
+  @ApiProperty({
+    description:
+      'Nueva contrasena (8-255 chars, validada por PasswordService.validateStrength).',
+    example: 'N3wP@ssw0rd!',
+  })
   @IsString()
   @MinLength(8)
   @MaxLength(255)

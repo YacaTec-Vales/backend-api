@@ -8,6 +8,7 @@
 
 import { IsEmail, MaxLength } from 'class-validator';
 import { Transform } from 'class-transformer';
+import { ApiProperty } from '@nestjs/swagger';
 
 /**
  * Cuerpo de la peticion de recuperacion.
@@ -16,6 +17,11 @@ import { Transform } from 'class-transformer';
  */
 export class ForgotPasswordDto {
   /** Correo del usuario (max 255, se normaliza a minusculas sin espacios). */
+  @ApiProperty({
+    description:
+      'Correo del usuario (max 255, se normaliza a minusculas sin espacios).',
+    example: 'jperez@yacatec.mx',
+  })
   @IsEmail()
   @MaxLength(255)
   @Transform(({ value }: { value: unknown }) =>
