@@ -141,8 +141,6 @@ export class AuthService {
       user.tokenVersion,
     );
 
-    const reset = this.authConfig.jwt.refreshTtlSeconds;
-    const sessionTtl = rememberMe ? reset * 4 : reset;
     const session = await this.sessionService.createSession(
       {
         userId: user.id,
@@ -167,7 +165,7 @@ export class AuthService {
       refreshToken: session.refreshToken,
       expiresIn: this.tokenService.accessTtlSeconds(),
       tokenType: 'Bearer',
-      user: this.toAuthUserResponse(user, permissions, session.sessionId),
+      user: this.toAuthUserResponse(user, permissions),
     };
   }
 
@@ -244,7 +242,7 @@ export class AuthService {
       refreshToken: rotation.newRefreshToken,
       expiresIn: this.tokenService.accessTtlSeconds(),
       tokenType: 'Bearer',
-      user: this.toAuthUserResponse(user, permissions, rotation.newSessionId),
+      user: this.toAuthUserResponse(user, permissions),
     };
   }
 
@@ -282,14 +280,12 @@ export class AuthService {
    *
    * @param userId - UUID.
    * @param tokenVersion - Version del JWT.
-   * @param sessionId - UUID de la sesion.
    * @returns Usuario completo.
    * @throws {UnauthorizedException} `AUTH.USER_NOT_FOUND`, `AUTH.TOKEN_VERSION_MISMATCH`.
    */
   async getAuthenticatedUser(
     userId: string,
     tokenVersion: number,
-    sessionId: string,
   ): Promise<AuthUserResponse> {
     const user = await this.userRepo.findById(userId);
     if (!user) {
@@ -308,7 +304,7 @@ export class AuthService {
       userId,
       tokenVersion,
     );
-    return this.toAuthUserResponse(user, permissions, sessionId);
+    return this.toAuthUserResponse(user, permissions);
   }
 
   /**
@@ -381,7 +377,7 @@ export class AuthService {
       refreshToken: '',
       expiresIn: this.tokenService.accessTtlSeconds(),
       tokenType: 'Bearer',
-      user: this.toAuthUserResponse(user, permissions, sessionId),
+      user: this.toAuthUserResponse(user, permissions),
     };
   }
 
@@ -404,7 +400,6 @@ export class AuthService {
       mfaEnabled: boolean;
     },
     permissions: Set<string>,
-    sessionId: string,
   ): AuthUserResponse {
     return {
       id: user.id,

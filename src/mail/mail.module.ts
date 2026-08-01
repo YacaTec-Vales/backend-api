@@ -14,7 +14,7 @@
 import { Module, Provider } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MailerModule } from '@nestjs-modules/mailer';
-import { mailConfig, type MailConfig } from '../config/mail.config';
+import { mailConfig } from '../config/mail.config';
 import { MAIL_CONFIG } from './mail.tokens';
 import { MailService } from './mail.service';
 import { join } from 'path';

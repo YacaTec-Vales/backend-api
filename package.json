@@ -18,9 +18,9 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "docs:generate": "compodoc -p tsconfig.json -d docs --hideGenerator --theme stripe --language es-MX --includesName \"Guías\" --includes ./docs-src -r ./.compodoc.json",
-    "docs:serve": "compodoc -p tsconfig.json -d docs -s --hideGenerator --theme stripe --language es-MX --includesName \"Guías\" --includes ./docs-src -r ./.compodoc.json",
-    "docs:watch": "compodoc -p tsconfig.json -d docs -s -r --hideGenerator --theme stripe --language es-MX --includesName \"Guías\" --includes ./docs-src"
+    "docs:generate": "compodoc -p tsconfig.json -d docs --hideGenerator --theme stripe --language es-MX -r ./.compodoc.json",
+    "docs:serve": "compodoc -p tsconfig.json -d docs -s --hideGenerator --theme stripe --language es-MX -r ./.compodoc.json",
+    "docs:watch": "compodoc -p tsconfig.json -d docs -s -r --hideGenerator --theme stripe --language es-MX"
   },
   "dependencies": {
     "@nestjs-modules/mailer": "^2.3.7",

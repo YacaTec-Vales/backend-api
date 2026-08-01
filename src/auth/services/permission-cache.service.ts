@@ -48,12 +48,13 @@ export class PermissionCacheService {
    * servicios que mutan estado (ej. `SessionsService`).
    *
    * @param userId - UUID del usuario.
-   * @param _tokenVersion - Reservado para invalidacion por version.
+   * @param tokenVersion - Reservado para invalidacion por version.
    * @returns Conjunto de codigos de permiso.
    */
   async getEffectivePermissions(
     userId: string,
-    _tokenVersion: number,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    tokenVersion: number,
   ): Promise<Set<string>> {
     const cached = this.cache.get(userId);
     if (cached && cached.expiresAt > Date.now()) {

@@ -38,10 +38,7 @@ export type Drizzle = NodePgDatabase<typeof schema>;
 export const drizzleProvider = {
   provide: DRIZZLE,
   inject: [DATABASE_CONFIG, ConfigService],
-  useFactory: async (
-    cfg: DatabaseConfig,
-    configService: ConfigService,
-  ): Promise<Drizzle> => {
+  useFactory: (cfg: DatabaseConfig, configService: ConfigService): Drizzle => {
     const poolMax = configService.get<number>('database.poolMax', 10);
     const poolMin = configService.get<number>('database.poolMin', 2);
     const pool = new Pool({

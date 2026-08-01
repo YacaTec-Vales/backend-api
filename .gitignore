@@ -3,6 +3,9 @@
 /node_modules
 /build
 
+# Compodoc generated site
+/docs
+
 # Logs
 logs
 *.log

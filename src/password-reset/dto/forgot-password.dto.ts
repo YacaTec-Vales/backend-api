@@ -6,7 +6,7 @@
  * @since 1.0.0
  */
 
-import { IsEmail, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsEmail, MaxLength } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 /**
@@ -18,7 +18,7 @@ export class ForgotPasswordDto {
   /** Correo del usuario (max 255, se normaliza a minusculas sin espacios). */
   @IsEmail()
   @MaxLength(255)
-  @Transform(({ value }) =>
+  @Transform(({ value }: { value: unknown }) =>
     typeof value === 'string' ? value.toLowerCase().trim() : value,
   )
   email: string;

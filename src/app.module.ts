@@ -56,6 +56,7 @@ import { PermissionsGuard } from './shared/guards/permissions.guard';
     }),
     ThrottlerModule.forRootAsync({
       inject: [ConfigService],
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       useFactory: (config: ConfigService) => [
         {
           name: 'short',
