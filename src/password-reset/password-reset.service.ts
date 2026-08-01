@@ -1,4 +1,26 @@
-import { Inject, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+/**
+ * @fileoverview Logica de recuperacion de contrasena.
+ *
+ * - `requestReset`: si el usuario existe, crea un token de un solo
+ *   uso, lo hashea, lo persiste y envia un correo con el enlace.
+ *   Si no existe, retorna silenciosamente (no leak).
+ * - `resetPassword`: valida el token, hashea la nueva contrasena,
+ *   bumpea `tokenVersion`, invalida tokens pendientes y revoca
+ *   todas las sesiones del usuario.
+ *
+ * TTL del token: 30 minutos (constante `TOKEN_TTL_MINUTES`).
+ *
+ * @module password-reset
+ * @author Equipo de desarrollo Mis Vales
+ * @since 1.0.0
+ */
+
+import {
+  Inject,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
 import { UserRepository } from '../database/repositories/user.repository';
@@ -8,13 +30,20 @@ import { PasswordService } from '../auth/services/password.service';
 import { MailService } from '../mail/mail.service';
 import { PermissionCacheService } from '../auth/services/permission-cache.service';
 
+/** TTL del token de recuperacion. */
 const TOKEN_TTL_MINUTES = 30;
 
+/**
+ * Subset minimo de contexto necesario para auditar el reset.
+ */
 interface ContextLike {
   ipAddress: string;
   userAgent: string;
 }
 
+/**
+ * Servicio de recuperacion. Inyectado en `PasswordResetController`.
+ */
 @Injectable()
 export class PasswordResetService {
   private readonly logger = new Logger(PasswordResetService.name);
@@ -29,6 +58,13 @@ export class PasswordResetService {
     private readonly configService: ConfigService,
   ) {}
 
+  /**
+   * Inicia el flujo. Si el correo existe y la cuenta esta activa,
+   * crea el token y envia mail. Si no, loggea y retorna sin error.
+   *
+   * @param email - Correo del usuario.
+   * @param ctx - IP y UA para auditoria.
+   */
   async requestReset(email: string, ctx: ContextLike): Promise<void> {
     const user = await this.userRepo.findByEmail(email);
     if (!user || !user.isActive || user.deletedAt) {
@@ -63,6 +99,17 @@ export class PasswordResetService {
     this.logger.log(`forgot-password solicitado por ${user.id}`);
   }
 
+  /**
+   * Aplica el reset. Valida token, valida fortaleza, hashea,
+   * bumpea `tokenVersion`, invalida tokens pendientes, revoca
+   * sesiones y limpia cache de permisos.
+   *
+   * @param token - Token opaco recibido en el mail.
+   * @param newPassword - Contrasena nueva en claro.
+   * @param ctx - IP y UA para auditoria.
+   * @throws {UnauthorizedException} `AUTH.RESET_TOKEN_INVALID`.
+   * @throws {WeakPasswordError} Si no cumple la politica.
+   */
   async resetPassword(
     token: string,
     newPassword: string,
