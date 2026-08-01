@@ -30,6 +30,7 @@ import type { Request } from 'express';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 import type { UserType, JwtPayload } from '../types/auth.types';
+import { UserRepository } from '../../database/repositories/user.repository';
 
 /**
  * Extension tipada de `Request` con el usuario autenticado que
@@ -57,6 +58,7 @@ export interface RequestUser {
   branchId: string | null;
   tokenVersion: number;
   sessionId: string;
+  mustChangePassword?: boolean;
   iat?: number;
   exp?: number;
 }
@@ -70,12 +72,17 @@ export interface RequestUser {
  *   `AUTH.MISSING_TOKEN`.
  * - Si el token no pasa `verifyAsync` con issuer/audience, lanza
  *   `AUTH.INVALID_TOKEN`.
- * - Si el token es valido, mapea los claims a `RequestUser` y los
- *   asigna a `request.user` para su uso por los decoradores y
- *   servicios.
+ * - Si el token es valido, consulta `UserRepository.findAuthStateById`
+ *   para revalidar `tokenVersion`, `userStatus`, `isActive`,
+ *   `deletedAt` y cargar `mustChangePassword` actualizado.
+ * - Si el estado del usuario no permite operar (cuenta inactiva,
+ *   suspendida, borrada, tokenVersion desincronizado), lanza el
+ *   codigo `AUTH.*` correspondiente.
+ * - Mapea los claims a `RequestUser` y los asigna a `request.user`.
  *
  * @see Public
  * @see RequestUser
+ * @see UserRepository.findAuthStateById
  */
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -83,16 +90,21 @@ export class JwtAuthGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
+    private readonly userRepository: UserRepository,
   ) {}
 
   /**
    * Punto de entrada del guard. Decapita la metadata publica, extrae
-   * el token, verifica firma y estampa `request.user`.
+   * el token, verifica firma y estampa `request.user` tras revalidar
+   * contra la base de datos.
    *
    * @param context - Contexto de ejecucion de NestJS.
    * @returns `true` si la peticion debe continuar.
    * @throws {UnauthorizedException} `AUTH.MISSING_TOKEN` si no hay Bearer.
    * @throws {UnauthorizedException} `AUTH.INVALID_TOKEN` si la verificacion falla.
+   * @throws {UnauthorizedException} `AUTH.USER_NOT_FOUND` si el usuario no existe.
+   * @throws {UnauthorizedException} `AUTH.TOKEN_VERSION_MISMATCH` si el tokenVersion no coincide.
+   * @throws {UnauthorizedException} `AUTH.USER_INACTIVE` si la cuenta esta inactiva/suspendida/borrada.
    */
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
@@ -112,28 +124,58 @@ export class JwtAuthGuard implements CanActivate {
       });
     }
 
+    let payload: JwtPayload;
     try {
-      const payload = await this.jwtService.verifyAsync<JwtPayload>(token, {
+      payload = await this.jwtService.verifyAsync<JwtPayload>(token, {
         issuer: this.config.get<string>('auth.jwt.issuer'),
         audience: this.config.get<string>('auth.jwt.audience'),
       });
-      request.user = {
-        id: payload.sub,
-        username: payload.username,
-        role: payload.role,
-        branchId: payload.branchId,
-        tokenVersion: payload.tokenVersion,
-        sessionId: payload.sessionId,
-        iat: payload.iat,
-        exp: payload.exp,
-      };
-      return true;
     } catch {
       throw new UnauthorizedException({
         code: 'AUTH.INVALID_TOKEN',
         message: 'Token invalido o expirado.',
       });
     }
+
+    // Revalidacion contra la BD: garantiza que un reset, delete o
+    // cambio de tokenVersion invalida access tokens en curso, no
+    // solo despues de su expiracion natural.
+    const state = await this.userRepository.findAuthStateById(payload.sub);
+    if (!state) {
+      throw new UnauthorizedException({
+        code: 'AUTH.USER_NOT_FOUND',
+        message: 'Usuario no encontrado.',
+      });
+    }
+    if (state.tokenVersion !== payload.tokenVersion) {
+      throw new UnauthorizedException({
+        code: 'AUTH.TOKEN_VERSION_MISMATCH',
+        message: 'La sesion fue invalidada.',
+      });
+    }
+    if (
+      !state.isActive ||
+      state.deletedAt !== null ||
+      state.userStatus !== 'ACTIVO'
+    ) {
+      throw new UnauthorizedException({
+        code: 'AUTH.USER_INACTIVE',
+        message: 'La cuenta esta desactivada o suspendida.',
+      });
+    }
+
+    request.user = {
+      id: payload.sub,
+      username: payload.username,
+      role: payload.role,
+      branchId: payload.branchId,
+      tokenVersion: payload.tokenVersion,
+      sessionId: payload.sessionId,
+      mustChangePassword: state.mustChangePassword,
+      iat: payload.iat,
+      exp: payload.exp,
+    };
+    return true;
   }
 
   /**

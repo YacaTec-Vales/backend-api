@@ -47,6 +47,17 @@ export class AuthUserResponseDto {
   @ApiProperty()
   mfaEnabled: boolean;
 
+  /**
+   * Si el usuario debe cambiar su contrasena antes de acceder a
+   * otras funciones. Lo activa el alta administrativa o el reset
+   * administrativo; lo desactivan `/auth/change-password` y
+   * `/auth/reset-password`. Mientras este en `true`, el guard
+   * `MustChangePasswordGuard` bloquea el acceso a endpoints
+   * privados que no esten marcados con `@AllowBeforePasswordChange()`.
+   */
+  @ApiProperty({ description: 'Debe cambiar contrasena antes de operar.' })
+  mustChangePassword: boolean;
+
   /** Permisos efectivos del usuario. */
   @ApiProperty({ type: [String], description: 'Permisos efectivos.' })
   permissions: string[];

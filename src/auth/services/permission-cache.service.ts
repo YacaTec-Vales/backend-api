@@ -2,11 +2,20 @@
  * @fileoverview Cache en memoria de permisos efectivos por usuario.
  *
  * Combina los permisos del rol con los overrides almacenados en
- * `user_permission_override`. TTL por entrada: 60 segundos.
+ * `user_permission_override`. TTL por entrada: el minimo entre
+ * 60 segundos y la siguiente frontera de vigencia entre overrides
+ * (proximo `validFrom` o `validUntil`). Esto evita que un override
+ * con vigencia corta permanezca efectivo por mas tiempo del
+ * declarado cuando la cache se sirve sin haber sido invalidada
+ * explicitamente.
  *
  * Nota: la invalidacion no es automatica por cambio de
  * `token_version`; servicios que mutan permisos deben llamar
  * `invalidate(userId)` o `invalidateAll()`.
+ *
+ * En despliegues con varias replicas, `invalidate()` solo afecta
+ * la instancia local. La sincronizacion entre instancias queda
+ * como deuda tecnica (pub/sub o cache distribuida).
  *
  * @module auth/services
  * @author Equipo de desarrollo Mis Vales
@@ -16,8 +25,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PermissionRepository } from '../../database/repositories/permission.repository';
 
-/** TTL en milisegundos de cada entrada del cache. */
+/** TTL general del cache en milisegundos. */
 const CACHE_TTL_MS = 60_000;
+
+/** Margen de seguridad para considerar una frontera "inminente" (en ms). */
+const TTL_EPSILON_MS = 50;
 
 /**
  * Estructura interna del cache por usuario.
@@ -82,7 +94,7 @@ export class PermissionCacheService {
 
     this.cache.set(userId, {
       effective,
-      expiresAt: Date.now() + CACHE_TTL_MS,
+      expiresAt: this.computeExpiresAt(overrides),
     });
     return effective;
   }
@@ -98,9 +110,40 @@ export class PermissionCacheService {
 
   /**
    * Invalida todo el cache. Usado por scripts de mantenimiento
-   * o tareas de reindexacion.
+   * o tareas de reindexacion, y por mutaciones masivas de
+   * permisos (ej. importacion de un catalogo).
    */
   invalidateAll(): void {
     this.cache.clear();
+  }
+
+  /**
+   * Calcula el momento de expiracion de la entrada del cache.
+   * Es el minimo entre:
+   *  - TTL general (60 s).
+   *  - El `validFrom` futuro mas cercano (para que el cache
+   *    respire justo cuando un override empiece a aplicar).
+   *  - El `validUntil` mas cercano (para que el cache respire
+   *    cuando un override deje de aplicar).
+   *
+   * @param overrides - Overrides efectivos leidos en esta consulta.
+   * @returns Timestamp absoluto en ms.
+   */
+  private computeExpiresAt(
+    overrides: Array<{ validFrom?: Date | null; validUntil?: Date | null }>,
+  ): number {
+    const now = Date.now();
+    let expiresAt = now + CACHE_TTL_MS;
+    for (const o of overrides) {
+      if (o.validFrom && o.validFrom.getTime() > now) {
+        const candidate = o.validFrom.getTime() + TTL_EPSILON_MS;
+        if (candidate < expiresAt) expiresAt = candidate;
+      }
+      if (o.validUntil) {
+        const candidate = o.validUntil.getTime() + TTL_EPSILON_MS;
+        if (candidate < expiresAt) expiresAt = candidate;
+      }
+    }
+    return expiresAt;
   }
 }

@@ -122,7 +122,10 @@ export class PasswordResetService {
     this.passwordService.validateStrength(newPassword);
     const newHash = await this.passwordService.hash(newPassword);
 
-    await this.userRepo.updatePasswordHash(record.userId, newHash);
+    // El usuario eligio su propia contrasena, asi que no forzamos un
+    // cambio posterior (deja mustChangePassword = false aunque el
+    // alta administrativa lo hubiera activado).
+    await this.userRepo.setPassword(record.userId, newHash, false);
     await this.resetRepo.markUsed(record.id);
     await this.resetRepo.invalidateForUser(record.userId);
     await this.refreshRepo.revokeAllForUser(record.userId, 'password_reset');

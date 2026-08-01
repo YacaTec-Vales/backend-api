@@ -27,6 +27,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -40,6 +41,7 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
+import type { Request } from 'express';
 import { SessionsService } from './sessions.service';
 import { JwtAuthGuard, type RequestUser } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
@@ -48,6 +50,8 @@ import { RequirePermissions } from '../shared/decorators/permissions.decorator';
 import { InvalidateUserSessionsDto } from '../auth/dto/invalidate-user-sessions.dto';
 import { SessionResponseDto } from '../auth/dto/auth-response.dto';
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
+import { UsersService } from '../users/users.service';
+import { contextFromRequest } from '../shared/utils/request-context.util';
 
 /**
  * Controlador de sesiones. Prefijo `auth` (compartido con
@@ -58,7 +62,10 @@ import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 @Controller('auth')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class SessionsController {
-  constructor(private readonly sessionsService: SessionsService) {}
+  constructor(
+    private readonly sessionsService: SessionsService,
+    private readonly usersService: UsersService,
+  ) {}
 
   @Get('sessions')
   @ApiOperation({
@@ -127,12 +134,11 @@ export class SessionsController {
   @Post('users/:id/invalidate-sessions')
   @RequirePermissions('auth.session.revoke_any')
   @ApiOperation({
-    summary: 'Invalidar sesiones (admin)',
+    summary: 'Invalidar sesiones (admin) — DEPRECADO',
     description:
-      'Revoca TODAS las sesiones del usuario objetivo y bumpea su ' +
-      '`tokenVersion` para invalidar JWTs activos. Accion irreversible, ' +
-      'pensada para respuesta a incidentes. El admin no puede invalidar ' +
-      'sus propias sesiones aqui; debe usar `POST /auth/sessions/revoke-others`.',
+      'Alias deprecado. La ruta canonica es `POST /users/:id/invalidate-sessions`. ' +
+      'Este endpoint se conserva por compatibilidad pero sera eliminado en una version ' +
+      'futura. Delegua directamente a `UsersService.invalidateSessions`.',
   })
   @ApiNoContentResponse({ description: 'Sesiones invalidadas.' })
   @ApiForbiddenResponse({
@@ -153,19 +159,14 @@ export class SessionsController {
     @CurrentUser() actor: RequestUser,
     @Param('id', new ParseUUIDPipe()) userId: string,
     @Body() dto: InvalidateUserSessionsDto,
+    @Req() req: Request,
   ): Promise<void> {
-    if (actor.id === userId) {
-      throw new ForbiddenException({
-        code: 'AUTH.SELF_REVOKE_FORBIDDEN',
-        message:
-          'Usa POST /auth/sessions/revoke-others para cerrar tus propias sesiones.',
-      });
-    }
-    await this.sessionsService.invalidateAllForUser(
-      actor.id,
+    const ctx = contextFromRequest(req);
+    await this.usersService.invalidateSessions(
+      actor,
       userId,
       dto.reason ?? 'admin_revoke',
-      dto.notifyUser ?? false,
+      ctx,
     );
   }
 }

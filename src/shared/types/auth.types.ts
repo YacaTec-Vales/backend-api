@@ -57,6 +57,18 @@ export const USER_TYPE_VALUES: UserType[] = [
 ];
 
 /**
+ * Arreglo inmutable con los valores validos de `UserStatus`.
+ * Misma lista que `userStatusValues` en el schema Drizzle.
+ *
+ * @see UserStatus
+ */
+export const USER_STATUS_VALUES: UserStatus[] = [
+  'ACTIVO',
+  'INACTIVO',
+  'SUSPENDIDO',
+];
+
+/**
  * Estatus de una cuenta de usuario.
  *
  * Determina si el usuario puede autenticarse. La combinacion de
@@ -99,6 +111,11 @@ export type Device = 'Tecu' | 'Calipx' | 'Poch' | 'unknown';
  *    `UserRepository.updatePasswordHash` y `bumpTokenVersion`.
  *  - `sessionId`: UUID de la sesion (refresh token) asociado.
  *  - `iat`, `exp`: marcas de tiempo en segundos.
+ *  - `mustChangePassword`: si true, el usuario solo puede acceder a
+ *    rutas marcadas con `@AllowBeforePasswordChange()` hasta que
+ *    cambie la contrasena. Se setea en login tras un alta o reset
+ *    administrativo, y se desactiva en `/auth/change-password` y
+ *    `/auth/reset-password`.
  *
  * @see auth/services/token.service.ts
  */
@@ -109,6 +126,7 @@ export interface JwtPayload {
   branchId: string | null;
   tokenVersion: number;
   sessionId: string;
+  mustChangePassword?: boolean;
   iat?: number;
   exp?: number;
 }
@@ -136,6 +154,7 @@ export interface AuthenticatedUser {
   tokenVersion: number;
   passwordChangedAt: Date;
   mfaEnabled: boolean;
+  mustChangePassword: boolean;
   permissions: string[];
   sessionId: string;
 }

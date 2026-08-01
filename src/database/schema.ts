@@ -73,6 +73,11 @@ export const userStatus = (): (typeof userStatusValues)[number] => 'ACTIVO';
  *  - `tokenVersion`: contador que invalida todos los JWT al incrementarse.
  *  - `failedLoginCount` / `lockedUntil`: control de lockout.
  *  - `mfaEnabled`: flag rapido para saber si el usuario tiene TOTP.
+ *  - `mustChangePassword`: indica que la cuenta solo puede acceder a
+ *    `/auth/me`, `/auth/change-password`, `/auth/logout` y rutas
+ *    publicas hasta que cambie la contrasena. Lo activa el alta
+ *    administrativa y el reset administrativo; lo desactiva
+ *    `/auth/change-password` y `/auth/reset-password`.
  */
 export const users = appSchema.table('user', {
   id: uuid('id')
@@ -110,6 +115,7 @@ export const users = appSchema.table('user', {
   failedLoginCount: integer('failed_login_count').notNull().default(0),
   lockedUntil: timestamp('locked_until', { withTimezone: true }),
   mfaEnabled: boolean('mfa_enabled').notNull().default(false),
+  mustChangePassword: boolean('must_change_password').notNull().default(false),
 });
 
 /**
@@ -218,6 +224,59 @@ export const branches = appSchema.table('branch', {
 });
 
 /**
+ * Valores validos de `app.audit_operation` (operation en audit_log).
+ * Reflejan la operacion SQL que disparo el trigger.
+ */
+export const auditOperationValues = ['INSERT', 'UPDATE', 'DELETE'] as const;
+/** Tipo TypeScript para `audit_operation`. */
+export type AuditOperation = (typeof auditOperationValues)[number];
+
+/**
+ * Tabla `app.audit_log` (particionada por RANGE(recorded_at)).
+ *
+ * Cada fila la escribe el trigger `app.audit_trigger()` sobre las
+ * tablas auditadas. Las columnas `action`, `target_user_id` y
+ * `metadata` se introdujeron en la migracion 08-users-module.
+ *
+ * Notas:
+ *  - `old_values` / `new_values` nunca contienen `password_hash` (el
+ *    trigger lo redacta).
+ *  - `changed_fields` puede contener la clave `password_hash` con
+ *    valores `***REDACTED***` para conservar la senal de que hubo
+ *    un cambio de contrasena.
+ *  - `action` es el codigo de negocio escrito por el backend via
+ *    `SET LOCAL app.audit_action`; si no se setea, el trigger usa
+ *    `TG_TABLE_NAME || '.' || TG_OP` como fallback.
+ *  - `target_user_id` se calcula automaticamente: `NEW.id` en
+ *    `app.user`, `NEW.user_id` en `app.user_permission_override`,
+ *    NULL en el resto.
+ */
+export const auditLog = appSchema.table('audit_log', {
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  userId: uuid('user_id'),
+  tableName: text('table_name').notNull(),
+  recordId: text('record_id').notNull(),
+  operation: text('operation').$type<AuditOperation>().notNull(),
+  action: text('action'),
+  targetUserId: uuid('target_user_id'),
+  metadata: jsonb('metadata')
+    .notNull()
+    .default(sql`'{}'::jsonb`),
+  oldValues: jsonb('old_values'),
+  newValues: jsonb('new_values'),
+  changedFields: jsonb('changed_fields'),
+  device: text('device'),
+  ipAddress: inet('ip_address'),
+  userAgent: text('user_agent'),
+  recordedAt: timestamp('recorded_at', { withTimezone: true })
+    .primaryKey()
+    .notNull()
+    .defaultNow(),
+});
+
+/**
  * Tabla `app.refresh_token`. Sesiones persistidas del usuario.
  *
  * Modelo que reemplaza al JWT refresh clasico: cada sesion tiene
@@ -305,3 +364,6 @@ export type RoleEntity = typeof roles.$inferSelect;
 export type PermissionEntity = typeof permissions.$inferSelect;
 export type RolePermissionEntity = typeof rolePermissions.$inferSelect;
 export type BranchEntity = typeof branches.$inferSelect;
+export type NewBranchEntity = typeof branches.$inferInsert;
+export type AuditLogEntity = typeof auditLog.$inferSelect;
+export type NewAuditLogEntity = typeof auditLog.$inferInsert;
