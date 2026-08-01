@@ -17,10 +17,7 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json",
-    "docs:generate": "compodoc -c .compodoc.json -p tsconfig.json -d docs",
-    "docs:serve": "compodoc -c .compodoc.json -p tsconfig.json -d docs -s",
-    "docs:watch": "compodoc -c .compodoc.json -p tsconfig.json -d docs -s -w"
+    "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
     "@nestjs-modules/mailer": "^2.3.7",
@@ -30,8 +27,11 @@
     "@nestjs/jwt": "^11.0.2",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/swagger": "^11.4.6",
     "@nestjs/terminus": "^11.1.1",
     "@nestjs/throttler": "^6.5.0",
+    "@scalar/api-reference": "^1.64.0",
+    "@scalar/nestjs-api-reference": "^1.2.12",
     "argon2": "^0.41.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.4",
@@ -51,7 +51,6 @@
     "uuid": "^11.1.1"
   },
   "devDependencies": {
-    "@compodoc/compodoc": "^2.0.0",
     "@eslint/eslintrc": "^3.2.0",
     "@eslint/js": "^9.18.0",
     "@nestjs/cli": "^11.0.0",
