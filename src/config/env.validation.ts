@@ -42,6 +42,16 @@ export const envValidationSchema = Joi.object({
   DATABASE_POOL_MIN: Joi.number().integer().min(1).default(2),
   DATABASE_POOL_MAX: Joi.number().integer().min(1).default(10),
 
+  // Base de datos - replica de lectura
+  DATABASE_READ_HOST: Joi.string().required(),
+  DATABASE_READ_PORT: Joi.number().port().default(5432),
+  DATABASE_READ_USER: Joi.string().required(),
+  DATABASE_READ_PASSWORD: Joi.string().allow('').required(),
+  DATABASE_READ_NAME: Joi.string().required(),
+  DATABASE_READ_SSL: Joi.boolean().default(false),
+  DATABASE_READ_POOL_MIN: Joi.number().integer().min(1).default(2),
+  DATABASE_READ_POOL_MAX: Joi.number().integer().min(1).default(10),
+
   // JWT
   JWT_SECRET: Joi.string().min(32).required(),
   JWT_ISSUER: Joi.string().default('vales-yacatec'),

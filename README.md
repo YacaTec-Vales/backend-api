@@ -28,7 +28,7 @@ El proyecto expone modulos de **autenticacion y gestion de identidad**:
 |---|---|
 | Framework | NestJS 11 + Express |
 | Lenguaje | TypeScript 5.7 |
-| Persistencia | Postgres + Drizzle ORM |
+| Persistencia | Postgres + Drizzle ORM (dos pools: `DRIZZLE_WRITE` y `DRIZZLE_READ`) |
 | Auth | JWT (HS256) + argon2id + refresh tokens opacos |
 | Rate limit | `@nestjs/throttler` globales |
 | Email | `@nestjs-modules/mailer` + nodemailer + Handlebars |
@@ -67,6 +67,15 @@ cp .env.example .env
 | `npm test` | Tests unitarios con Jest |
 | `npm run test:e2e` | Tests end-to-end |
 | `npm run lint` | ESLint + Prettier |
+
+## Documentacion interactiva de la API
+
+Mientras el backend este corriendo, la UI de OpenAPI vive en:
+
+- **Scalar** (try-it con Bearer JWT): `<api-prefix>/docs` (ej. `http://localhost:3000/api/v1/docs`)
+- **Spec JSON**: `<api-prefix>/docs-json`
+
+La UI se sirve en vivo desde el backend y se regenera automaticamente a partir de los controladores y DTOs decorados con `@nestjs/swagger`. Equivale al "Swagger pero mas bonito": panel de autenticacion Bearer, "Try it", code samples multi-lenguaje, modo oscuro y busqueda difusa.
 
 ## Estructura
 
@@ -151,6 +160,9 @@ Las migrations las escribe y aplica el equipo de infraestructura. Los scripts vi
 - Conventional Commits en espanol, lowercase. Tipos: `feat`, `fix`, `chore`, `docs`, `refactor`, `test`.
 - Scopes: `auth`, `sessions`, `password-reset`, `mfa`, `mail`, `health`, `database`, `shared`, `config`, `app`.
 - No agregar comentarios innecesarios al codigo.
+- Toda operacion de BD va en el pool correcto: `select` →
+  `DRIZZLE_READ`, `insert/update/delete` → `DRIZZLE_WRITE`. Ver
+  [docu/backend/estilos/conexion-lectura-escritura.md](../docu/backend/estilos/conexion-lectura-escritura.md).
 
 ## Recursos
 

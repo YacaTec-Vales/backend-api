@@ -10,6 +10,9 @@
  * El secret nunca se almacena en claro. La clave AES se deriva
  * de la variable de entorno `MFA_SECRET_KEY` (ver `env.validation.ts`).
  *
+ * Conexiones: las lecturas usan `readDb`, las escrituras
+ * (`insert/update/delete`) usan `writeDb`.
+ *
  * @module mfa
  * @author Equipo de desarrollo Mis Vales
  * @since 1.0.0
@@ -25,7 +28,12 @@ import { ConfigService } from '@nestjs/config';
 import { authenticator } from 'otplib';
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 import { eq } from 'drizzle-orm';
-import { DRIZZLE, type Drizzle } from '../database/drizzle.provider';
+import {
+  DRIZZLE_WRITE,
+  DRIZZLE_READ,
+  type DrizzleWrite,
+  type DrizzleRead,
+} from '../database/drizzle.provider';
 import { mfaCredentials, users } from '../database/schema';
 import { nanoid } from 'nanoid';
 import { PasswordService } from '../auth/services/password.service';
@@ -61,7 +69,8 @@ export class MfaService {
   private readonly encryptionKey: Buffer;
 
   constructor(
-    @Inject(DRIZZLE) private readonly db: Drizzle,
+    @Inject(DRIZZLE_WRITE) private readonly writeDb: DrizzleWrite,
+    @Inject(DRIZZLE_READ) private readonly readDb: DrizzleRead,
     @Inject(MFA_CONFIG) private readonly mfaConfig: MfaConfig,
     private readonly passwordService: PasswordService,
     private readonly configService: ConfigService,
@@ -95,7 +104,7 @@ export class MfaService {
 
     const encrypted = this.encryptSecret(secret);
 
-    await this.db
+    await this.writeDb
       .insert(mfaCredentials)
       .values({
         userId,
@@ -112,7 +121,7 @@ export class MfaService {
         },
       });
 
-    await this.db
+    await this.writeDb
       .update(users)
       .set({ mfaEnabled: true, updatedAt: new Date() })
       .where(eq(users.id, userId));
@@ -124,11 +133,12 @@ export class MfaService {
    * Verifica un codigo TOTP o un backup code.
    *
    * Pasos:
-   *  1. Descifra el secret.
-   *  2. Valida TOTP con `otplib`. Si coincide, incrementa
-   *     `lastUsedCounter`.
-   *  3. Si no, intenta consumir un backup code (verifica contra
-   *     cada hash, elimina el consumido).
+   *  1. Lee la credencial (READ).
+   *  2. Descifra el secret.
+   *  3. Valida TOTP con `otplib`. Si coincide, incrementa
+   *     `lastUsedCounter` (WRITE).
+   *  4. Si no, intenta consumir un backup code (verifica contra
+   *     cada hash, elimina el consumido via UPDATE).
    *
    * @param userId - UUID del usuario.
    * @param code - Codigo de 6 digitos (TOTP) o backup code.
@@ -154,7 +164,7 @@ export class MfaService {
     });
 
     if (isValidTotp) {
-      await this.db
+      await this.writeDb
         .update(mfaCredentials)
         .set({ lastUsedCounter: credential.lastUsedCounter + 1 })
         .where(eq(mfaCredentials.userId, userId));
@@ -180,10 +190,10 @@ export class MfaService {
    * @param userId - UUID del usuario.
    */
   async disable(userId: string): Promise<void> {
-    await this.db
+    await this.writeDb
       .delete(mfaCredentials)
       .where(eq(mfaCredentials.userId, userId));
-    await this.db
+    await this.writeDb
       .update(users)
       .set({ mfaEnabled: false, updatedAt: new Date() })
       .where(eq(users.id, userId));
@@ -191,10 +201,11 @@ export class MfaService {
 
   /**
    * Carga la credencial activa de un usuario. Privado.
+   * Usa el pool READ.
    * @param userId - UUID del usuario.
    */
   private async findCredential(userId: string) {
-    const [row] = await this.db
+    const [row] = await this.readDb
       .select()
       .from(mfaCredentials)
       .where(eq(mfaCredentials.userId, userId))
@@ -219,7 +230,7 @@ export class MfaService {
       const matches = await this.passwordService.verify(hashes[i], code);
       if (matches) {
         const remaining = hashes.filter((_, idx) => idx !== i);
-        await this.db
+        await this.writeDb
           .update(mfaCredentials)
           .set({ backupCodesHash: remaining })
           .where(eq(mfaCredentials.userId, userId));
