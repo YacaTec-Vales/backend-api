@@ -17,12 +17,14 @@
  */
 
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { apiReference } from '@scalar/nestjs-api-reference';
 import helmet from 'helmet';
 import compression from 'compression';
 import { AllExceptionsFilter } from './shared/filters/all-exceptions.filter';
 import { RequestLoggingInterceptor } from './shared/interceptors/request-logging.interceptor';
+import { ResponseEnvelopeInterceptor } from './shared/interceptors/response-envelope.interceptor';
 import type { AppConfig } from './config/app.config';
 
 export interface ConfigureApplicationOptions {
@@ -86,8 +88,12 @@ export function configureApplication(
     }),
   );
 
-  app.useGlobalFilters(new AllExceptionsFilter());
-  app.useGlobalInterceptors(new RequestLoggingInterceptor());
+  const reflector = app.get(Reflector);
+  app.useGlobalFilters(new AllExceptionsFilter(reflector));
+  app.useGlobalInterceptors(
+    new RequestLoggingInterceptor(),
+    new ResponseEnvelopeInterceptor(reflector),
+  );
 
   if (mountOpenApi) {
     const swaggerConfig = new DocumentBuilder()
@@ -107,6 +113,15 @@ export function configureApplication(
       .addTag(
         'Users',
         'Gestion administrativa de usuarios (CRUD, override de permisos)',
+      )
+      .addTag('Branches', 'Sucursales (matriz y regulares)')
+      .addTag('Coordinadores', 'Alta y consulta de coordinadores')
+      .addTag('Verificadores', 'Alta y consulta de verificadores')
+      .addTag('Cajeros', 'Alta y consulta de cajeros')
+      .addTag('Mail Admin', 'Pruebas y consulta operativa de correo')
+      .addTag(
+        'Distribuidores',
+        'Alta de distribuidoras desde solicitudes aprobadas (scaffold)',
       )
       .addTag('App', 'Smoke tests')
       .build();

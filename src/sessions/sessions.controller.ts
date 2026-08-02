@@ -19,7 +19,6 @@ import {
   Body,
   Controller,
   Delete,
-  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
@@ -35,7 +34,6 @@ import {
   ApiForbiddenResponse,
   ApiNoContentResponse,
   ApiNotFoundResponse,
-  ApiOkResponse,
   ApiOperation,
   ApiResponse,
   ApiTags,
@@ -49,6 +47,7 @@ import { CurrentUser } from '../shared/decorators/current-user.decorator';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';
 import { InvalidateUserSessionsDto } from '../auth/dto/invalidate-user-sessions.dto';
 import { SessionResponseDto } from '../auth/dto/auth-response.dto';
+import { ApiEnvelopeOkResponse } from '../shared/decorators/api-envelope-response.decorator';
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import { UsersService } from '../users/users.service';
 import { contextFromRequest } from '../shared/utils/request-context.util';
@@ -74,7 +73,11 @@ export class SessionsController {
       'Lista las sesiones activas del usuario autenticado, marcando ' +
       'cual es la actual.',
   })
-  @ApiOkResponse({ type: [SessionResponseDto] })
+  @ApiEnvelopeOkResponse({
+    message: 'Sesiones consultadas correctamente',
+    type: SessionResponseDto,
+    isArray: true,
+  })
   @ApiUnauthorizedResponse({
     description: 'AUTH.UNAUTHORIZED.',
     type: ErrorResponseDto,

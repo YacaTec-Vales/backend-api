@@ -24,6 +24,7 @@ import type { PermissionRepository } from '../../src/database/repositories/permi
 import type { AuditLogRepository } from '../../src/database/repositories/audit-log.repository';
 import type { RefreshTokenRepository } from '../../src/database/repositories/refresh-token.repository';
 import type { PasswordResetTokenRepository } from '../../src/database/repositories/password-reset-token.repository';
+import type { BranchesRepository } from '../../src/branches/branches.repository';
 
 /**
  * Executor "transaccional" reconocible que los mocks de
@@ -133,4 +134,22 @@ export function createPasswordResetTokenRepositoryMock(): jest.Mocked<PasswordRe
     markUsed: jest.fn(),
     invalidateForUser: jest.fn(),
   } as unknown as jest.Mocked<PasswordResetTokenRepository>;
+}
+
+/**
+ * Mock tipado de `BranchesRepository` (modulo branches).
+ */
+export function createBranchesRepositoryMock(): jest.Mocked<BranchesRepository> {
+  return {
+    findById: jest.fn(),
+    findActiveById: jest.fn(),
+    findMatriz: jest.fn(),
+    findByManagerUserId: jest.fn(),
+    list: jest.fn(),
+    insert: jest.fn(),
+    update: jest.fn(),
+    softDelete: jest.fn(),
+    setManagerUserId: jest.fn(),
+    countActiveUsers: jest.fn(),
+  } as unknown as jest.Mocked<BranchesRepository>;
 }

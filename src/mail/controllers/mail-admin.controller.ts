@@ -34,7 +34,6 @@ import {
 import {
   ApiBearerAuth,
   ApiForbiddenResponse,
-  ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
@@ -54,6 +53,8 @@ import {
 import { TemplateRendererService } from '../services/template-renderer.service';
 import { TEMPLATE_MANIFEST } from '../templates/manifest';
 import { EmailLogRepository } from '../../database/repositories/email-log.repository';
+import { ApiEnvelopeOkResponse } from '../../shared/decorators/api-envelope-response.decorator';
+import { ErrorResponseDto } from '../../shared/dto/error-response.dto';
 import { JwtAuthGuard } from '../../shared/guards/auth.guards';
 import { PermissionsGuard } from '../../shared/guards/permissions.guard';
 import { RequirePermissions } from '../../shared/decorators/permissions.decorator';
@@ -93,9 +94,18 @@ export class MailAdminController {
       'para QA y operacion; no valida que el destinatario exista ' +
       'en el sistema y no escribe en audit_log ni email_log.',
   })
-  @ApiOkResponse({ type: MailDeliveryResultDto })
-  @ApiUnauthorizedResponse({ description: 'AUTH.NOT_AUTHENTICATED' })
-  @ApiForbiddenResponse({ description: 'AUTH.PERMISSION_DENIED' })
+  @ApiEnvelopeOkResponse({
+    message: 'Prueba de correo procesada correctamente',
+    type: MailDeliveryResultDto,
+  })
+  @ApiUnauthorizedResponse({
+    description: 'AUTH.NOT_AUTHENTICATED',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description: 'AUTH.PERMISSION_DENIED',
+    type: ErrorResponseDto,
+  })
   async testSend(
     @Body() body: TestSendMailDto,
   ): Promise<MailDeliveryResultDto> {
@@ -119,9 +129,18 @@ export class MailAdminController {
       'Devuelve el contenido del manifest. Para descubrir que ' +
       'slugs existen antes de invocar `test-send`.',
   })
-  @ApiOkResponse({ type: ListMailTemplatesResponseDto })
-  @ApiUnauthorizedResponse({ description: 'AUTH.NOT_AUTHENTICATED' })
-  @ApiForbiddenResponse({ description: 'AUTH.PERMISSION_DENIED' })
+  @ApiEnvelopeOkResponse({
+    message: 'Plantillas de correo consultadas correctamente',
+    type: ListMailTemplatesResponseDto,
+  })
+  @ApiUnauthorizedResponse({
+    description: 'AUTH.NOT_AUTHENTICATED',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description: 'AUTH.PERMISSION_DENIED',
+    type: ErrorResponseDto,
+  })
   listTemplates(): ListMailTemplatesResponseDto {
     const items: MailTemplateItemDto[] = Object.entries(TEMPLATE_MANIFEST).map(
       ([key, entry]) => ({
@@ -151,9 +170,18 @@ export class MailAdminController {
       'Lista paginada de filas de app.email_log. Filtros opcionales: ' +
       'recipientUserId, templateKey, status.',
   })
-  @ApiOkResponse({ type: ListMailLogsResponseDto })
-  @ApiUnauthorizedResponse({ description: 'AUTH.NOT_AUTHENTICATED' })
-  @ApiForbiddenResponse({ description: 'AUTH.PERMISSION_DENIED' })
+  @ApiEnvelopeOkResponse({
+    message: 'Registros de correo consultados correctamente',
+    type: ListMailLogsResponseDto,
+  })
+  @ApiUnauthorizedResponse({
+    description: 'AUTH.NOT_AUTHENTICATED',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description: 'AUTH.PERMISSION_DENIED',
+    type: ErrorResponseDto,
+  })
   async listLogs(
     @Query() query: ListMailLogsQueryDto,
   ): Promise<ListMailLogsResponseDto> {

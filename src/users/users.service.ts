@@ -688,7 +688,7 @@ export class UsersService {
         message: 'usuario no encontrado',
       });
     }
-    this.assertActorCanManageTarget(actor, target);
+    this.assertActorCanManageTargetForDisasterRecovery(actor, target);
 
     let tempPassword: string;
     try {
@@ -780,7 +780,7 @@ export class UsersService {
         message: 'usuario no encontrado',
       });
     }
-    this.assertActorCanManageTarget(actor, target);
+    this.assertActorCanManageTargetForDisasterRecovery(actor, target);
 
     const auditCtx: AuditWriteContext = {
       actorUserId: actor.id,
@@ -1066,6 +1066,12 @@ export class UsersService {
   /**
    * Valida que el actor pueda administrar al usuario objetivo
    * (modificar, eliminar, resetear).
+   *
+   * Esta funcion es estricta: el `ADMINISTRADOR` no puede
+   * administrar a NADIE via los endpoints normales (PATCH, DELETE).
+   * Para disaster-recovery sobre el `GERENTE_GENERAL`
+   * (invalidar sesiones, resetear contrasena) usar
+   * `assertActorCanManageTargetForDisasterRecovery` en su lugar.
    */
   private assertActorCanManageTarget(
     actor: RequestUser,
@@ -1098,6 +1104,35 @@ export class UsersService {
         message: 'no puedes administrar usuarios con este rol',
       });
     }
+  }
+
+  /**
+   * Variante relajada para los endpoints de disaster-recovery:
+   *  - `POST /users/:id/invalidate-sessions`
+   *  - `POST /users/:id/reset-password`
+   *
+   * Reglas:
+   *  - `GERENTE_GENERAL` puede operar sobre cualquier objetivo.
+   *  - `ADMINISTRADOR` puede operar SOLO sobre un objetivo
+   *    `GERENTE_GENERAL` (la regla que el admin sea read-only
+   *    para el dominio se mantiene; solo se permite para
+   *    responder ante compromiso del GG).
+   *  - Cualquier otro par (actor, target) cae en la regla
+   *    `USERS.TARGET_ROLE_FORBIDDEN`.
+   */
+  private assertActorCanManageTargetForDisasterRecovery(
+    actor: RequestUser,
+    target: UserAdminRow,
+  ): void {
+    if (actor.role === 'GERENTE_GENERAL') return;
+    if (
+      actor.role === 'ADMINISTRADOR' &&
+      target.roleCode === 'GERENTE_GENERAL'
+    ) {
+      return;
+    }
+    // El resto se delega al helper estricto (re-usa sus reglas).
+    this.assertActorCanManageTarget(actor, target);
   }
 
   /**

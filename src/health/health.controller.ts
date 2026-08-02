@@ -14,7 +14,7 @@
  * @since 1.0.0
  */
 
-import { Controller, Get, Inject } from '@nestjs/common';
+import { Controller, Get, Inject, Logger } from '@nestjs/common';
 import {
   HealthCheck,
   HealthCheckService,
@@ -36,13 +36,17 @@ import {
 } from '../database/drizzle.provider';
 import { sql } from 'drizzle-orm';
 import { Public } from '../shared/decorators/public.decorator';
+import { SkipResponseEnvelope } from '../shared/decorators/response-envelope.decorator';
 
 /**
  * Controlador de health checks. Prefijo `health`.
  */
 @ApiTags('Health')
+@SkipResponseEnvelope()
 @Controller('health')
 export class HealthController {
+  private readonly logger = new Logger(HealthController.name);
+
   constructor(
     private readonly health: HealthCheckService,
     @Inject(DRIZZLE_WRITE) private readonly writeDb: DrizzleWrite,
@@ -107,7 +111,11 @@ export class HealthController {
       await this.writeDb.execute(sql`SELECT 1`);
       return { [key]: { status: 'up' } };
     } catch (err) {
-      throw new Error(`database write check failed: ${(err as Error).message}`);
+      this.logger.error(
+        'Fallo el health check del pool de escritura',
+        err instanceof Error ? err.stack : undefined,
+      );
+      throw new Error('database write check failed');
     }
   }
 
@@ -120,7 +128,11 @@ export class HealthController {
       await this.readDb.execute(sql`SELECT 1`);
       return { [key]: { status: 'up' } };
     } catch (err) {
-      throw new Error(`database read check failed: ${(err as Error).message}`);
+      this.logger.error(
+        'Fallo el health check del pool de lectura',
+        err instanceof Error ? err.stack : undefined,
+      );
+      throw new Error('database read check failed');
     }
   }
 }
