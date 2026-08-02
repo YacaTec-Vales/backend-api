@@ -29,7 +29,6 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
-  NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
@@ -38,10 +37,7 @@ import { BranchRepository } from '../database/repositories/branch.repository';
 import { PermissionRepository } from '../database/repositories/permission.repository';
 import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 import { RefreshTokenRepository } from '../database/repositories/refresh-token.repository';
-import {
-  PasswordService,
-  WeakPasswordError,
-} from '../auth/services/password.service';
+import { PasswordService } from '../auth/services/password.service';
 import { SessionService } from '../auth/services/session.service';
 import { PermissionCacheService } from '../auth/services/permission-cache.service';
 import { MailService } from '../mail/mail.service';
@@ -77,7 +73,6 @@ describe('UsersService', () => {
   let sessionService: jest.Mocked<SessionService>;
   let permissionCache: jest.Mocked<PermissionCacheService>;
   let mailService: jest.Mocked<MailService>;
-  let config: jest.Mocked<ConfigService>;
 
   /**
    * Construye el modulo de testing con todos los servicios
@@ -144,7 +139,6 @@ describe('UsersService', () => {
     sessionService = module.get(SessionService);
     permissionCache = module.get(PermissionCacheService);
     mailService = module.get(MailService);
-    config = module.get(ConfigService);
   });
 
   describe('listUsers', () => {
