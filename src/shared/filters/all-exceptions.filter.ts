@@ -85,7 +85,17 @@ export class AllExceptionsFilter implements ExceptionFilter {
       return;
     }
 
-    if (this.shouldSkipEnvelope(host)) {
+    let skipEnvelope = false;
+    try {
+      skipEnvelope = this.shouldSkipEnvelope(host);
+    } catch (metaErr) {
+      this.logger.warn(
+        `shouldSkipEnvelope falló al leer metadata: ${(metaErr as Error).message}; se continúa con envelope por defecto`,
+      );
+      skipEnvelope = false;
+    }
+
+    if (skipEnvelope) {
       this.respondWithoutEnvelope(exception, request, response);
       return;
     }
