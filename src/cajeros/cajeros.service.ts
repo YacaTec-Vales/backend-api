@@ -137,7 +137,8 @@ export class CajerosService {
       if (!requestedBranchId) {
         throw new UnprocessableEntityException({
           code: 'CAJERO.BRANCH_REQUIRED',
-          message: 'la sucursal es obligatoria cuando el actor es gerente general',
+          message:
+            'la sucursal es obligatoria cuando el actor es gerente general',
         });
       }
       const branch = await this.branchRepo.findActiveById(requestedBranchId);
@@ -172,8 +173,11 @@ export class CajerosService {
 
   private resolveReadScope(
     actor: RequestUser,
-    branchId: string | null,
-  ): { mode: 'all' } | { mode: 'branch'; branchId: string } | { mode: 'self'; userId: string } {
+    branchId: string | null, // eslint-disable-line @typescript-eslint/no-unused-vars -- reservado para filtros futuros por multi-sucursal
+  ):
+    | { mode: 'all' }
+    | { mode: 'branch'; branchId: string }
+    | { mode: 'self'; userId: string } {
     if (actor.role === 'GERENTE_GENERAL' || actor.role === 'ADMINISTRADOR') {
       return { mode: 'all' };
     }

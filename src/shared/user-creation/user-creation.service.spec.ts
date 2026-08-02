@@ -57,7 +57,9 @@ describe('UserCreationService', () => {
           provide: ConfigService,
           useValue: {
             get: jest.fn((key: string) =>
-              key === 'app.appPublicUrl' ? 'https://app.yacatec.demo' : undefined,
+              key === 'app.appPublicUrl'
+                ? 'https://app.yacatec.demo'
+                : undefined,
             ),
           },
         },

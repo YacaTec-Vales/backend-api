@@ -15,7 +15,7 @@ describe('DistribuidoresService (SCAFFOLD)', () => {
     await expect(
       service.createFromSolicitud(
         { id: 'gg-1', role: 'GERENTE_GENERAL', branchId: null },
-        { solicitudId: 'sol-1' } as never,
+        { solicitudId: 'sol-1' },
         { ipAddress: '', userAgent: '', device: '' },
       ),
     ).rejects.toBeInstanceOf(NotImplementedException);

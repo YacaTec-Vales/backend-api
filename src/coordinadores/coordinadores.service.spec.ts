@@ -73,7 +73,7 @@ describe('CoordinadoresService', () => {
           lastNameMaternal: 'Garcia',
           email: 'ana@yacatec.demo',
           branchId: 'suc-1',
-        } as never,
+        },
         { ipAddress: '', userAgent: '', device: '' },
       );
       expect(userCreation.createInternalUser).toHaveBeenCalledWith(
@@ -93,7 +93,7 @@ describe('CoordinadoresService', () => {
             lastNamePaternal: 'B',
             lastNameMaternal: 'C',
             email: 'a@yacatec.demo',
-          } as never,
+          },
           { ipAddress: '', userAgent: '', device: '' },
         ),
       ).rejects.toBeInstanceOf(UnprocessableEntityException);
@@ -110,7 +110,7 @@ describe('CoordinadoresService', () => {
           lastNamePaternal: 'B',
           lastNameMaternal: 'C',
           email: 'a@yacatec.demo',
-        } as never,
+        },
         { ipAddress: '', userAgent: '', device: '' },
       );
       expect(userCreation.createInternalUser).toHaveBeenCalledWith(
@@ -131,7 +131,7 @@ describe('CoordinadoresService', () => {
             lastNameMaternal: 'C',
             email: 'a@yacatec.demo',
             branchId: 'otra-sucursal',
-          } as never,
+          },
           { ipAddress: '', userAgent: '', device: '' },
         ),
       ).rejects.toMatchObject({
@@ -149,7 +149,7 @@ describe('CoordinadoresService', () => {
             lastNameMaternal: 'C',
             email: 'a@yacatec.demo',
             branchId: 'suc',
-          } as never,
+          },
           { ipAddress: '', userAgent: '', device: '' },
         ),
       ).rejects.toBeInstanceOf(ForbiddenException);
@@ -162,10 +162,7 @@ describe('CoordinadoresService', () => {
         items: [],
         total: 0,
       });
-      await service.list(
-        requestUserFactory({ role: 'GERENTE_GENERAL' }),
-        {} as never,
-      );
+      await service.list(requestUserFactory({ role: 'GERENTE_GENERAL' }), {});
       expect(userRepo.listWithLastSessionInfo).toHaveBeenCalledWith(
         expect.objectContaining({ roleCode: 'COORDINADOR' }),
         expect.objectContaining({ mode: 'all' }),
@@ -182,7 +179,7 @@ describe('CoordinadoresService', () => {
           role: 'GERENTE_SUCURSAL',
           branchId: 'mi-sucursal',
         }),
-        {} as never,
+        {},
       );
       expect(userRepo.listWithLastSessionInfo).toHaveBeenCalledWith(
         expect.objectContaining({ branchId: 'mi-sucursal' }),

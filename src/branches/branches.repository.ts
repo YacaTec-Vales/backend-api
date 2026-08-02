@@ -134,7 +134,9 @@ export class BranchesRepository {
    * @param managerUserId - UUID del gerente.
    * @returns Entidad o `null`.
    */
-  async findByManagerUserId(managerUserId: string): Promise<BranchEntity | null> {
+  async findByManagerUserId(
+    managerUserId: string,
+  ): Promise<BranchEntity | null> {
     const [row] = await this.readDb
       .select()
       .from(branches)
@@ -277,12 +279,15 @@ export class BranchesRepository {
       isActive?: boolean;
     },
   ): Promise<BranchEntity | null> {
-    const set: Partial<typeof branches.$inferInsert> = { updatedAt: new Date() };
+    const set: Partial<typeof branches.$inferInsert> = {
+      updatedAt: new Date(),
+    };
     if (patch.name !== undefined) set.name = patch.name;
     if (patch.branchType !== undefined) set.branchType = patch.branchType;
     if (patch.esMatriz !== undefined) set.esMatriz = patch.esMatriz;
     if (patch.address !== undefined) set.address = patch.address;
-    if (patch.managerUserId !== undefined) set.managerUserId = patch.managerUserId;
+    if (patch.managerUserId !== undefined)
+      set.managerUserId = patch.managerUserId;
     if (patch.isActive !== undefined) set.isActive = patch.isActive;
 
     const [row] = await this.writeDb

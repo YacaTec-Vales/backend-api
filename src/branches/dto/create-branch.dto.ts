@@ -64,7 +64,10 @@ export class CreateBranchDto {
   @IsBoolean()
   esMatriz?: boolean;
 
-  @ApiPropertyOptional({ example: 'Av. Norte 123, Col. Centro', maxLength: 255 })
+  @ApiPropertyOptional({
+    example: 'Av. Norte 123, Col. Centro',
+    maxLength: 255,
+  })
   @IsOptional()
   @IsString()
   @MaxLength(255)

@@ -2,11 +2,7 @@
  * @fileoverview Tests unitarios del helper `parseArgs`/`requireArgs`.
  */
 
-import {
-  parseArgs,
-  requireArgs,
-  SeedCliError,
-} from './seed-helpers';
+import { parseArgs, requireArgs, SeedCliError } from './seed-helpers';
 
 describe('seed-helpers.parseArgs', () => {
   it('parsea flags --key=value', () => {

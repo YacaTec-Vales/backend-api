@@ -49,7 +49,7 @@ describe('CajerosService', () => {
         lastNameMaternal: 'C',
         email: 'a@yacatec.demo',
         branchId: 'suc-1',
-      } as never,
+      },
       { ipAddress: '', userAgent: '', device: '' },
     );
     expect(userCreation.createInternalUser).toHaveBeenCalledWith(
@@ -68,7 +68,7 @@ describe('CajerosService', () => {
         lastNamePaternal: 'B',
         lastNameMaternal: 'C',
         email: 'a@yacatec.demo',
-      } as never,
+      },
       { ipAddress: '', userAgent: '', device: '' },
     );
     expect(userCreation.createInternalUser).toHaveBeenCalledWith(
@@ -86,7 +86,7 @@ describe('CajerosService', () => {
           lastNameMaternal: 'C',
           email: 'a@yacatec.demo',
           branchId: 'suc',
-        } as never,
+        },
         { ipAddress: '', userAgent: '', device: '' },
       ),
     ).rejects.toBeInstanceOf(ForbiddenException);

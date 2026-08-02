@@ -214,8 +214,7 @@ export class UserCreationService {
       action: mailResult.sent
         ? 'USER.WELCOME_EMAIL_SENT'
         : 'USER.WELCOME_EMAIL_FAILED',
-      actorUserId:
-        input.actorUserId ?? '00000000-0000-0000-0000-000000000000',
+      actorUserId: input.actorUserId ?? '00000000-0000-0000-0000-000000000000',
       targetUserId: entity.id,
       tableName: 'user',
       recordId: entity.id,

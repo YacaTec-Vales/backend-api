@@ -14,10 +14,16 @@ import { ApiProperty } from '@nestjs/swagger';
  * estado del envio del correo de bienvenida.
  */
 export class DistribuidorResponseDto {
-  @ApiProperty({ format: 'uuid', description: 'UUID del usuario DISTRIBUIDOR creado.' })
+  @ApiProperty({
+    format: 'uuid',
+    description: 'UUID del usuario DISTRIBUIDOR creado.',
+  })
   userId: string;
 
-  @ApiProperty({ format: 'uuid', description: 'UUID de la entidad DISTRIBUTOR asociada.' })
+  @ApiProperty({
+    format: 'uuid',
+    description: 'UUID de la entidad DISTRIBUTOR asociada.',
+  })
   distributorId: string;
 
   @ApiProperty({ description: 'Indica si el correo de bienvenida se envio.' })

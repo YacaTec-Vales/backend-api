@@ -103,7 +103,11 @@ describe('BranchesService', () => {
       await expect(
         service.create(
           requestUserFactory({ role: 'GERENTE_GENERAL' }),
-          { name: 'Otra Matriz', branchType: 'MATRIZ', esMatriz: true } as never,
+          {
+            name: 'Otra Matriz',
+            branchType: 'MATRIZ',
+            esMatriz: true,
+          } as never,
           { ipAddress: '', userAgent: '', device: '' },
         ),
       ).rejects.toBeInstanceOf(ConflictException);
@@ -255,7 +259,7 @@ describe('BranchesService', () => {
         createdAt: new Date(),
         updatedAt: new Date(),
       } as never);
-      const result = await service.list(actor, {} as never);
+      const result = await service.list(actor, {});
       expect(result.data).toHaveLength(1);
       expect(result.data[0].id).toBe('mi-sucursal');
       expect(branchesRepo.list).not.toHaveBeenCalled();
