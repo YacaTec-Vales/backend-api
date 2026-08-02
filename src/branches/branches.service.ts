@@ -35,6 +35,7 @@ import {
   type BranchListFilters,
 } from './branches.repository';
 import type { UserType } from '../shared/types/auth.types';
+import { toBranchResponseDto } from '../shared/mappers';
 import type { AuditWriteContext } from '../shared/types/audit.types';
 import type { RequestUser } from '../shared/guards/auth.guards';
 import type { CreateBranchDto } from './dto/create-branch.dto';
@@ -141,10 +142,7 @@ export class BranchesService {
         message: 'sucursal no encontrada',
       });
     }
-    if (
-      actor.role === 'GERENTE_SUCURSAL' &&
-      actor.branchId !== branchId
-    ) {
+    if (actor.role === 'GERENTE_SUCURSAL' && actor.branchId !== branchId) {
       throw new ForbiddenException({
         code: 'BRANCH.SCOPE_FORBIDDEN',
         message: 'no puedes ver sucursales que no son la tuya',
@@ -273,10 +271,7 @@ export class BranchesService {
       if (dto.managerUserId === null) {
         managerPatch = null;
       } else {
-        managerPatch = await this.validateManager(
-          dto.managerUserId,
-          branchId,
-        );
+        managerPatch = await this.validateManager(dto.managerUserId, branchId);
       }
     }
 
@@ -430,9 +425,8 @@ export class BranchesService {
         message: 'el usuario asignado debe tener rol GERENTE_SUCURSAL',
       });
     }
-    const otherBranch = await this.branchesRepo.findByManagerUserId(
-      managerUserId,
-    );
+    const otherBranch =
+      await this.branchesRepo.findByManagerUserId(managerUserId);
     if (otherBranch && otherBranch.id !== excludeBranchId) {
       throw new ConflictException({
         code: 'BRANCH.MANAGER_ALREADY_ASSIGNED',
@@ -449,12 +443,14 @@ export class BranchesService {
    */
   private async fetchManager(
     managerUserId: string | null,
-  ): Promise<BranchAdminRow['managerFirstName'] extends string
-    ? { firstName: string; lastNamePaternal: string; email: string }
-    : null> {
-    if (!managerUserId) return null as never;
+  ): Promise<
+    BranchAdminRow['managerFirstName'] extends string
+      ? { firstName: string; lastNamePaternal: string; email: string }
+      : null
+  > {
+    if (!managerUserId) return null;
     const user = await this.userRepo.findById(managerUserId);
-    if (!user) return null as never;
+    if (!user) return null;
     return {
       firstName: user.firstName,
       lastNamePaternal: user.lastNamePaternal,
@@ -468,12 +464,16 @@ export class BranchesService {
    */
   private toAdminRow(
     entity: Awaited<ReturnType<BranchesRepository['findById']>>,
-    manager: { firstName: string; lastNamePaternal: string; email: string } | null,
+    manager: {
+      firstName: string;
+      lastNamePaternal: string;
+      email: string;
+    } | null,
   ): BranchAdminRow {
     return {
       id: entity!.id,
       name: entity!.name,
-      branchType: entity!.branchType as 'MATRIZ' | 'SUCURSAL',
+      branchType: entity!.branchType,
       esMatriz: entity!.esMatriz,
       address: entity!.address,
       managerUserId: entity!.managerUserId,
@@ -488,27 +488,11 @@ export class BranchesService {
 
   /**
    * Proyeccion de `BranchAdminRow` a `BranchResponseDto`.
+   * Delegada al mapper central en `src/shared/mappers/branch.mapper.ts`
+   * para centralizar la conversion de fechas y la composicion
+   * del sub-objeto `manager`.
    */
   private toBranchResponse(row: BranchAdminRow): BranchResponseDto {
-    return {
-      id: row.id,
-      name: row.name,
-      branchType: row.branchType,
-      esMatriz: row.esMatriz,
-      address: row.address,
-      managerUserId: row.managerUserId,
-      manager:
-        row.managerUserId && row.managerFirstName && row.managerLastNamePaternal && row.managerEmail
-          ? {
-              id: row.managerUserId,
-              firstName: row.managerFirstName,
-              lastNamePaternal: row.managerLastNamePaternal,
-              email: row.managerEmail,
-            }
-          : null,
-      isActive: row.isActive,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-    };
+    return toBranchResponseDto(row);
   }
 }
