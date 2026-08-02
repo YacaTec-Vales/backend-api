@@ -1,0 +1,84 @@
+name: PR Lint
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  pr-title:
+    name: Validar titulo del PR (Conventional Commits)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validar convencion de commits
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+
+          title="$PR_TITLE"
+
+          # Regla 7: maximo 72 caracteres
+          if (( ${#title} > 72 )); then
+            echo "::error::El titulo excede 72 caracteres (${#title}). Reducelo."
+            exit 1
+          fi
+
+          # Formato: <tipo>(<scope>): <descripcion>  |  <chore>: <descripcion>
+          if ! [[ "$title" =~ ^[a-z]+(\([a-z0-9-]+\))?: ]]; then
+            echo "::error::El titulo debe seguir 'tipo(scope): descripcion'. Ej: feat(auth): agregar autenticacion de dos factores"
+            exit 1
+          fi
+
+          tipo="${title%%:*}"
+          tipo="${tipo%%(*}"
+
+          # Tipos permitidos (seccion 2 del documento de convenciones)
+          case "$tipo" in
+            feat|fix|docs|refactor|chore|style|test|ci) ;;
+            *) echo "::error::Tipo '$tipo' no permitido. Tipos: feat, fix, docs, refactor, chore, style, test, ci."; exit 1 ;;
+          esac
+
+          # Regla 8: scope obligatorio salvo chore
+          if [[ "$tipo" != "chore" ]] && ! [[ "$title" =~ ^[a-z]+\([a-z0-9-]+\): ]]; then
+            echo "::error::Falta el scope. Formato: tipo(scope): descripcion. (Salvo chore)."
+            exit 1
+          fi
+
+          # Regla 2: scope en minusculas, sin acentos, sin caracteres raros
+          if [[ "$title" =~ ^[a-z]+\([^a-z0-9-] ]]; then
+            echo "::error::El scope debe ir en minusculas, sin acentos ni caracteres especiales. Ej: feat(auth): ..."
+            exit 1
+          fi
+
+          # Descripcion
+          desc="${title#*: }"
+
+          # Regla 2: descripcion en minusculas (sin mayuscula inicial)
+          if [[ "$desc" =~ ^[A-ZÁÉÍÓÚÜÑ] ]]; then
+            echo "::error::La descripcion debe ir en minusculas. Ej: 'agregar ...' no 'Agregar ...'."
+            exit 1
+          fi
+
+          # Regla 4: sin punto final
+          if [[ "$desc" =~ \.$ ]]; then
+            echo "::error::La descripcion no debe terminar en punto final."
+            exit 1
+          fi
+
+          # Regla: sin emojis
+          if printf '%s' "$desc" | grep -Pq '[\x{1F000}-\x{1FAFF}]|[\x{2600}-\x{27BF}]|\x{2728}'; then
+            echo "::error::El titulo no debe contener emojis."
+            exit 1
+          fi
+
+          # Cuerpo obligatorio (plantilla .github/PULL_REQUEST_TEMPLATE.md)
+          if [[ -z "$PR_BODY" || "$PR_BODY" == "null" ]]; then
+            echo "::error::El cuerpo del PR esta vacio. Usa la plantilla .github/PULL_REQUEST_TEMPLATE.md."
+            exit 1
+          fi
+
+          echo "OK: $title"
