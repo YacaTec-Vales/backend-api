@@ -20,7 +20,7 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import {
   DRIZZLE_WRITE,
   DRIZZLE_READ,
@@ -29,6 +29,7 @@ import {
 } from '../drizzle.provider';
 import {
   users,
+  refreshTokens,
   type UserEntity,
   type UserStatus,
   type UserType,
@@ -421,24 +422,7 @@ export class UserRepository {
           issuedAt: string;
           lastUsedAt: string | null;
           expiresAt: string;
-        } | null>`(
-          (
-            SELECT jsonb_build_object(
-              'device', rt.device,
-              'ipAddress', host(rt.ip_address),
-              'userAgent', rt.user_agent,
-              'issuedAt', to_char(rt.issued_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
-              'lastUsedAt', to_char(rt.last_used_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
-              'expiresAt', to_char(rt.expires_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
-            )
-              FROM app.refresh_token rt
-             WHERE rt.user_id = ${users.id}
-               AND rt.revoked_at IS NULL
-               AND rt.expires_at > now()
-             ORDER BY COALESCE(rt.last_used_at, rt.issued_at) DESC
-             LIMIT 1
-          )
-        `,
+        } | null>`NULL`,
       })
       .from(users)
       .where(where);
@@ -448,6 +432,54 @@ export class UserRepository {
       .orderBy(orderFn(orderColumn), asc(users.id))
       .limit(filters.limit)
       .offset((filters.page - 1) * filters.limit);
+
+    // Enriquecer con `lastSession` (1 sola query para todos los IDs,
+    // evita N+1). ORDER BY user_id + ORDER BY COALESCE(last_used_at, issued_at) DESC
+    // devuelve la sesion mas reciente por usuario; el Map en JS conserva
+    // solo la primera fila por userId.
+    const userIds = rows.map((r) => r.id);
+    const lastSessionsByUserId = new Map<
+      string,
+      NonNullable<(typeof rows)[number]['lastSession']>
+    >();
+    if (userIds.length > 0) {
+      const lastSessionRows = await this.readDb
+        .select({
+          userId: sql<string>`${refreshTokens.userId}::text`,
+          device: refreshTokens.device,
+          ipAddress: sql<string>`host(${refreshTokens.ipAddress})::text`,
+          userAgent: refreshTokens.userAgent,
+          issuedAt: refreshTokens.issuedAt,
+          lastUsedAt: refreshTokens.lastUsedAt,
+          expiresAt: refreshTokens.expiresAt,
+        })
+        .from(refreshTokens)
+        .where(
+          and(
+            inArray(refreshTokens.userId, userIds),
+            isNull(refreshTokens.revokedAt),
+            sql`${refreshTokens.expiresAt} > now()`,
+          ),
+        )
+        .orderBy(
+          refreshTokens.userId,
+          desc(
+            sql`coalesce(${refreshTokens.lastUsedAt}, ${refreshTokens.issuedAt})`,
+          ),
+        );
+      for (const row of lastSessionRows) {
+        if (!lastSessionsByUserId.has(row.userId)) {
+          lastSessionsByUserId.set(row.userId, {
+            device: row.device,
+            ipAddress: row.ipAddress,
+            userAgent: row.userAgent,
+            issuedAt: row.issuedAt.toISOString(),
+            lastUsedAt: row.lastUsedAt ? row.lastUsedAt.toISOString() : null,
+            expiresAt: row.expiresAt.toISOString(),
+          });
+        }
+      }
+    }
 
     const [{ total }] = await this.readDb
       .select({ total: sql<number>`cast(count(*) as int)` })
@@ -471,17 +503,18 @@ export class UserRepository {
       lastLoginAt: r.lastLoginAt,
       createdAt: r.createdAt,
       updatedAt: r.updatedAt,
-      lastSession: r.lastSession
-        ? {
-            device: r.lastSession.device,
-            ipAddress: r.lastSession.ipAddress,
-            userAgent: r.lastSession.userAgent,
-            issuedAt: new Date(r.lastSession.issuedAt),
-            lastUsedAt: r.lastSession.lastUsedAt
-              ? new Date(r.lastSession.lastUsedAt)
-              : null,
-            expiresAt: new Date(r.lastSession.expiresAt),
-          }
+      lastSession: lastSessionsByUserId.has(r.id)
+        ? (() => {
+            const s = lastSessionsByUserId.get(r.id)!;
+            return {
+              device: s.device,
+              ipAddress: s.ipAddress,
+              userAgent: s.userAgent,
+              issuedAt: new Date(s.issuedAt),
+              lastUsedAt: s.lastUsedAt ? new Date(s.lastUsedAt) : null,
+              expiresAt: new Date(s.expiresAt),
+            };
+          })()
         : null,
     }));
 
@@ -558,8 +591,16 @@ export class UserRepository {
     username: string | null,
     excludeUserId?: string,
   ): Promise<{ emailExists: boolean; usernameExists: boolean }> {
-    const notEqual = (col: typeof users.id, val: string) =>
-      excludeUserId ? sql`${col} <> ${excludeUserId}` : sql`true`;
+    // `notEqual` recibe el `excludeUserId` como argumento y lo usa
+    // para comparar contra la columna correspondiente; si no hay
+    // exclusion, retorna `true` (no filtra). La firma toma el id
+    // a excluir aunque internamente use el `col` para la comparacion
+    // con la columna; asi el call site es explicito y la regla de
+    // exclusion es visible en el codigo.
+    const notEqual = (col: typeof users.id, excludeId: string) =>
+      excludeId && excludeId.length > 0
+        ? sql`${col} <> ${excludeId}`
+        : sql`true`;
 
     const emailRow = await this.readDb
       .select({ id: users.id })
@@ -671,11 +712,15 @@ export class UserRepository {
       patch.branchId !== undefined ||
       patch.userStatus !== undefined
     ) {
-      // `set` no admite SQL crudo directamente; usamos el cast a
-      // `any` solo en este punto. La alternativa (escribir la
-      // expresion `+1` con `sql.number`) no aporta claridad.
+      // El Partial<typeof users.$inferInsert> tipa tokenVersion como
+      // number, pero aqui necesitamos una expresion SQL atomica
+      // (`tokenVersion + 1`) que Drizzle no soporta en $inferInsert.
+      // El cast a `any` es local y explicito; la alternativa seria
+      // partir la operacion en UPDATE + SELECT atómico, que pierde
+      // la garantia de atomicidad del UPDATE actual.
 
-      (set as any).tokenVersion = sql`${users.tokenVersion} + 1`;
+      (set as { tokenVersion?: unknown }).tokenVersion =
+        sql`${users.tokenVersion} + 1`;
     }
 
     const [row] = await this.writeDb
