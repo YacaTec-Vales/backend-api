@@ -58,10 +58,10 @@ export class BranchResponseDto {
   isActive: boolean;
 
   @ApiProperty({ format: 'date-time' })
-  createdAt: Date;
+  createdAt: string;
 
   @ApiProperty({ format: 'date-time' })
-  updatedAt: Date;
+  updatedAt: string;
 }
 
 /**

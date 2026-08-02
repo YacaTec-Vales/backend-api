@@ -27,13 +27,13 @@ export class LastSessionInfoDto {
   userAgent: string | null;
 
   @ApiProperty({ format: 'date-time' })
-  issuedAt: Date;
+  issuedAt: string;
 
   @ApiProperty({ format: 'date-time', nullable: true })
-  lastUsedAt: Date | null;
+  lastUsedAt: string | null;
 
   @ApiProperty({ format: 'date-time' })
-  expiresAt: Date;
+  expiresAt: string;
 }
 
 /**
@@ -81,16 +81,16 @@ export class UserResponseDto {
   mfaEnabled: boolean;
 
   @ApiProperty({ format: 'date-time', nullable: true })
-  lastLoginAt: Date | null;
+  lastLoginAt: string | null;
 
   @ApiProperty({ type: LastSessionInfoDto, nullable: true })
   lastSession: LastSessionInfoDto | null;
 
   @ApiProperty({ format: 'date-time' })
-  createdAt: Date;
+  createdAt: string;
 
   @ApiProperty({ format: 'date-time' })
-  updatedAt: Date;
+  updatedAt: string;
 }
 
 /**
@@ -179,10 +179,10 @@ export class PermissionOverrideResponseDto {
   authorizationId: string | null;
 
   @ApiProperty({ format: 'date-time' })
-  validFrom: Date;
+  validFrom: string;
 
   @ApiProperty({ format: 'date-time', nullable: true })
-  validUntil: Date | null;
+  validUntil: string | null;
 
   @ApiProperty({ nullable: true })
   reason: string | null;
@@ -191,7 +191,7 @@ export class PermissionOverrideResponseDto {
   isActive: boolean;
 
   @ApiProperty({ format: 'date-time' })
-  createdAt: Date;
+  createdAt: string;
 
   @ApiPropertyOptional({
     description:

@@ -49,16 +49,16 @@ export class InternalUserResponseDto {
   mfaEnabled: boolean;
 
   @ApiProperty({ format: 'date-time', nullable: true })
-  lastLoginAt: Date | null;
+  lastLoginAt: string | null;
 
   @ApiProperty({ format: 'uuid', nullable: true })
   branchId: string | null;
 
   @ApiProperty({ format: 'date-time' })
-  createdAt: Date;
+  createdAt: string;
 
   @ApiProperty({ format: 'date-time' })
-  updatedAt: Date;
+  updatedAt: string;
 }
 
 /** Metadata de paginacion de personal interno. */
