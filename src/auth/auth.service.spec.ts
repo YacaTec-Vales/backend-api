@@ -37,7 +37,6 @@ import {
 import { TokenService } from './services/token.service';
 import { SessionService } from './services/session.service';
 import { PermissionCacheService } from './services/permission-cache.service';
-import { AUTH_CONFIG } from '../database/tokens';
 import {
   createRefreshTokenRepositoryMock,
   createUserRepositoryMock,

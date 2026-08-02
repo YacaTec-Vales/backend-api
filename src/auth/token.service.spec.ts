@@ -15,7 +15,6 @@
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { TokenService } from './services/token.service';
-import { AUTH_CONFIG } from '../database/tokens';
 import { jwtPayloadFactory } from '../../test/factories/auth.factory';
 
 describe('TokenService', () => {
