@@ -63,12 +63,13 @@ export type NotificationEventCode =
  * cualquier evento nuevo requiera editar este archivo (visible en
  * code review) y asi no se "cuele" sin su plantilla HBS.
  */
-const EVENT_TO_TEMPLATE: Readonly<Record<NotificationEventCode, TemplateKey>> = {
-  'USER.PASSWORD_RESET_REQUESTED': 'reset-password',
-  'USER.SESSIONS_REVOKED': 'session-revoked',
-  'USER.WELCOME': 'user-welcome',
-  'USER.PASSWORD_RESET_BY_ADMIN': 'user-password-reset-by-admin',
-};
+const EVENT_TO_TEMPLATE: Readonly<Record<NotificationEventCode, TemplateKey>> =
+  {
+    'USER.PASSWORD_RESET_REQUESTED': 'reset-password',
+    'USER.SESSIONS_REVOKED': 'session-revoked',
+    'USER.WELCOME': 'user-welcome',
+    'USER.PASSWORD_RESET_BY_ADMIN': 'user-password-reset-by-admin',
+  };
 
 /**
  * Dispatcher tipado. Resuelve destinatario + plantilla y delega

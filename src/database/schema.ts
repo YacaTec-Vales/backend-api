@@ -381,22 +381,17 @@ export const emailLog = appSchema.table('email_log', {
     .default(sql`gen_random_uuid()`),
   templateKey: text('template_key').notNull(),
   eventCode: text('event_code'),
-  recipientUserId: uuid('recipient_user_id').references(
-    () => users.id,
-    { onDelete: 'set null' },
-  ),
+  recipientUserId: uuid('recipient_user_id').references(() => users.id, {
+    onDelete: 'set null',
+  }),
   recipientEmail: text('recipient_email').notNull(),
   subject: text('subject').notNull(),
-  status: text('status')
-    .$type<'sent' | 'failed'>()
-    .notNull(),
+  status: text('status').$type<'sent' | 'failed'>().notNull(),
   errorMessage: text('error_message'),
   metadata: jsonb('metadata')
     .notNull()
     .default(sql`'{}'::jsonb`),
-  sentAt: timestamp('sent_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+  sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
 // Tipos inferidos para uso por repositorios y servicios.

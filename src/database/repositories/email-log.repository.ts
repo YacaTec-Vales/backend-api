@@ -63,10 +63,7 @@ export class EmailLogRepository {
    * @returns Fila insertada.
    */
   async create(data: NewEmailLogEntity): Promise<EmailLogEntity> {
-    const [row] = await this.writeDb
-      .insert(emailLog)
-      .values(data)
-      .returning();
+    const [row] = await this.writeDb.insert(emailLog).values(data).returning();
     return row;
   }
 
