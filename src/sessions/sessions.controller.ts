@@ -47,6 +47,7 @@ import { CurrentUser } from '../shared/decorators/current-user.decorator';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';
 import { InvalidateUserSessionsDto } from '../auth/dto/invalidate-user-sessions.dto';
 import { SessionResponseDto } from '../auth/dto/auth-response.dto';
+import { toSessionResponseDto } from '../shared/mappers';
 import { ApiEnvelopeOkResponse } from '../shared/decorators/api-envelope-response.decorator';
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import { UsersService } from '../users/users.service';
@@ -85,7 +86,11 @@ export class SessionsController {
   async listMySessions(
     @CurrentUser() user: RequestUser,
   ): Promise<SessionResponseDto[]> {
-    return this.sessionsService.listForUser(user.id, user.sessionId);
+    const items = await this.sessionsService.listForUser(
+      user.id,
+      user.sessionId,
+    );
+    return items.map((item) => toSessionResponseDto(item));
   }
 
   @Delete('sessions/:id')
