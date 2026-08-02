@@ -107,7 +107,6 @@ jobs:
         run: echo "Las migraciones las aplica el equipo de infraestructura. Aplicar manualmente antes de habilitar este job."
       - name: Integration tests
         run: npm run test:integration
-        continue-on-error: true
 
   e2e:
     name: E2E tests
@@ -153,7 +152,6 @@ jobs:
         run: npm ci
       - name: E2E tests
         run: npm run test:e2e
-        continue-on-error: true
 
   ci-required:
     name: CI Required (agregador)
