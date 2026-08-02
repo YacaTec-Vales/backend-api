@@ -1,18 +1,18 @@
 /**
  * @fileoverview Servicio de envio de correos transaccionales.
  *
- * Wrapper sobre `@nestjs-modules/mailer` con plantillas Handlebars:
- *  - `reset-password` — recuperacion de contrasena.
- *  - `session-revoked` — notificacion de cierre de sesiones.
- *  - `user-welcome` — bienvenida con contrasena temporal tras alta
- *    administrativa.
- *  - `user-password-reset-by-admin` — restablecimiento con
- *    contrasena temporal tras reset administrativo.
+ * Fachada publica del modulo `mail`. Conserva las 4 firmas
+ * historicas (`sendResetPassword`, `sendSessionRevoked`,
+ * `sendUserWelcome`, `sendUserPasswordResetByAdmin`) para no
+ * romper a los consumidores existentes (`PasswordResetService`,
+ * `UsersService`). Internamente delega al
+ * `TemplateRendererService`, que es el unico punto que toca
+ * `MailerService.sendMail`.
  *
  * Si el envio SMTP falla, el error se loggea pero NO se
  * re-lanza. Esto es una decision consciente para no bloquear
  * flujos de recuperacion o creacion por problemas de mensajeria;
- * los metodos del modulo users devuelven `{ sent: false }` para
+ * los metodos del modulo users reciben `{ sent: false }` para
  * que el caller pueda reportarlo al operador sin propagar el 5xx.
  *
  * @module mail
@@ -21,7 +21,7 @@
  */
 
 import { Injectable, Logger } from '@nestjs/common';
-import { MailerService } from '@nestjs-modules/mailer';
+import { TemplateRendererService } from './services/template-renderer.service';
 
 /**
  * Parametros para enviar la plantilla de recuperacion.
@@ -72,10 +72,13 @@ export interface UserPasswordResetByAdminEmailParams {
  * Resultado del envio de un correo. `sent: false` indica que
  * fallo el SMTP pero el caller ya grabo el commit; debe reportarlo
  * al operador sin propagar el error.
+ *
+ * Alias del DTO publico `MailDeliveryResultDto` para preservar
+ * la firma historica de los consumidores.
  */
-export interface MailDeliveryResult {
+export type MailDeliveryResult = {
   sent: boolean;
-}
+};
 
 /**
  * Servicio de mail. Inyectado en `PasswordResetService` y
@@ -85,7 +88,7 @@ export interface MailDeliveryResult {
 export class MailService {
   private readonly logger = new Logger(MailService.name);
 
-  constructor(private readonly mailer: MailerService) {}
+  constructor(private readonly renderer: TemplateRendererService) {}
 
   /**
    * Envia el correo de recuperacion de contrasena.
@@ -93,23 +96,11 @@ export class MailService {
    * @param params - Datos del correo.
    */
   async sendResetPassword(params: ResetPasswordEmailParams): Promise<void> {
-    try {
-      await this.mailer.sendMail({
-        to: params.to,
-        subject: 'Restablece tu contrasena - Mis Vales',
-        template: 'reset-password',
-        context: {
-          displayName: params.displayName,
-          resetUrl: params.resetUrl,
-          expiresInMinutes: params.expiresInMinutes,
-        },
-      });
-    } catch (err) {
-      this.logger.error(
-        `Fallo al enviar reset-password a ${params.to}`,
-        err as Error,
-      );
-    }
+    await this.renderer.render('reset-password', params.to, {
+      displayName: params.displayName,
+      resetUrl: params.resetUrl,
+      expiresInMinutes: params.expiresInMinutes,
+    });
   }
 
   /**
@@ -120,23 +111,11 @@ export class MailService {
    * @param params - Datos del correo.
    */
   async sendSessionRevoked(params: SessionRevokedEmailParams): Promise<void> {
-    try {
-      await this.mailer.sendMail({
-        to: params.to,
-        subject: 'Tus sesiones fueron cerradas - Mis Vales',
-        template: 'session-revoked',
-        context: {
-          displayName: params.displayName,
-          actorName: params.actorName,
-          reason: params.reason,
-        },
-      });
-    } catch (err) {
-      this.logger.error(
-        `Fallo al enviar session-revoked a ${params.to}`,
-        err as Error,
-      );
-    }
+    await this.renderer.render('session-revoked', params.to, {
+      displayName: params.displayName,
+      actorName: params.actorName,
+      reason: params.reason,
+    });
   }
 
   /**
@@ -151,26 +130,12 @@ export class MailService {
   async sendUserWelcome(
     params: UserWelcomeEmailParams,
   ): Promise<MailDeliveryResult> {
-    try {
-      await this.mailer.sendMail({
-        to: params.to,
-        subject: 'Bienvenido a Mis Vales - Tus credenciales',
-        template: 'user-welcome',
-        context: {
-          displayName: params.displayName,
-          username: params.username,
-          temporaryPassword: params.temporaryPassword,
-          loginUrl: params.loginUrl,
-        },
-      });
-      return { sent: true };
-    } catch (err) {
-      this.logger.error(
-        `Fallo al enviar user-welcome a ${params.to}`,
-        err as Error,
-      );
-      return { sent: false };
-    }
+    return this.renderer.render('user-welcome', params.to, {
+      displayName: params.displayName,
+      username: params.username,
+      temporaryPassword: params.temporaryPassword,
+      loginUrl: params.loginUrl,
+    });
   }
 
   /**
@@ -184,26 +149,12 @@ export class MailService {
   async sendUserPasswordResetByAdmin(
     params: UserPasswordResetByAdminEmailParams,
   ): Promise<MailDeliveryResult> {
-    try {
-      await this.mailer.sendMail({
-        to: params.to,
-        subject: 'Tu contrasena fue restablecida - Mis Vales',
-        template: 'user-password-reset-by-admin',
-        context: {
-          displayName: params.displayName,
-          username: params.username,
-          temporaryPassword: params.temporaryPassword,
-          reason: params.reason,
-          loginUrl: params.loginUrl,
-        },
-      });
-      return { sent: true };
-    } catch (err) {
-      this.logger.error(
-        `Fallo al enviar user-password-reset-by-admin a ${params.to}`,
-        err as Error,
-      );
-      return { sent: false };
-    }
+    return this.renderer.render('user-password-reset-by-admin', params.to, {
+      displayName: params.displayName,
+      username: params.username,
+      temporaryPassword: params.temporaryPassword,
+      reason: params.reason,
+      loginUrl: params.loginUrl,
+    });
   }
 }

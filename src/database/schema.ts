@@ -350,6 +350,55 @@ export const mfaCredentials = appSchema.table('mfa_credential', {
   lastUsedCounter: integer('last_used_counter').notNull().default(0),
 });
 
+/**
+ * Tabla `app.email_log`. Registro persistente de cada intento de envio
+ * de correo (sent o failed).
+ *
+ * Complementa `app.audit_log` (que es por mutacion y registra la accion
+ * `MAIL.DISPATCHED` / `MAIL.FAILED`): aqui se guarda el detalle del
+ * envio en si (plantilla, destinatario, subject, error). Permite a
+ * QA/operacion responder "que correos salieron y a quien" sin parsear
+ * logs de aplicacion.
+ *
+ * Campos:
+ *  - `templateKey`: slug del manifest que se intento renderizar.
+ *  - `eventCode`: codigo del dispatcher que origino el envio; null si
+ *    fue un envio directo (ej. `test-send` del admin).
+ *  - `recipientUserId`: UUID del destinatario si lo conocemos; null si
+ *    el email es directo o el usuario fue borrado (`ON DELETE SET NULL`).
+ *  - `recipientEmail`: email final (siempre presente).
+ *  - `subject`: subject usado en `sendMail`.
+ *  - `status`: `sent` si SMTP acepto; `failed` si fallo o modo degradado.
+ *  - `errorMessage`: mensaje de error si fallo.
+ *  - `metadata`: libre; tipicamente `{ from, vars: {...}, driver }`.
+ *
+ * Retencion: NO hay columna `retention_days` (ya vive en MailConfig).
+ * Un job de limpieza futuro borrara filas con `sent_at < now() - interval`.
+ */
+export const emailLog = appSchema.table('email_log', {
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  templateKey: text('template_key').notNull(),
+  eventCode: text('event_code'),
+  recipientUserId: uuid('recipient_user_id').references(
+    () => users.id,
+    { onDelete: 'set null' },
+  ),
+  recipientEmail: text('recipient_email').notNull(),
+  subject: text('subject').notNull(),
+  status: text('status')
+    .$type<'sent' | 'failed'>()
+    .notNull(),
+  errorMessage: text('error_message'),
+  metadata: jsonb('metadata')
+    .notNull()
+    .default(sql`'{}'::jsonb`),
+  sentAt: timestamp('sent_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 // Tipos inferidos para uso por repositorios y servicios.
 export type UserEntity = typeof users.$inferSelect;
 export type NewUserEntity = typeof users.$inferInsert;
@@ -367,3 +416,5 @@ export type BranchEntity = typeof branches.$inferSelect;
 export type NewBranchEntity = typeof branches.$inferInsert;
 export type AuditLogEntity = typeof auditLog.$inferSelect;
 export type NewAuditLogEntity = typeof auditLog.$inferInsert;
+export type EmailLogEntity = typeof emailLog.$inferSelect;
+export type NewEmailLogEntity = typeof emailLog.$inferInsert;

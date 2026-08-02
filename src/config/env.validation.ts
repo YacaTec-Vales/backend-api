@@ -90,6 +90,17 @@ export const envValidationSchema = Joi.object({
   SMTP_FROM: Joi.string().default('Mis Vales <no-reply@yacatec.demo>'),
   SMTP_SECURE: Joi.boolean().default(false),
 
+  // Mail: driver, from alternativo para notificaciones, retention
+  // MAIL_DRIVER: 'smtp' usa el transporte configurado arriba;
+  //   'noop' desactiva el envio (util para tests donde no se quiere
+  //   mockear el mailer). Default: 'smtp'.
+  MAIL_DRIVER: Joi.string().valid('smtp', 'noop').default('smtp'),
+  // MAIL_FROM_NOTIFICATIONS: si esta vacio, las notificaciones
+  //   usan SMTP_FROM. Configurar para distinguir el remitente.
+  MAIL_FROM_NOTIFICATIONS: Joi.string().allow('').default(''),
+  // MAIL_LOG_RETENTION_DAYS: retencion del futuro email_log (Phase F).
+  MAIL_LOG_RETENTION_DAYS: Joi.number().integer().positive().default(90),
+
   // MFA
   MFA_SECRET_KEY: Joi.string().min(32).required(),
   MFA_ISSUER: Joi.string().default('vales-yacatec'),
