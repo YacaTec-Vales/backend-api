@@ -3,51 +3,55 @@
  *
  * Verifica que:
  *  - `sendResetPassword` y `sendSessionRevoked` no retornan valor
- *    y nunca re-lanzan errores SMTP.
+ *    (devuelven `void` despues del await) y delegan en el renderer.
  *  - `sendUserWelcome` y `sendUserPasswordResetByAdmin` devuelven
- *    `{ sent: true }` en exito y `{ sent: false }` en error SMTP,
- *    sin re-lanzar.
- *  - Cada metodo llama a `MailerService.sendMail` con el
- *    `template` correcto.
+ *    `{ sent: true }` en exito y `{ sent: false }` en error SMTP.
+ *  - Cada metodo pasa al renderer el `templateKey` correcto y las
+ *    `vars` correctas.
+ *
+ * `TemplateRendererService` se mockea (no se prueba aca); su
+ * comportamiento se valida en su propio spec.
  *
  * @module mail
  * @author Equipo de desarrollo Mis Vales
  * @since 1.0.0
  */
 
-import { MailerService } from '@nestjs-modules/mailer';
+import { TemplateRendererService } from './services/template-renderer.service';
 import { MailService } from './mail.service';
 
 describe('MailService', () => {
   let service: MailService;
-  let mailer: jest.Mocked<MailerService>;
+  let renderer: jest.Mocked<TemplateRendererService>;
 
   beforeEach(() => {
-    mailer = {
-      sendMail: jest.fn().mockResolvedValue({ messageId: 'm1' }),
-    } as unknown as jest.Mocked<MailerService>;
-    service = new MailService(mailer);
+    renderer = {
+      render: jest.fn().mockResolvedValue({ sent: true }),
+    } as unknown as jest.Mocked<TemplateRendererService>;
+    service = new MailService(renderer);
   });
 
   describe('sendResetPassword', () => {
-    it('llama al template reset-password y nunca lanza', async () => {
+    it('delega en el renderer con templateKey reset-password', async () => {
       await service.sendResetPassword({
         to: 'a@yacatec.demo',
         displayName: 'Ana',
         resetUrl: 'https://app/reset?token=t',
         expiresInMinutes: 30,
       });
-      expect(mailer.sendMail).toHaveBeenCalledWith(
+      expect(renderer.render).toHaveBeenCalledWith(
+        'reset-password',
+        'a@yacatec.demo',
         expect.objectContaining({
-          to: 'a@yacatec.demo',
-          template: 'reset-password',
-          context: expect.objectContaining({ expiresInMinutes: 30 }),
+          displayName: 'Ana',
+          resetUrl: 'https://app/reset?token=t',
+          expiresInMinutes: 30,
         }),
       );
     });
 
-    it('swallow errores SMTP', async () => {
-      mailer.sendMail.mockRejectedValueOnce(new Error('SMTP down'));
+    it('devuelve void aunque el renderer devuelva {sent:false}', async () => {
+      renderer.render.mockResolvedValueOnce({ sent: false });
       await expect(
         service.sendResetPassword({
           to: 'a@yacatec.demo',
@@ -60,15 +64,21 @@ describe('MailService', () => {
   });
 
   describe('sendSessionRevoked', () => {
-    it('usa el template session-revoked', async () => {
+    it('usa el templateKey session-revoked', async () => {
       await service.sendSessionRevoked({
         to: 'a@yacatec.demo',
         displayName: 'Ana',
         actorName: 'admin',
         reason: 'logout',
       });
-      expect(mailer.sendMail).toHaveBeenCalledWith(
-        expect.objectContaining({ template: 'session-revoked' }),
+      expect(renderer.render).toHaveBeenCalledWith(
+        'session-revoked',
+        'a@yacatec.demo',
+        expect.objectContaining({
+          displayName: 'Ana',
+          actorName: 'admin',
+          reason: 'logout',
+        }),
       );
     });
   });
@@ -83,13 +93,18 @@ describe('MailService', () => {
         loginUrl: 'https://app/login',
       });
       expect(result).toEqual({ sent: true });
-      expect(mailer.sendMail).toHaveBeenCalledWith(
-        expect.objectContaining({ template: 'user-welcome' }),
+      expect(renderer.render).toHaveBeenCalledWith(
+        'user-welcome',
+        'a@yacatec.demo',
+        expect.objectContaining({
+          username: 'ana.lopez',
+          temporaryPassword: 'Tmp#1Abc',
+        }),
       );
     });
 
     it('devuelve { sent: false } en error SMTP sin lanzar', async () => {
-      mailer.sendMail.mockRejectedValueOnce(new Error('SMTP down'));
+      renderer.render.mockResolvedValueOnce({ sent: false });
       const result = await service.sendUserWelcome({
         to: 'a@yacatec.demo',
         displayName: 'Ana',
@@ -102,7 +117,7 @@ describe('MailService', () => {
   });
 
   describe('sendUserPasswordResetByAdmin', () => {
-    it('devuelve { sent: true } en exito con template correcto', async () => {
+    it('devuelve { sent: true } en exito con templateKey correcto', async () => {
       const result = await service.sendUserPasswordResetByAdmin({
         to: 'a@yacatec.demo',
         displayName: 'Ana',
@@ -112,13 +127,19 @@ describe('MailService', () => {
         loginUrl: 'https://app/login',
       });
       expect(result).toEqual({ sent: true });
-      expect(mailer.sendMail).toHaveBeenCalledWith(
-        expect.objectContaining({ template: 'user-password-reset-by-admin' }),
+      expect(renderer.render).toHaveBeenCalledWith(
+        'user-password-reset-by-admin',
+        'a@yacatec.demo',
+        expect.objectContaining({
+          username: 'ana',
+          temporaryPassword: 'Tmp#1Abc',
+          reason: 'olvido',
+        }),
       );
     });
 
     it('devuelve { sent: false } en error SMTP', async () => {
-      mailer.sendMail.mockRejectedValueOnce(new Error('SMTP down'));
+      renderer.render.mockResolvedValueOnce({ sent: false });
       const result = await service.sendUserPasswordResetByAdmin({
         to: 'a@yacatec.demo',
         displayName: 'Ana',

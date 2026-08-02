@@ -127,7 +127,7 @@ export async function createTestApp(
   await app.init();
 
   const mailer: jest.Mocked<MailerService> = mockMailer
-    ? (createMailerServiceMock() as jest.Mocked<MailerService>)
+    ? createMailerServiceMock()
     : ({} as jest.Mocked<MailerService>);
 
   return {

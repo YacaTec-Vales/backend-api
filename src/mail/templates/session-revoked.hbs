@@ -1,16 +1,22 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8" />
-  <title>Sesiones cerradas</title>
-</head>
-<body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
-  <h2>Hola {{displayName}},</h2>
+<!--
+  @fileoverview Plantilla HBS de sesiones revocadas (reservada).
+  @templateKey session-revoked
+  @category auth
+  @vars
+    - displayName: nombre del destinatario.
+    - actorName: nombre del operador o sistema que cerro las sesiones.
+    - reason: motivo del cierre (logout, reset, sospecha, etc.).
+  Plantilla minimalista; las clases `.reason` y `.muted` estan
+  definidas en el partial `header`.
+-->
+{{> header }}
+<div class="body">
+  <h2>Hola, {{displayName}}</h2>
   <p>Te informamos que todas las sesiones activas de tu cuenta en Mis Vales fueron cerradas.</p>
-  <p><strong>Motivo:</strong> {{reason}}</p>
+  <div class="reason">
+    <p><strong>Motivo:</strong> {{reason}}</p>
+  </div>
   <p><strong>Realizado por:</strong> {{actorName}}</p>
   <p>Si no reconoces esta accion, cambia tu contrasena de inmediato y contacta al Administrador.</p>
-  <hr />
-  <p style="font-size: 12px; color: #666;">Mis Vales - Sistema de gestion de prestamos</p>
-</body>
-</html>
+</div>
+{{> footer }}
