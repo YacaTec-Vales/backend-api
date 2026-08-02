@@ -40,7 +40,10 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { TestSendMailDto } from '../dto/test-send-mail.dto';
-import { ListMailTemplatesResponseDto, MailTemplateItemDto } from '../dto/list-templates-response.dto';
+import {
+  ListMailTemplatesResponseDto,
+  MailTemplateItemDto,
+} from '../dto/list-templates-response.dto';
 import { MailDeliveryResultDto } from '../dto/mail-delivery-result.dto';
 import { ListMailLogsQueryDto } from '../dto/list-mail-logs-query.dto';
 import {
@@ -174,7 +177,7 @@ export class MailAdminController {
       recipientUserId: row.recipientUserId,
       recipientEmail: row.recipientEmail,
       subject: row.subject,
-      status: row.status as 'sent' | 'failed',
+      status: row.status,
       errorMessage: row.errorMessage,
       metadata: (row.metadata ?? {}) as Record<string, unknown>,
       sentAt: row.sentAt,

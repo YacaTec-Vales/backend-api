@@ -72,7 +72,10 @@ export class MailLogItemDto {
   })
   metadata!: Record<string, unknown>;
 
-  @ApiProperty({ description: 'Timestamp del intento.', example: '2026-08-01T12:00:00.000Z' })
+  @ApiProperty({
+    description: 'Timestamp del intento.',
+    example: '2026-08-01T12:00:00.000Z',
+  })
   sentAt!: Date;
 }
 
@@ -86,7 +89,10 @@ export class MailLogsMetaDto {
   @ApiProperty({ description: 'Tamano de pagina.', example: 20 })
   limit!: number;
 
-  @ApiProperty({ description: 'Total de filas que cumplen los filtros.', example: 42 })
+  @ApiProperty({
+    description: 'Total de filas que cumplen los filtros.',
+    example: 42,
+  })
   total!: number;
 }
 
@@ -94,9 +100,15 @@ export class MailLogsMetaDto {
  * Respuesta de `GET /mail/admin/logs`.
  */
 export class ListMailLogsResponseDto {
-  @ApiProperty({ description: 'Filas de la pagina actual.', type: [MailLogItemDto] })
+  @ApiProperty({
+    description: 'Filas de la pagina actual.',
+    type: [MailLogItemDto],
+  })
   data!: MailLogItemDto[];
 
-  @ApiProperty({ description: 'Metadata de paginacion.', type: MailLogsMetaDto })
+  @ApiProperty({
+    description: 'Metadata de paginacion.',
+    type: MailLogsMetaDto,
+  })
   meta!: MailLogsMetaDto;
 }

@@ -78,7 +78,7 @@ export function createNotificationDispatcherServiceMock(): jest.Mocked<Notificat
  */
 export function createEmailLogRepositoryMock(): jest.Mocked<EmailLogRepository> {
   return {
-    create: jest.fn().mockResolvedValue({} as never),
+    create: jest.fn().mockResolvedValue({}),
     list: jest.fn().mockResolvedValue([]),
     count: jest.fn().mockResolvedValue(0),
   } as unknown as jest.Mocked<EmailLogRepository>;

@@ -44,10 +44,7 @@ describe('EmailLogRepository', () => {
       }),
     };
 
-    repository = new EmailLogRepository(
-      writeDb as never,
-      readDb as never,
-    );
+    repository = new EmailLogRepository(writeDb as never, readDb as never);
   });
 
   it('create usa writeDb (WRITE)', async () => {
