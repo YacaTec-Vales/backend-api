@@ -17,7 +17,7 @@
  */
 
 import { ConfigService } from '@nestjs/config';
-import { UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { PasswordResetService } from './password-reset.service';
 import {
   PasswordService,
@@ -131,16 +131,26 @@ describe('PasswordResetService', () => {
       ).rejects.toBeInstanceOf(UnauthorizedException);
     });
 
-    it('weak password lanza WeakPasswordError sin mutar nada', async () => {
+    it('traduce contraseña débil a AUTH.WEAK_PASSWORD sin mutar datos', async () => {
       resetRepo.findActiveByTokenHash.mockResolvedValue(
         passwordResetTokenFactory() as never,
       );
       passwordService.validateStrength.mockImplementation(() => {
         throw new WeakPasswordError(['muy corta'], 'muy corta');
       });
-      await expect(
-        service.resetPassword('plain', 'short', ctx),
-      ).rejects.toBeInstanceOf(WeakPasswordError);
+
+      try {
+        await service.resetPassword('plain', 'short', ctx);
+        fail('Debio lanzar');
+      } catch (err) {
+        expect(err).toBeInstanceOf(BadRequestException);
+        const response = (err as BadRequestException).getResponse() as {
+          code: string;
+          details: { reasons: string[] };
+        };
+        expect(response.code).toBe('AUTH.WEAK_PASSWORD');
+        expect(response.details.reasons).toEqual(['muy corta']);
+      }
       expect(userRepo.setPassword).not.toHaveBeenCalled();
       expect(refreshRepo.revokeAllForUser).not.toHaveBeenCalled();
     });

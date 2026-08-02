@@ -414,6 +414,51 @@ describe('UsersService', () => {
       expect(mailService.sendUserPasswordResetByAdmin).toHaveBeenCalled();
       expect(result.emailSent).toBe(true);
     });
+
+    it('disaster-recovery: ADMINISTRADOR puede resetear al GERENTE_GENERAL', async () => {
+      const gg = sampleRow({ id: 'gg-uuid', roleCode: 'GERENTE_GENERAL' });
+      userRepo.findByIdWithLastSession.mockResolvedValue(gg);
+      userRepo.setPassword.mockResolvedValue(gg as any);
+      mailService.sendUserPasswordResetByAdmin.mockResolvedValue({
+        sent: true,
+      });
+
+      const admin = actor({
+        id: 'admin-uuid',
+        role: 'ADMINISTRADOR',
+        branchId: null,
+      });
+
+      const result = await service.adminResetPassword(
+        admin,
+        gg.id,
+        { reason: 'disaster recovery: cuenta del GG comprometida' },
+        { ipAddress: '127.0.0.1', userAgent: 'jest', device: 'unknown' },
+      );
+
+      expect(userRepo.setPassword).toHaveBeenCalledWith(
+        gg.id,
+        'hashed:Temp#Aa1xyz!',
+        true,
+      );
+      expect(result.emailSent).toBe(true);
+    });
+
+    it('ADMINISTRADOR NO puede resetear a un COORDINADOR (regla read-only)', async () => {
+      const target = sampleRow({ roleCode: 'COORDINADOR' });
+      userRepo.findByIdWithLastSession.mockResolvedValue(target);
+      const admin = actor({ role: 'ADMINISTRADOR', branchId: null });
+      await expect(
+        service.adminResetPassword(
+          admin,
+          target.id,
+          { reason: 'no permitido' },
+          { ipAddress: '', userAgent: '', device: '' },
+        ),
+      ).rejects.toMatchObject({
+        response: { code: 'USERS.TARGET_ROLE_FORBIDDEN' },
+      });
+    });
   });
 
   describe('invalidateSessions', () => {
@@ -442,6 +487,37 @@ describe('UsersService', () => {
       );
       expect(userRepo.bumpTokenVersion).toHaveBeenCalledWith(target.id);
       expect(permissionCache.invalidate).toHaveBeenCalledWith(target.id);
+    });
+
+    it('disaster-recovery: ADMINISTRADOR puede invalidar sesiones del GG', async () => {
+      const gg = sampleRow({ id: 'gg-uuid', roleCode: 'GERENTE_GENERAL' });
+      userRepo.findByIdWithLastSession.mockResolvedValue(gg);
+      const admin = actor({ role: 'ADMINISTRADOR', branchId: null });
+      await service.invalidateSessions(admin, gg.id, 'gg_compromised', {
+        ipAddress: '',
+        userAgent: '',
+        device: '',
+      });
+      expect(sessionService.revokeAllForUser).toHaveBeenCalledWith(
+        gg.id,
+        'gg_compromised',
+      );
+      expect(userRepo.bumpTokenVersion).toHaveBeenCalledWith(gg.id);
+    });
+
+    it('ADMINISTRADOR NO puede invalidar sesiones de un COORDINADOR (read-only)', async () => {
+      const target = sampleRow({ roleCode: 'COORDINADOR' });
+      userRepo.findByIdWithLastSession.mockResolvedValue(target);
+      const admin = actor({ role: 'ADMINISTRADOR', branchId: null });
+      await expect(
+        service.invalidateSessions(admin, target.id, 'incident', {
+          ipAddress: '',
+          userAgent: '',
+          device: '',
+        }),
+      ).rejects.toMatchObject({
+        response: { code: 'USERS.TARGET_ROLE_FORBIDDEN' },
+      });
     });
   });
 

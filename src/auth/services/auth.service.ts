@@ -21,6 +21,7 @@
  */
 
 import {
+  BadRequestException,
   Inject,
   Injectable,
   Logger,
@@ -32,7 +33,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { UserRepository } from '../../database/repositories/user.repository';
 import { RefreshTokenRepository } from '../../database/repositories/refresh-token.repository';
-import { PasswordService } from './password.service';
+import { PasswordService, WeakPasswordError } from './password.service';
 import { TokenService } from './token.service';
 import { SessionService } from './session.service';
 import { PermissionCacheService } from './permission-cache.service';
@@ -329,7 +330,7 @@ export class AuthService {
    * @param sessionId - UUID de la sesion que NO debe revocarse.
    * @returns Nuevo access token + usuario. `refreshToken` viene vacio.
    * @throws {UnauthorizedException} `AUTH.USER_NOT_FOUND`, `AUTH.INVALID_CREDENTIALS`.
-   * @throws {WeakPasswordError} Si la nueva no cumple la politica.
+   * @throws {BadRequestException} `AUTH.WEAK_PASSWORD` si la nueva no cumple la politica.
    */
   async changePassword(
     userId: string,
@@ -356,7 +357,18 @@ export class AuthService {
       });
     }
 
-    this.passwordService.validateStrength(newPassword);
+    try {
+      this.passwordService.validateStrength(newPassword);
+    } catch (err) {
+      if (err instanceof WeakPasswordError) {
+        throw new BadRequestException({
+          code: 'AUTH.WEAK_PASSWORD',
+          message: 'la contraseña no cumple los requisitos de seguridad',
+          details: { reasons: err.reasons },
+        });
+      }
+      throw err;
+    }
 
     const newHash = await this.passwordService.hash(newPassword);
     // El usuario esta eligiendo su propia contrasena, asi que no

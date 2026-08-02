@@ -21,6 +21,7 @@
 
 import { ConfigService } from '@nestjs/config';
 import {
+  BadRequestException,
   ForbiddenException,
   HttpException,
   HttpStatus,
@@ -421,15 +422,24 @@ describe('AuthService', () => {
       }
     });
 
-    it('lanza WeakPasswordError si la nueva no cumple la politica', async () => {
+    it('traduce contraseña débil a AUTH.WEAK_PASSWORD con razones seguras', async () => {
       userRepo.findById.mockResolvedValue(buildUser() as never);
       passwordService.verify.mockResolvedValue(true);
       passwordService.validateStrength.mockImplementation(() => {
         throw new WeakPasswordError(['muy corta'], 'muy corta');
       });
-      await expect(
-        service.changePassword('user-1', 'PlainPass1', 'short', 's1'),
-      ).rejects.toBeInstanceOf(WeakPasswordError);
+
+      try {
+        await service.changePassword('user-1', 'PlainPass1', 'short', 's1');
+        fail('Debio lanzar');
+      } catch (err) {
+        expect(err).toBeInstanceOf(BadRequestException);
+        expect(codeOf(err)).toBe('AUTH.WEAK_PASSWORD');
+        const body = (err as BadRequestException).getResponse() as {
+          details: { reasons: string[] };
+        };
+        expect(body.details.reasons).toEqual(['muy corta']);
+      }
       expect(userRepo.setPassword).not.toHaveBeenCalled();
     });
 

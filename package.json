@@ -14,6 +14,8 @@
     "start:prod": "node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "typecheck": "tsc --noEmit",
+    "seed:admin": "ts-node -r tsconfig-paths/register src/scripts/seed-admin.ts",
+    "seed:gerente-general": "ts-node -r tsconfig-paths/register src/scripts/seed-gerente-general.ts",
     "test": "npm run test:unit",
     "test:unit": "jest --config test/jest-unit.json",
     "test:unit:watch": "jest --config test/jest-unit.json --watch",
