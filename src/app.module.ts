@@ -39,6 +39,7 @@ import { MfaModule } from './mfa/mfa.module';
 import { MailModule } from './mail/mail.module';
 import { HealthModule } from './health/health.module';
 import { UsersModule } from './users/users.module';
+import { DistribuidorasModule } from './distribuidoras/distribuidoras.module';
 
 import { JwtAuthGuard, RolesGuard } from './shared/guards/auth.guards';
 import { PermissionsGuard } from './shared/guards/permissions.guard';
@@ -85,6 +86,7 @@ import { MustChangePasswordGuard } from './shared/guards/must-change-password.gu
     MailModule,
     HealthModule,
     UsersModule,
+    DistribuidorasModule,
   ],
   controllers: [AppController],
   providers: [

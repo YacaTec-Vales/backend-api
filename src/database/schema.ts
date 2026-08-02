@@ -25,6 +25,7 @@ import {
   integer,
   jsonb,
   inet,
+  numeric,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
@@ -399,7 +400,166 @@ export const emailLog = appSchema.table('email_log', {
     .defaultNow(),
 });
 
+// ---------------------------------------------------------------------------
+// SOLICITUD (Flujo A — alta de distribuidora)
+// ---------------------------------------------------------------------------
+
+/**
+ * Valores validos del campo `dictamen` en `app.solicitud`.
+ * Resultado de la verificacion domiciliaria.
+ */
+export const solicitudDictamenValues = ['CUMPLE', 'NO_CUMPLE'] as const;
+/** Tipo TypeScript para `solicitud.dictamen`. */
+export type SolicitudDictamen = (typeof solicitudDictamenValues)[number];
+
+/**
+ * Valores validos del campo `estado` en `app.solicitud`.
+ * Representa la maquina de estados del flujo de alta.
+ */
+export const solicitudEstadoValues = [
+  'PRE_SOLICITUD',
+  'EN_VERIFICACION',
+  'DICTAMINADA',
+  'AUTORIZADA',
+  'RECHAZADA',
+] as const;
+/** Tipo TypeScript para `solicitud.estado`. */
+export type SolicitudEstado = (typeof solicitudEstadoValues)[number];
+
+/**
+ * Tabla `app.solicitud`. Solicitud de alta de distribuidora.
+ *
+ * Registra el flujo de alta (Flujo A) desde que el Coordinador
+ * captura los datos generales, pasando por la verificacion
+ * domiciliaria del Verificador, hasta la autorizacion o rechazo
+ * del Gerente.
+ *
+ *  - `datos_generales`: nombre, direccion, datos de contacto.
+ *  - `datos_adicionales`: familia, vehiculos, referencias.
+ *  - `fotos_verificacion`: evidencia fotografica del Verificador.
+ *
+ * Conexiones: `DRIZZLE_READ` para SELECT; `DRIZZLE_WRITE` para
+ * INSERT/UPDATE.
+ */
+export const solicitudes = appSchema.table('solicitud', {
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  coordinadorId: uuid('coordinador_id')
+    .notNull()
+    .references(() => users.id),
+  verificadorId: uuid('verificador_id').references(() => users.id),
+  datosGenerales: jsonb('datos_generales')
+    .notNull()
+    .default(sql`'{}'::jsonb`),
+  datosAdicionales: jsonb('datos_adicionales')
+    .notNull()
+    .default(sql`'{}'::jsonb`),
+  fotosVerificacion: jsonb('fotos_verificacion')
+    .notNull()
+    .default(sql`'[]'::jsonb`),
+  dictamen: text('dictamen').$type<SolicitudDictamen>(),
+  comentariosVerificador: text('comentarios_verificador'),
+  estado: text('estado')
+    .$type<SolicitudEstado>()
+    .notNull()
+    .default('PRE_SOLICITUD'),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+// ---------------------------------------------------------------------------
+// DISTRIBUIDORA
+// ---------------------------------------------------------------------------
+
+/**
+ * Valores validos del campo `estado` en `app.distribuidora`.
+ */
+export const distribuidoraEstadoValues = [
+  'ACTIVA',
+  'MOROSA',
+  'DESHABILITADA',
+  'BAJA_VOLUNTARIA',
+] as const;
+/** Tipo TypeScript para `distribuidora.estado`. */
+export type DistribuidoraEstado = (typeof distribuidoraEstadoValues)[number];
+
+/**
+ * Tabla `app.distribuidora`. Distribuidora de vales.
+ *
+ * Representa una distribuidora activa en el sistema. Nace cuando
+ * una `solicitud` es autorizada (estado = AUTORIZADA). Contiene:
+ *  - Credito: `limite_credito` y `credito_disponible`.
+ *  - Categoria: FK a `categoria` (Cobre, Plata, Oro…).
+ *  - Datos de negocio: `datos_generales`, `datos_adicionales`,
+ *    `cuenta_bancaria`.
+ *  - Estado: `ACTIVA`, `MOROSA`, `DESHABILITADA`, `BAJA_VOLUNTARIA`.
+ *
+ * Relaciones:
+ *  - `usuario_id` → cuenta de acceso (rol DISTRIBUIDOR).
+ *  - `coordinador_id` → coordinador asignado.
+ *  - `sucursal_id` → sucursal donde opera.
+ *  - `solicitud_origen_id` → solicitud que dio origen a la distribuidora.
+ *
+ * Conexiones: `DRIZZLE_READ` para SELECT; `DRIZZLE_WRITE` para
+ * INSERT/UPDATE.
+ */
+export const distribuidoras = appSchema.table('distribuidora', {
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  numeroDistribuidora: text('numero_distribuidora').notNull().unique(),
+  usuarioId: uuid('usuario_id')
+    .notNull()
+    .references(() => users.id),
+  categoriaId: uuid('categoria_id'),
+  coordinadorId: uuid('coordinador_id')
+    .notNull()
+    .references(() => users.id),
+  sucursalId: uuid('sucursal_id')
+    .notNull()
+    .references(() => branches.id),
+  solicitudOrigenId: uuid('solicitud_origen_id').references(
+    () => solicitudes.id,
+  ),
+  limiteCredito: numeric('limite_credito', { precision: 12, scale: 2 })
+    .notNull()
+    .default('0'),
+  creditoDisponible: numeric('credito_disponible', { precision: 12, scale: 2 })
+    .notNull()
+    .default('0'),
+  puntosAcumulados: integer('puntos_acumulados').notNull().default(0),
+  estado: text('estado')
+    .$type<DistribuidoraEstado>()
+    .notNull()
+    .default('ACTIVA'),
+  datosGenerales: jsonb('datos_generales')
+    .notNull()
+    .default(sql`'{}'::jsonb`),
+  datosAdicionales: jsonb('datos_adicionales')
+    .notNull()
+    .default(sql`'{}'::jsonb`),
+  cuentaBancaria: jsonb('cuenta_bancaria')
+    .notNull()
+    .default(sql`'{}'::jsonb`),
+  paga: numeric('paga', { precision: 12, scale: 2 }),
+  isActive: boolean('is_active').notNull().default(true),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+// ---------------------------------------------------------------------------
 // Tipos inferidos para uso por repositorios y servicios.
+// ---------------------------------------------------------------------------
 export type UserEntity = typeof users.$inferSelect;
 export type NewUserEntity = typeof users.$inferInsert;
 export type RefreshTokenEntity = typeof refreshTokens.$inferSelect;
@@ -418,3 +578,7 @@ export type AuditLogEntity = typeof auditLog.$inferSelect;
 export type NewAuditLogEntity = typeof auditLog.$inferInsert;
 export type EmailLogEntity = typeof emailLog.$inferSelect;
 export type NewEmailLogEntity = typeof emailLog.$inferInsert;
+export type SolicitudEntity = typeof solicitudes.$inferSelect;
+export type NewSolicitudEntity = typeof solicitudes.$inferInsert;
+export type DistribuidoraEntity = typeof distribuidoras.$inferSelect;
+export type NewDistribuidoraEntity = typeof distribuidoras.$inferInsert;
