@@ -53,6 +53,7 @@ import {
 import { TemplateRendererService } from '../services/template-renderer.service';
 import { TEMPLATE_MANIFEST } from '../templates/manifest';
 import { EmailLogRepository } from '../../database/repositories/email-log.repository';
+import { toMailLogItemDto } from '../../shared/mappers';
 import { ApiEnvelopeOkResponse } from '../../shared/decorators/api-envelope-response.decorator';
 import { ErrorResponseDto } from '../../shared/dto/error-response.dto';
 import { JwtAuthGuard } from '../../shared/guards/auth.guards';
@@ -198,18 +199,7 @@ export class MailAdminController {
       }),
       this.emailLogRepository.count(filters),
     ]);
-    const data: MailLogItemDto[] = rows.map((row) => ({
-      id: row.id,
-      templateKey: row.templateKey,
-      eventCode: row.eventCode,
-      recipientUserId: row.recipientUserId,
-      recipientEmail: row.recipientEmail,
-      subject: row.subject,
-      status: row.status,
-      errorMessage: row.errorMessage,
-      metadata: (row.metadata ?? {}) as Record<string, unknown>,
-      sentAt: row.sentAt,
-    }));
+    const data: MailLogItemDto[] = rows.map((row) => toMailLogItemDto(row));
     const meta: MailLogsMetaDto = {
       page: query.page,
       limit: query.limit,
