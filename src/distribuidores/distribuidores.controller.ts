@@ -64,6 +64,7 @@ export class DistribuidoresController {
   create(
     @CurrentUser() actor: RequestUser,
     @Body() dto: CreateDistribuidorDto,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- SCAFFOLD: el parametro _req se usara en la implementacion real para contexto de auditoria
     @Req() _req: Request,
   ): Promise<DistribuidorResponseDto> {
     return this.service.createFromSolicitud(actor, dto, {

@@ -48,14 +48,22 @@ export class DistribuidoresService {
    * @param _ctx - Contexto de peticion (no usado en el scaffold).
    * @returns Nunca retorna; lanza 501.
    */
+  // SCAFFOLD: los 3 parametros seran usados en la implementacion
+  // real segun `docu/sistema/maestro.md` seccion 6.
+  /* eslint-disable @typescript-eslint/no-unused-vars */
   async createFromSolicitud(
     _actor: { id: string; role: string; branchId: string | null },
     _dto: CreateDistribuidorDto,
     _ctx: { ipAddress: string; userAgent: string; device: string },
   ): Promise<DistribuidorResponseDto> {
+    /* eslint-enable @typescript-eslint/no-unused-vars */
     this.logger.warn(
       'DistribuidoresService.createFromSolicitud invocado pero el modulo es SCAFFOLD ONLY',
     );
+    // El `await` mantiene la firma como Promise<...> y satisface
+    // la regla `require-await` sin alterar la semantica (el throw
+    // se ejecuta sincrónicamente justo despues).
+    await Promise.resolve();
     throw new NotImplementedException({
       code: 'DISTRIBUIDORES.NOT_IMPLEMENTED',
       message:
