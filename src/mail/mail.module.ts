@@ -37,6 +37,7 @@ import { DatabaseModule } from '../database/database.module';
 import { UserRepository } from '../database/repositories/user.repository';
 import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 import { EmailLogRepository } from '../database/repositories/email-log.repository';
+import { AuthModule } from '../auth/auth.module';
 import { join } from 'path';
 
 /**
@@ -97,6 +98,7 @@ const mailConfigProvider: Provider = {
   imports: [
     ConfigModule.forFeature(mailConfig),
     DatabaseModule,
+    AuthModule,
     MailerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

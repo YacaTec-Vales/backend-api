@@ -21,7 +21,6 @@ import {
   PasswordService,
   WeakPasswordError,
 } from './services/password.service';
-import { AUTH_CONFIG } from '../database/tokens';
 
 jest.mock('argon2', () => {
   const actual = jest.requireActual('argon2');

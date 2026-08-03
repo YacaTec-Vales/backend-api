@@ -40,11 +40,9 @@ import {
   ApiBearerAuth,
   ApiBadRequestResponse,
   ApiConflictResponse,
-  ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNoContentResponse,
   ApiNotFoundResponse,
-  ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnprocessableEntityResponse,
@@ -64,13 +62,16 @@ import {
   UserPermissionsResponseDto,
   UserResponseDto,
 } from './dto/user-response.dto';
+import {
+  ApiEnvelopeCreatedResponse,
+  ApiEnvelopeOkResponse,
+} from '../shared/decorators/api-envelope-response.decorator';
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import { JwtAuthGuard, type RequestUser } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';
 import { contextFromRequest } from '../shared/utils/request-context.util';
-import { DEVICE_HEADER } from '../shared/utils/request-context.util';
 
 /**
  * Controlador de gestion administrativa de usuarios.
@@ -97,7 +98,10 @@ export class UsersController {
     description:
       'Lista paginada con scope aplicado. GG/Administrador ven todos; GS/Coord/Verif/Cajero solo su sucursal; Distribuidor solo a si mismo.',
   })
-  @ApiOkResponse({ type: PaginatedUsersResponseDto })
+  @ApiEnvelopeOkResponse({
+    message: 'Usuarios consultados correctamente',
+    type: PaginatedUsersResponseDto,
+  })
   @ApiForbiddenResponse({
     description: 'AUTH.PERMISSION_DENIED.',
     type: ErrorResponseDto,
@@ -122,7 +126,10 @@ export class UsersController {
     description:
       'Devuelve el usuario, su ultima sesion y sus permisos efectivos.',
   })
-  @ApiOkResponse({ type: UserDetailResponseDto })
+  @ApiEnvelopeOkResponse({
+    message: 'Usuario consultado correctamente',
+    type: UserDetailResponseDto,
+  })
   @ApiNotFoundResponse({
     description: 'USERS.NOT_FOUND.',
     type: ErrorResponseDto,
@@ -152,7 +159,10 @@ export class UsersController {
     description:
       'Crea un usuario con contrasena temporal generada por el sistema. Envia correo de bienvenida. Marca mustChangePassword=true.',
   })
-  @ApiCreatedResponse({ type: CreateUserResponseDto })
+  @ApiEnvelopeCreatedResponse({
+    message: 'Usuario creado correctamente',
+    type: CreateUserResponseDto,
+  })
   @ApiConflictResponse({
     description: 'USERS.EMAIL_ALREADY_EXISTS / USERS.USERNAME_ALREADY_EXISTS.',
     type: ErrorResponseDto,
@@ -189,7 +199,10 @@ export class UsersController {
     description:
       'Aplica un patch parcial. Si cambia rol, sucursal o status, revoca sesiones y bumpea tokenVersion.',
   })
-  @ApiOkResponse({ type: UserResponseDto })
+  @ApiEnvelopeOkResponse({
+    message: 'Usuario actualizado correctamente',
+    type: UserResponseDto,
+  })
   @ApiBadRequestResponse({
     description: 'USERS.NO_CHANGES.',
     type: ErrorResponseDto,
@@ -268,7 +281,10 @@ export class UsersController {
     description:
       'Genera nueva contrasena temporal, la envia por correo, marca mustChangePassword=true, revoca sesiones y bumpea tokenVersion.',
   })
-  @ApiOkResponse({ type: AdminResetPasswordResponseDto })
+  @ApiEnvelopeOkResponse({
+    message: 'Contraseña restablecida correctamente',
+    type: AdminResetPasswordResponseDto,
+  })
   @ApiNotFoundResponse({
     description: 'USERS.NOT_FOUND.',
     type: ErrorResponseDto,
@@ -341,7 +357,10 @@ export class UsersController {
     description:
       'Devuelve effectivePermissions[] y overrides[] (incluyendo inactivos y expirados para auditoria).',
   })
-  @ApiOkResponse({ type: UserPermissionsResponseDto })
+  @ApiEnvelopeOkResponse({
+    message: 'Permisos del usuario consultados correctamente',
+    type: UserPermissionsResponseDto,
+  })
   @ApiNotFoundResponse({
     description: 'USERS.NOT_FOUND.',
     type: ErrorResponseDto,
@@ -371,7 +390,10 @@ export class UsersController {
     description:
       'Crea o reactiva un override (UPSERT). isGrant=false representa una denegacion explicita.',
   })
-  @ApiCreatedResponse({ type: PermissionOverrideResponseDto })
+  @ApiEnvelopeCreatedResponse({
+    message: 'Permiso del usuario asignado correctamente',
+    type: PermissionOverrideResponseDto,
+  })
   @ApiNotFoundResponse({
     description: 'USERS.NOT_FOUND / USERS.PERMISSION_NOT_FOUND.',
     type: ErrorResponseDto,

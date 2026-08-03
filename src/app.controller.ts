@@ -11,7 +11,8 @@
  */
 
 import { Controller, Get } from '@nestjs/common';
-import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiEnvelopeOkResponse } from './shared/decorators/api-envelope-response.decorator';
 import { Public } from './shared/decorators/public.decorator';
 import { AppService } from './app.service';
 
@@ -36,7 +37,10 @@ export class AppController {
       'Devuelve un saludo estatico. Pensado para verificar que el API responde.',
     security: [],
   })
-  @ApiOkResponse({ description: 'Saludo estatico.', type: String })
+  @ApiEnvelopeOkResponse({
+    message: 'API disponible',
+    schema: { type: 'string', example: 'Hello World!' },
+  })
   getHello(): string {
     return this.appService.getHello();
   }
@@ -53,13 +57,20 @@ export class AppController {
       'Devuelve el nombre, la version y los modulos publicos de la API.',
     security: [],
   })
-  @ApiOkResponse({
+  @ApiEnvelopeOkResponse({
+    message: 'Información de la API consultada correctamente',
     description: 'Metadata con `name`, `version` y `modules`.',
     schema: {
-      example: {
-        name: 'vales-yacatec-api',
-        version: '0.1.0',
-        modules: ['auth', 'sessions', 'password-reset', 'mfa'],
+      type: 'object',
+      required: ['name', 'version', 'modules'],
+      properties: {
+        name: { type: 'string', example: 'vales-yacatec-api' },
+        version: { type: 'string', example: '0.1.0' },
+        modules: {
+          type: 'array',
+          items: { type: 'string' },
+          example: ['auth', 'sessions', 'password-reset', 'mfa'],
+        },
       },
     },
   })

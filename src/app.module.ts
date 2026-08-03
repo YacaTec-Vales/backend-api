@@ -39,6 +39,11 @@ import { MfaModule } from './mfa/mfa.module';
 import { MailModule } from './mail/mail.module';
 import { HealthModule } from './health/health.module';
 import { UsersModule } from './users/users.module';
+import { BranchesModule } from './branches/branches.module';
+import { CoordinadoresModule } from './coordinadores/coordinadores.module';
+import { VerificadoresModule } from './verificadores/verificadores.module';
+import { CajerosModule } from './cajeros/cajeros.module';
+import { DistribuidoresModule } from './distribuidores/distribuidores.module';
 
 import { JwtAuthGuard, RolesGuard } from './shared/guards/auth.guards';
 import { PermissionsGuard } from './shared/guards/permissions.guard';
@@ -85,6 +90,11 @@ import { MustChangePasswordGuard } from './shared/guards/must-change-password.gu
     MailModule,
     HealthModule,
     UsersModule,
+    BranchesModule,
+    CoordinadoresModule,
+    VerificadoresModule,
+    CajerosModule,
+    DistribuidoresModule,
   ],
   controllers: [AppController],
   providers: [

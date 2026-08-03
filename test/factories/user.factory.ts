@@ -15,7 +15,6 @@ import type {
   UserListFilters,
   UserReadScope,
 } from '../../src/database/repositories/user.repository';
-import type { UserStatus, UserType } from '../../src/shared/types/auth.types';
 import { TEST_IDS, TEST_NOW } from '../setup/unit.setup';
 
 /**

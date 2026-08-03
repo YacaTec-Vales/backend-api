@@ -52,6 +52,7 @@ import { SessionService } from '../auth/services/session.service';
 import { PermissionCacheService } from '../auth/services/permission-cache.service';
 import { MailService } from '../mail/mail.service';
 import type { UserType } from '../shared/types/auth.types';
+import { toOverrideResponseDto, toUserResponseDto } from '../shared/mappers';
 import type {
   AuditAction,
   AuditWriteContext,
@@ -688,7 +689,7 @@ export class UsersService {
         message: 'usuario no encontrado',
       });
     }
-    this.assertActorCanManageTarget(actor, target);
+    this.assertActorCanManageTargetForDisasterRecovery(actor, target);
 
     let tempPassword: string;
     try {
@@ -780,7 +781,7 @@ export class UsersService {
         message: 'usuario no encontrado',
       });
     }
-    this.assertActorCanManageTarget(actor, target);
+    this.assertActorCanManageTargetForDisasterRecovery(actor, target);
 
     const auditCtx: AuditWriteContext = {
       actorUserId: actor.id,
@@ -1066,6 +1067,12 @@ export class UsersService {
   /**
    * Valida que el actor pueda administrar al usuario objetivo
    * (modificar, eliminar, resetear).
+   *
+   * Esta funcion es estricta: el `ADMINISTRADOR` no puede
+   * administrar a NADIE via los endpoints normales (PATCH, DELETE).
+   * Para disaster-recovery sobre el `GERENTE_GENERAL`
+   * (invalidar sesiones, resetear contrasena) usar
+   * `assertActorCanManageTargetForDisasterRecovery` en su lugar.
    */
   private assertActorCanManageTarget(
     actor: RequestUser,
@@ -1101,6 +1108,35 @@ export class UsersService {
   }
 
   /**
+   * Variante relajada para los endpoints de disaster-recovery:
+   *  - `POST /users/:id/invalidate-sessions`
+   *  - `POST /users/:id/reset-password`
+   *
+   * Reglas:
+   *  - `GERENTE_GENERAL` puede operar sobre cualquier objetivo.
+   *  - `ADMINISTRADOR` puede operar SOLO sobre un objetivo
+   *    `GERENTE_GENERAL` (la regla que el admin sea read-only
+   *    para el dominio se mantiene; solo se permite para
+   *    responder ante compromiso del GG).
+   *  - Cualquier otro par (actor, target) cae en la regla
+   *    `USERS.TARGET_ROLE_FORBIDDEN`.
+   */
+  private assertActorCanManageTargetForDisasterRecovery(
+    actor: RequestUser,
+    target: UserAdminRow,
+  ): void {
+    if (actor.role === 'GERENTE_GENERAL') return;
+    if (
+      actor.role === 'ADMINISTRADOR' &&
+      target.roleCode === 'GERENTE_GENERAL'
+    ) {
+      return;
+    }
+    // El resto se delega al helper estricto (re-usa sus reglas).
+    this.assertActorCanManageTarget(actor, target);
+  }
+
+  /**
    * Valida que el actor pueda leer al usuario objetivo.
    */
   private assertActorCanReadTarget(
@@ -1127,35 +1163,20 @@ export class UsersService {
   }
 
   /**
-   * Proyeccion de `UserAdminRow` a `UserResponseDto`. Nunca
-   * incluye `passwordHash`.
+   * Proyeccion de `UserAdminRow` a `UserResponseDto`. Delegada
+   * al mapper central en `src/shared/mappers/user.mapper.ts`
+   * para que cualquier cambio en la conversion de fechas
+   * (Date -> ISO string) aplique a todos los modulos que
+   * consumen este mapper.
    */
   private toUserResponse(row: UserAdminRow): UserResponseDto {
-    return {
-      id: row.id,
-      roleCode: row.roleCode,
-      branchId: row.branchId,
-      firstName: row.firstName,
-      lastNamePaternal: row.lastNamePaternal,
-      lastNameMaternal: row.lastNameMaternal,
-      email: row.email,
-      phone: row.phone,
-      username: row.username,
-      userStatus: row.userStatus,
-      isActive: row.isActive,
-      mustChangePassword: row.mustChangePassword,
-      mfaEnabled: row.mfaEnabled,
-      lastLoginAt: row.lastLoginAt,
-      lastSession: row.lastSession,
-      createdAt: row.createdAt,
-      updatedAt: row.updatedAt,
-    };
+    return toUserResponseDto(row);
   }
 
   /**
    * Proyeccion de `UserPermissionOverrideRow` a
    * `PermissionOverrideResponseDto`. Marca `currentlyEffective`
-   * segun la vigencia.
+   * segun la vigencia. Delegada al mapper central.
    */
   private toOverrideResponse(o: {
     id: string;
@@ -1171,25 +1192,6 @@ export class UsersService {
     isActive: boolean;
     createdAt: Date;
   }): PermissionOverrideResponseDto {
-    const now = Date.now();
-    const currentlyEffective =
-      o.isActive &&
-      o.validFrom.getTime() <= now &&
-      (!o.validUntil || o.validUntil.getTime() > now);
-    return {
-      id: o.id,
-      permissionId: o.permissionId,
-      permissionCode: o.permissionCode,
-      isGrant: o.isGrant,
-      scope: o.scope,
-      authorizedBy: o.authorizedBy,
-      authorizationId: o.authorizationId,
-      validFrom: o.validFrom,
-      validUntil: o.validUntil,
-      reason: o.reason,
-      isActive: o.isActive,
-      createdAt: o.createdAt,
-      currentlyEffective,
-    };
+    return toOverrideResponseDto(o);
   }
 }

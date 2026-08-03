@@ -20,7 +20,6 @@ import {
 import { Reflector } from '@nestjs/core';
 import { PermissionsGuard } from './permissions.guard';
 import { PermissionCacheService } from '../../auth/services/permission-cache.service';
-import { PERMISSIONS_KEY } from '../decorators/permissions.decorator';
 
 interface MockRequest {
   user?: { id: string; tokenVersion: number; role: string };
