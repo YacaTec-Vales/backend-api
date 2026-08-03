@@ -17,8 +17,6 @@
 
 import { PermissionCacheService } from './services/permission-cache.service';
 import { PermissionRepository } from '../database/repositories/permission.repository';
-import { dateAtTestNow } from '../../test/helpers/time';
-import { TEST_NOW } from '../../test/setup/unit.setup';
 
 describe('PermissionCacheService', () => {
   let service: PermissionCacheService;

@@ -76,7 +76,7 @@ export class MailLogItemDto {
     description: 'Timestamp del intento.',
     example: '2026-08-01T12:00:00.000Z',
   })
-  sentAt!: Date;
+  sentAt!: string;
 }
 
 /**

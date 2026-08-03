@@ -32,7 +32,6 @@ import {
   ApiForbiddenResponse,
   ApiHeader,
   ApiNoContentResponse,
-  ApiOkResponse,
   ApiOperation,
   ApiResponse,
   ApiTags,
@@ -44,6 +43,7 @@ import { RefreshDto } from './dto/refresh.dto';
 import { LogoutDto } from './dto/logout.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { AuthUserResponseDto, TokenResponseDto } from './dto/auth-response.dto';
+import { ApiEnvelopeOkResponse } from '../shared/decorators/api-envelope-response.decorator';
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import { Public } from '../shared/decorators/public.decorator';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
@@ -82,7 +82,10 @@ export class AuthController {
     required: false,
     description: 'Identificador del frontend (`Tecu|Calipx|Poch`).',
   })
-  @ApiOkResponse({ type: TokenResponseDto })
+  @ApiEnvelopeOkResponse({
+    message: 'Inicio de sesión realizado correctamente',
+    type: TokenResponseDto,
+  })
   @ApiUnauthorizedResponse({
     description: 'AUTH.INVALID_CREDENTIALS o AUTH.PASSWORD_NOT_SET.',
     type: ErrorResponseDto,
@@ -126,7 +129,10 @@ export class AuthController {
     required: false,
     description: 'Identificador del frontend.',
   })
-  @ApiOkResponse({ type: TokenResponseDto })
+  @ApiEnvelopeOkResponse({
+    message: 'Sesión renovada correctamente',
+    type: TokenResponseDto,
+  })
   @ApiUnauthorizedResponse({
     description:
       'AUTH.REFRESH_NOT_FOUND, AUTH.REFRESH_REUSED, AUTH.REFRESH_EXPIRED ' +
@@ -191,7 +197,10 @@ export class AuthController {
       'Verifica `tokenVersion` contra la BD; si no coincide, lanza ' +
       '`AUTH.TOKEN_VERSION_MISMATCH`.',
   })
-  @ApiOkResponse({ type: AuthUserResponseDto })
+  @ApiEnvelopeOkResponse({
+    message: 'Perfil autenticado consultado correctamente',
+    type: AuthUserResponseDto,
+  })
   @ApiUnauthorizedResponse({
     description: 'AUTH.USER_NOT_FOUND o AUTH.TOKEN_VERSION_MISMATCH.',
     type: ErrorResponseDto,
@@ -210,14 +219,18 @@ export class AuthController {
       'todas las demas sesiones. Devuelve un nuevo access token con ' +
       '`tokenVersion + 1`. El `refreshToken` viene vacio.',
   })
-  @ApiOkResponse({ type: TokenResponseDto })
+  @ApiEnvelopeOkResponse({
+    message: 'Contraseña actualizada correctamente',
+    type: TokenResponseDto,
+  })
   @ApiUnauthorizedResponse({
     description: 'AUTH.INVALID_CREDENTIALS o AUTH.USER_NOT_FOUND.',
     type: ErrorResponseDto,
   })
   @ApiResponse({
     status: 400,
-    description: 'WeakPasswordError (validacion de fortaleza).',
+    description:
+      'AUTH.WEAK_PASSWORD (incluye razones seguras en error.details).',
     type: ErrorResponseDto,
   })
   @HttpCode(HttpStatus.OK)

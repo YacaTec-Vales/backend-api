@@ -80,7 +80,8 @@ export class PasswordResetController {
   })
   @ApiResponse({
     status: 400,
-    description: 'WeakPasswordError (INTERNAL.ERROR).',
+    description:
+      'AUTH.WEAK_PASSWORD (incluye razones seguras en error.details).',
     type: ErrorResponseDto,
   })
   @HttpCode(HttpStatus.NO_CONTENT)

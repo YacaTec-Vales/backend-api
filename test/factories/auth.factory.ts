@@ -15,8 +15,6 @@ import type {
   AuthenticatedUser,
   Device,
   JwtPayload,
-  UserStatus,
-  UserType,
 } from '../../src/shared/types/auth.types';
 import { TEST_IDS, TEST_NOW } from '../setup/unit.setup';
 

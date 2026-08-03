@@ -12,7 +12,6 @@
  * @since 1.0.0
  */
 
-import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 
 import type { CreateTestAppHandle } from './create-test-app';
@@ -48,10 +47,12 @@ export interface AuthenticatedAgent {
  * @returns Tokens de la sesion.
  */
 export async function loginAs(
-  app: INestApplication,
+  app: import('@nestjs/common').INestApplication,
   credentials: { usernameOrEmail: string; password: string },
 ): Promise<LoginResponse> {
-  const res = await request(app.getHttpServer())
+  const res = await request(
+    app.getHttpServer() as Parameters<typeof request>[0],
+  )
     .post('/auth/login')
     .send(credentials)
     .expect(201);

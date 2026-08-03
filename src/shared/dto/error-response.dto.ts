@@ -1,54 +1,51 @@
 /**
- * @fileoverview DTO de respuesta de error uniforme.
+ * @fileoverview DTO del sobre uniforme para respuestas de error.
  *
- * Refleja exactamente la forma JSON que produce `AllExceptionsFilter`
- * para CUALQUIER excepcion. Se referencia en todos los
- * `@ApiXxxResponse({ type: ErrorResponseDto })` de los handlers
- * para que Scalar y cualquier cliente OpenAPI conozca la
- * estructura del cuerpo de error.
+ * Refleja exactamente la forma JSON producida por
+ * `AllExceptionsFilter`: `{ message, error: { code, details? } }`.
+ * Se referencia en todos los `@ApiXxxResponse` para que Scalar y los
+ * clientes OpenAPI conozcan el contrato publico.
  *
  * @module shared/dto
  * @author Equipo de desarrollo Mis Vales
  * @since 1.0.0
  */
 
-import { ApiProperty, ApiSchema } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, ApiSchema } from '@nestjs/swagger';
 
-/**
- * Cuerpo de error uniforme que devuelve la API.
- *
- * - `code` es estable y consumible por el cliente (`AUTH.INVALID_CREDENTIALS`,
- *   `BAD_REQUEST`, `LOCKED`, etc.).
- * - `details` puede traer contexto adicional (validaciones, info de
- *   reuso de refresh, etc.) o `null`.
- */
-@ApiSchema({ name: 'ErrorResponse' })
-export class ErrorResponseDto {
-  /** Codigo HTTP equivalente. */
-  @ApiProperty({ example: 401 })
-  statusCode: number;
-
-  /** Codigo de negocio estable (ej. `AUTH.INVALID_CREDENTIALS`). */
-  @ApiProperty({ example: 'AUTH.INVALID_CREDENTIALS' })
+/** Informacion publica, estable y segura del error. */
+@ApiSchema({ name: 'ApiError' })
+export class ApiErrorDto {
+  /** Codigo de negocio estable y consumible por clientes. */
+  @ApiProperty({
+    example: 'AUTH.INVALID_CREDENTIALS',
+    description: 'Codigo estable para manejar el error programaticamente.',
+  })
   code: string;
 
-  /** Mensaje legible para el usuario o para logs. */
-  @ApiProperty({ example: 'Credenciales invalidas.' })
-  message: string;
-
-  /** Datos adicionales opcionales (validacion, contexto). */
-  @ApiProperty({
-    nullable: true,
+  /**
+   * Contexto opcional y seguro para que el cliente corrija la solicitud.
+   * Nunca contiene datos internos, secretos, SQL ni stack traces.
+   */
+  @ApiPropertyOptional({
     type: 'object',
     additionalProperties: true,
+    example: { violations: ['email debe ser un correo electrónico válido'] },
   })
-  details?: unknown;
+  details?: Record<string, unknown>;
+}
 
-  /** Ruta completa donde ocurrio el error. */
-  @ApiProperty({ example: '/api/v1/auth/login' })
-  path: string;
+/** Cuerpo uniforme que devuelve la API ante cualquier error HTTP. */
+@ApiSchema({ name: 'ErrorResponse' })
+export class ErrorResponseDto {
+  /** Mensaje legible, seguro y orientado al usuario. */
+  @ApiProperty({
+    example: 'credenciales inválidas',
+    description: 'Explicacion breve y segura de lo ocurrido.',
+  })
+  message: string;
 
-  /** Timestamp ISO-8601 del momento de emision. */
-  @ApiProperty({ example: '2026-07-31T20:55:00.000Z', format: 'date-time' })
-  timestamp: string;
+  /** Codigo estable y detalles publicos opcionales. */
+  @ApiProperty({ type: () => ApiErrorDto })
+  error: ApiErrorDto;
 }

@@ -15,13 +15,21 @@
  * @since 1.0.0
  */
 
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
 import { UserRepository } from '../database/repositories/user.repository';
 import { PasswordResetTokenRepository } from '../database/repositories/password-reset-token.repository';
 import { RefreshTokenRepository } from '../database/repositories/refresh-token.repository';
-import { PasswordService } from '../auth/services/password.service';
+import {
+  PasswordService,
+  WeakPasswordError,
+} from '../auth/services/password.service';
 import { MailService } from '../mail/mail.service';
 import { PermissionCacheService } from '../auth/services/permission-cache.service';
 
@@ -103,7 +111,7 @@ export class PasswordResetService {
    * @param newPassword - Contrasena nueva en claro.
    * @param ctx - IP y UA para auditoria.
    * @throws {UnauthorizedException} `AUTH.RESET_TOKEN_INVALID`.
-   * @throws {WeakPasswordError} Si no cumple la politica.
+   * @throws {BadRequestException} `AUTH.WEAK_PASSWORD` si no cumple la politica.
    */
   async resetPassword(
     token: string,
@@ -119,7 +127,18 @@ export class PasswordResetService {
       });
     }
 
-    this.passwordService.validateStrength(newPassword);
+    try {
+      this.passwordService.validateStrength(newPassword);
+    } catch (err) {
+      if (err instanceof WeakPasswordError) {
+        throw new BadRequestException({
+          code: 'AUTH.WEAK_PASSWORD',
+          message: 'la contraseña no cumple los requisitos de seguridad',
+          details: { reasons: err.reasons },
+        });
+      }
+      throw err;
+    }
     const newHash = await this.passwordService.hash(newPassword);
 
     // El usuario eligio su propia contrasena, asi que no forzamos un

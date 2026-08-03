@@ -30,7 +30,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { ALLOW_BEFORE_PASSWORD_CHANGE_KEY } from '../decorators/allow-before-password-change.decorator';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
-import type { AuthenticatedRequest, RequestUser } from './auth.guards';
+import type { AuthenticatedRequest } from './auth.guards';
 
 /**
  * Guard opt-in que protege el resto del sistema cuando una cuenta

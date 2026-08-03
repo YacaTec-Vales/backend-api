@@ -1,27 +1,25 @@
 /**
  * @fileoverview Factory de la aplicacion Nest para tests e2e.
  *
- * Levanta una `INestApplication` con la misma configuracion
- * global que produccion (helmet, CORS, ValidationPipe,
- * AllExceptionsFilter, RequestLoggingInterceptor, prefix). Por
- * defecto reemplaza `MailerService` por un mock para que ningun
- * test envie correos reales.
+ * Levanta una `INestApplication` usando la misma configuracion global que
+ * produccion mediante `configureApplication` (helmet, CORS, ValidationPipe,
+ * filtros, interceptors y prefix). Por defecto reemplaza `MailerService` por
+ * un mock para que ningun test envie correos reales.
  *
  * @module test/helpers
  * @author Equipo de desarrollo Mis Vales
  * @since 1.0.0
  */
 
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Test, type TestingModule } from '@nestjs/testing';
-import helmet from 'helmet';
-import compression from 'compression';
 import { MailerService } from '@nestjs-modules/mailer';
+import type { INestApplication } from '@nestjs/common';
 import type { Server } from 'node:http';
 
 import { AppModule } from '../../src/app.module';
-import { AllExceptionsFilter } from '../../src/shared/filters/all-exceptions.filter';
-import { RequestLoggingInterceptor } from '../../src/shared/interceptors/request-logging.interceptor';
+import { configureApplication } from '../../src/app.configure';
+import type { AppConfig } from '../../src/config/app.config';
 import { createMailerServiceMock } from '../mocks/mailer.mock';
 
 export interface TestAppOverride {
@@ -91,38 +89,14 @@ export async function createTestApp(
 
   const moduleRef: TestingModule = await moduleBuilder.compile();
   const app: INestApplication = moduleRef.createNestApplication();
+  const configService = moduleRef.get(ConfigService);
+  const configuredApp = configService.getOrThrow<AppConfig>('app');
 
-  app.enableShutdownHooks();
-  app.setGlobalPrefix(globalPrefix);
-
-  app.use(
-    helmet({
-      contentSecurityPolicy: {
-        directives: {
-          'script-src': [
-            "'self'",
-            "'unsafe-inline'",
-            'https://cdn.jsdelivr.net',
-          ],
-          'script-src-attr': ["'none'"],
-        },
-      },
-    }),
+  configureApplication(
+    app,
+    { ...configuredApp, apiPrefix: globalPrefix },
+    { mountOpenApi: false },
   );
-  app.use(compression());
-
-  app.enableCors({ origin: true, credentials: true });
-
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-      transformOptions: { enableImplicitConversion: true },
-    }),
-  );
-  app.useGlobalFilters(new AllExceptionsFilter());
-  app.useGlobalInterceptors(new RequestLoggingInterceptor());
 
   await app.init();
 
@@ -132,7 +106,7 @@ export async function createTestApp(
 
   return {
     app,
-    httpServer: app.getHttpServer(),
+    httpServer: app.getHttpServer() as Server,
     moduleRef,
     mailer,
     close: async () => {

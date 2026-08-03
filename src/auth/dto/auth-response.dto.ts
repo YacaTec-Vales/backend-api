@@ -111,15 +111,15 @@ export class SessionResponseDto {
 
   /** Timestamp de emision. */
   @ApiProperty({ format: 'date-time' })
-  issuedAt: Date;
+  issuedAt: string;
 
   /** Timestamp del ultimo uso. */
   @ApiProperty({ format: 'date-time', nullable: true })
-  lastUsedAt: Date | null;
+  lastUsedAt: string | null;
 
   /** Timestamp de expiracion. */
   @ApiProperty({ format: 'date-time' })
-  expiresAt: Date;
+  expiresAt: string;
 
   /** Si coincide con la sesion del JWT actual. */
   @ApiProperty({ description: 'Coincide con la sesion del JWT actual.' })
