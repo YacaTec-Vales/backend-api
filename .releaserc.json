@@ -1,5 +1,8 @@
 {
-  "branches": ["develop"],
+  "branches": [
+    {"name": "main"},
+    {"name": "release/v*", "channel": "rc", "prerelease": "rc"}
+  ],
   "plugins": [
     ["@semantic-release/commit-analyzer", {
       "preset": "conventionalcommits"

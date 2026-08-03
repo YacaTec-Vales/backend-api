@@ -3,7 +3,8 @@ name: Auto Release
 on:
   push:
     branches:
-      - develop
+      - main
+      - 'release/v*'
 
 permissions:
   contents: write
@@ -30,4 +31,9 @@ jobs:
       - name: Ejecutar Semantic Release
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
-        run: npx semantic-release
+        run: |
+          if [ "${{ github.ref_name }}" = "main" ]; then
+            npx semantic-release --config .releaserc.main.json
+          else
+            npx semantic-release
+          fi
