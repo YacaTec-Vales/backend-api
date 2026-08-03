@@ -33,7 +33,12 @@ import {
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { UserRepository } from '../database/repositories/user.repository';
+import { type UserEntity } from '../database/schema';
+import { CreateUserDto } from './dto/create-user.dto';
+import { UpdateUserDto } from './dto/update-user.dto';
 import { BranchRepository } from '../database/repositories/branch.repository';
+import { type BranchEntity } from '../database/schema';
+import { type PermissionEntity } from '../database/schema';
 import { PermissionRepository } from '../database/repositories/permission.repository';
 import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 import { RefreshTokenRepository } from '../database/repositories/refresh-token.repository';
@@ -41,6 +46,7 @@ import { PasswordService } from '../auth/services/password.service';
 import { SessionService } from '../auth/services/session.service';
 import { PermissionCacheService } from '../auth/services/permission-cache.service';
 import { MailService } from '../mail/mail.service';
+import { type UserType } from '../shared/types/auth.types';
 import { requestUserFactory } from '../../test/factories/auth.factory';
 import { userAdminRowFactory } from '../../test/factories/user.factory';
 import {
@@ -186,33 +192,46 @@ describe('UsersService', () => {
   });
 
   describe('createUser', () => {
+    // `satisfies CreateUserDto` valida que `baseDto` cumple la
+    // forma del DTO sin perder la inferencia de literales (roleCode
+    // queda como `'COORDINADOR'`, no como `string`). Asi los tests
+    // pueden construir DTOs validos y tipados.
     const baseDto = {
       firstName: 'Ana',
       lastNamePaternal: 'Lopez',
       lastNameMaternal: 'Garcia',
       email: 'ana@yacatec.demo',
       username: 'ana.lopez',
-      roleCode: 'COORDINADOR' as const,
+      roleCode: 'COORDINADOR',
       branchId: '44444444-4444-4444-4444-444444444444',
-    };
+    } satisfies CreateUserDto;
+
+    // Helper para construir un DTO valido con un `roleCode`
+    // especifico. Los tests validan que roles no permitidos sean
+    // rechazados; el cast explicito a `UserType` documenta que
+    // estamos forzando un valor que el tipo rechazaria en produccion.
+    const withRole = (role: UserType): CreateUserDto => ({
+      ...baseDto,
+      roleCode: role,
+    });
 
     it('rechaza DISTRIBUIDOR con USERS.DISTRIBUTOR_CREATION_FORBIDDEN', async () => {
       await expect(
-        service.createUser(
-          actor(),
-          { ...baseDto, roleCode: 'DISTRIBUIDOR' } as any,
-          { ipAddress: '127.0.0.1', userAgent: 'test', device: 'unknown' },
-        ),
+        service.createUser(actor(), withRole('DISTRIBUIDOR'), {
+          ipAddress: '127.0.0.1',
+          userAgent: 'test',
+          device: 'unknown',
+        }),
       ).rejects.toBeInstanceOf(UnprocessableEntityException);
     });
 
     it('rechaza GERENTE_GENERAL con USERS.GENERAL_MANAGER_CREATION_FORBIDDEN', async () => {
       await expect(
-        service.createUser(
-          actor(),
-          { ...baseDto, roleCode: 'GERENTE_GENERAL' } as any,
-          { ipAddress: '127.0.0.1', userAgent: 'test', device: 'unknown' },
-        ),
+        service.createUser(actor(), withRole('GERENTE_GENERAL'), {
+          ipAddress: '127.0.0.1',
+          userAgent: 'test',
+          device: 'unknown',
+        }),
       ).rejects.toBeInstanceOf(ConflictException);
     });
 
@@ -222,11 +241,11 @@ describe('UsersService', () => {
         branchId: '44444444-4444-4444-4444-444444444444',
       });
       await expect(
-        service.createUser(
-          gs,
-          { ...baseDto, roleCode: 'GERENTE_SUCURSAL' } as any,
-          { ipAddress: '127.0.0.1', userAgent: 'test', device: 'unknown' },
-        ),
+        service.createUser(gs, withRole('GERENTE_SUCURSAL'), {
+          ipAddress: '127.0.0.1',
+          userAgent: 'test',
+          device: 'unknown',
+        }),
       ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
@@ -238,9 +257,9 @@ describe('UsersService', () => {
       branchRepo.findActiveById.mockResolvedValue({
         id: baseDto.branchId,
         isActive: true,
-      } as any);
+      } as BranchEntity);
       await expect(
-        service.createUser(actor(), baseDto as any, {
+        service.createUser(actor(), baseDto, {
           ipAddress: '127.0.0.1',
           userAgent: 'test',
           device: 'unknown',
@@ -256,9 +275,17 @@ describe('UsersService', () => {
       branchRepo.findActiveById.mockResolvedValue({
         id: baseDto.branchId,
         isActive: true,
-      } as any);
+      } as BranchEntity);
       const created = sampleRow({ id: '77777777-7777-7777-7777-777777777777' });
-      userRepo.create.mockResolvedValue(created as any);
+      // `UserAdminRow` y `UserEntity` comparten la mayoria de campos
+      // (id, roleCode, branchId, etc) pero el repo espera `UserEntity`
+      // estricto. El servicio `create` solo lee estos campos; el resto
+      // (passwordHash, personalData, deletedAt, tokenVersion) se ignora.
+      // Cast explicito a `UserEntity` documenta que el mock es parcial
+      // y cumple el contrato solo para el camino que este test ejercita.
+      userRepo.create.mockResolvedValue(created as unknown as UserEntity);
+      // `findByIdWithLastSession` devuelve `UserAdminRow` (incluye
+      // `lastSession`); la factoria provee un row completo.
       userRepo.findByIdWithLastSession.mockResolvedValue(created);
       mailService.sendUserWelcome.mockResolvedValue({ sent: true });
 
@@ -293,9 +320,9 @@ describe('UsersService', () => {
       branchRepo.findActiveById.mockResolvedValue({
         id: baseDto.branchId,
         isActive: true,
-      } as any);
+      } as BranchEntity);
       const created = sampleRow({ id: '77777777-7777-7777-7777-777777777777' });
-      userRepo.create.mockResolvedValue(created as any);
+      userRepo.create.mockResolvedValue(created as unknown as UserEntity);
       userRepo.findByIdWithLastSession.mockResolvedValue(created);
       mailService.sendUserWelcome.mockResolvedValue({ sent: false });
 
@@ -351,7 +378,7 @@ describe('UsersService', () => {
     it('happy path: soft delete + revocar sesiones + invalidar cache', async () => {
       const target = sampleRow({ roleCode: 'COORDINADOR' });
       userRepo.findByIdWithLastSession.mockResolvedValue(target);
-      userRepo.softDelete.mockResolvedValue(target as any);
+      userRepo.softDelete.mockResolvedValue(target as unknown as UserEntity);
       await service.deleteUser(actor(), target.id, {
         ipAddress: '127.0.0.1',
         userAgent: 'jest',
@@ -382,7 +409,7 @@ describe('UsersService', () => {
     it('happy path: nueva password, sesiones revocadas, correo enviado', async () => {
       const target = sampleRow();
       userRepo.findByIdWithLastSession.mockResolvedValue(target);
-      userRepo.setPassword.mockResolvedValue(target as any);
+      userRepo.setPassword.mockResolvedValue(target as unknown as UserEntity);
       mailService.sendUserPasswordResetByAdmin.mockResolvedValue({
         sent: true,
       });
@@ -412,7 +439,7 @@ describe('UsersService', () => {
     it('disaster-recovery: ADMINISTRADOR puede resetear al GERENTE_GENERAL', async () => {
       const gg = sampleRow({ id: 'gg-uuid', roleCode: 'GERENTE_GENERAL' });
       userRepo.findByIdWithLastSession.mockResolvedValue(gg);
-      userRepo.setPassword.mockResolvedValue(gg as any);
+      userRepo.setPassword.mockResolvedValue(gg as unknown as UserEntity);
       mailService.sendUserPasswordResetByAdmin.mockResolvedValue({
         sent: true,
       });
@@ -539,7 +566,7 @@ describe('UsersService', () => {
         id: 'pppp',
         code: 'audit.read',
         isActive: true,
-      } as any);
+      } as unknown as PermissionEntity);
       const past = new Date(Date.now() - 86400000).toISOString();
       const evenPast = new Date(Date.now() - 172800000).toISOString();
       await expect(
@@ -565,7 +592,7 @@ describe('UsersService', () => {
         id: 'pppp',
         code: 'audit.read',
         isActive: true,
-      } as any);
+      } as unknown as PermissionEntity);
       permissionRepo.grantOverride.mockResolvedValue({
         id: 'override-1',
         userId: target.id,
@@ -603,7 +630,7 @@ describe('UsersService', () => {
         service.updateUser(
           actor(),
           '99999999-9999-9999-9999-999999999999',
-          {} as any,
+          {} satisfies UpdateUserDto,
           {
             ipAddress: '127.0.0.1',
             userAgent: 'test',
@@ -620,7 +647,7 @@ describe('UsersService', () => {
         service.updateUser(
           actor(),
           target.id,
-          { roleCode: 'DISTRIBUIDOR' } as any,
+          { roleCode: 'DISTRIBUIDOR' } satisfies UpdateUserDto,
           {
             ipAddress: '127.0.0.1',
             userAgent: 'test',
@@ -640,11 +667,11 @@ describe('UsersService', () => {
       userRepo.findByIdWithLastSession
         .mockResolvedValueOnce(target)
         .mockResolvedValueOnce(updated);
-      userRepo.update.mockResolvedValue(updated as any);
+      userRepo.update.mockResolvedValue(updated as unknown as UserEntity);
       await service.updateUser(
         actor(),
         target.id,
-        { roleCode: 'VERIFICADOR' } as any,
+        { roleCode: 'VERIFICADOR' } satisfies UpdateUserDto,
         { ipAddress: '127.0.0.1', userAgent: 'jest', device: 'unknown' },
       );
       expect(sessionService.revokeAllForUser).toHaveBeenCalledWith(
