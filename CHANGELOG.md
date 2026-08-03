@@ -1,3 +1,9 @@
+## [0.1.0-rc.2](https://github.com/YacaTec-Vales/backend-api/compare/v0.1.0-rc.1...v0.1.0-rc.2) (2026-08-03)
+
+### Bug Fixes
+
+* **ci:** quitar skip ci de los commits de release ([b8dbe90](https://github.com/YacaTec-Vales/backend-api/commit/b8dbe902d672faac0eca1cb214e33a42a494434e))
+
 ## [0.1.0-rc.1](https://github.com/YacaTec-Vales/backend-api/compare/v0.0.0...v0.1.0-rc.1) (2026-08-03)
 
 ### Features
