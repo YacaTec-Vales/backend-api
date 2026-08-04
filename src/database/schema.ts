@@ -402,6 +402,118 @@ export const emailLog = appSchema.table('email_log', {
 });
 
 /**
+ * Valores del enum `voucher_type` definido en
+ * `database/enums/000_enums.sql`. `PREVALE` = primer vale del
+ * cliente con su distribuidora actual (R15); `DIGITAL` =
+ * cualquier vale posterior.
+ */
+export const voucherTypeValues = ['PREVALE', 'DIGITAL'] as const;
+export type VoucherType = (typeof voucherTypeValues)[number];
+
+/**
+ * Valores del enum `voucher_status`: ciclo de vida del vale.
+ *  - ACTIVO: emitido, esperando que el cliente ferie en la sucursal.
+ *  - LIQUIDADO: el cliente termino de pagar todos los pagos
+ *    programados (lienado por la cajera al terminar cada pago).
+ *  - CANCELADO: la distribuidora lo cancelo antes de que se
+ *    feriara (commit 8: POST /vouchers/:folio/cancel).
+ */
+export const voucherStatusValues = [
+  'ACTIVO',
+  'LIQUIDADO',
+  'CANCELADO',
+] as const;
+export type VoucherStatus = (typeof voucherStatusValues)[number];
+
+/**
+ * Tabla `app.voucher`. Vale = instrumento de prestamo.
+ *
+ * Reglas enforced en la BD:
+ *  - R5 (`amount_cents % 10000 = 0`): multiples de $100 MXN.
+ *  - R4 (`uq_voucher_one_active_per_client`): un vale activo por
+ *    cliente. El indice unico parcial service-side devuelve 23505
+ *    si ya hay un vale ACTIVO para el mismo cliente.
+ *  - FKs: client_id, distributor_id, product_id (todos NOT NULL).
+ *
+ * Los campos `opening_commission_cents`, `interest_per_period_bps`,
+ * `insurance_cents` y `insurance_rule_snapshot` se copian (snapshot)
+ * del producto al momento de emitir el vale, de modo que cambios
+ * futuros al producto NO afectan vales viejos.
+ *
+ * `destination_bank_account` se copia de `client.bank_account` al
+ * momento del alta. La cajera puede actualizarlo al momento de
+ * feriar el vale (commit 9).
+ */
+export const vouchers = appSchema.table('voucher', {
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  folio: text('folio').notNull().unique(),
+  voucherType: text('voucher_type').$type<VoucherType>().notNull(),
+  status: text('status').$type<VoucherStatus>().notNull().default('ACTIVO'),
+  productId: uuid('product_id').notNull(),
+  distributorId: uuid('distributor_id').notNull(),
+  clientId: uuid('client_id').notNull(),
+  amountCents: integer('amount_cents').notNull(),
+  paidPeriods: integer('paid_periods').notNull().default(0),
+  totalPeriods: integer('total_periods').notNull(),
+  destinationBankAccount: jsonb('destination_bank_account')
+    .$type<Record<string, unknown>>()
+    .notNull()
+    .default(sql`'{}'::jsonb`),
+  authorizationNumber: text('authorization_number'),
+  modificationAuthorizationId: uuid('modification_authorization_id'),
+  openingCommissionCents: integer('opening_commission_cents')
+    .notNull()
+    .default(0),
+  insuranceCents: integer('insurance_cents').notNull().default(0),
+  totalToPayCents: integer('total_to_pay_cents').notNull(),
+  paymentPerPeriodCents: integer('payment_per_period_cents').notNull(),
+  liquidatedAt: timestamp('liquidated_at', { withTimezone: true }),
+  cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+  cancellationReason: text('cancellation_reason'),
+  isActive: boolean('is_active').notNull().default(true),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  categoryId: uuid('category_id'),
+  categoryCommissionBps: integer('category_commission_bps'),
+  openingCommissionBps: integer('opening_commission_bps').notNull(),
+  interestPerPeriodBps: integer('interest_per_period_bps').notNull(),
+  insuranceRuleSnapshot: jsonb('insurance_rule_snapshot')
+    .$type<Record<string, unknown>>()
+    .notNull()
+    .default(sql`'{}'::jsonb`),
+});
+
+/**
+ * Tabla `app.voucher_folio_sequence`. Secuencia de folios por
+ * sucursal y dia. La PK compuesta (branch_id, fecha) garantiza
+ * que no haya duplicados, y `last_seq` se incrementa dentro de
+ * la misma transaccion que el INSERT del voucher.
+ *
+ * Ver migracion 11-voucher-folio-sequence.sql para el detalle
+ * del patron INSERT ... ON CONFLICT DO UPDATE.
+ */
+export const voucherFolioSequence = appSchema.table('voucher_folio_sequence', {
+  branchId: uuid('branch_id')
+    .primaryKey()
+    .references((): AnyPgColumn => branches.id),
+  fecha: text('fecha').primaryKey(),
+  lastSeq: integer('last_seq').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+/**
  * Valores del enum `product_variant` definido en
  * `database/enums/000_enums.sql`. Usado como tipo Drizzle
  * via `$type<>()`; no es un enum real de Postgres (no se
@@ -411,18 +523,6 @@ export const emailLog = appSchema.table('email_log', {
 export const productVariantValues = ['NORMAL', 'PLUS'] as const;
 export type ProductVariant = (typeof productVariantValues)[number];
 
-/**
- * Tabla `app.product`. Catalogo de productos (montos de vales).
- *
- * Solo el gerente general / gerente de sucursal edita (R13). El monto
- * SIEMPRE es multiplo de $100 MXN = 10000 centavos (R5), validado
- * por CHECK en la BD. El codigo X/Y (paid/total periods) y la
- * comision/apertura/seguro/interes siguen la convencion canonica.
- *
- * Los inserts se hacen desde el repositorio `ProductRepository`;
- * el backend los expone via GET (cualquier actor autenticado
- * con `product.read`) y POST (gerentes con `product.create`).
- */
 export const products = appSchema.table('product', {
   id: uuid('id')
     .primaryKey()
@@ -593,3 +693,9 @@ export type ClientEntity = typeof clients.$inferSelect;
 export type NewClientEntity = typeof clients.$inferInsert;
 export type ProductEntity = typeof products.$inferSelect;
 export type NewProductEntity = typeof products.$inferInsert;
+export type VoucherEntity = typeof vouchers.$inferSelect;
+export type NewVoucherEntity = typeof vouchers.$inferInsert;
+export type VoucherFolioSequenceEntity =
+  typeof voucherFolioSequence.$inferSelect;
+export type NewVoucherFolioSequenceEntity =
+  typeof voucherFolioSequence.$inferInsert;
