@@ -27,6 +27,7 @@ import type { PasswordResetTokenRepository } from '../../src/database/repositori
 import type { BranchesRepository } from '../../src/branches/branches.repository';
 import type { ClientRepository } from '../../src/database/repositories/client.repository';
 import type { ProductRepository } from '../../src/database/repositories/product.repository';
+import type { VoucherRepository } from '../../src/database/repositories/voucher.repository';
 
 /**
  * Executor "transaccional" reconocible que los mocks de
@@ -180,4 +181,22 @@ export function createProductRepositoryMock(): jest.Mocked<ProductRepository> {
     listActive: jest.fn(),
     create: jest.fn(),
   } as unknown as jest.Mocked<ProductRepository>;
+}
+
+/**
+ * Mock tipado de `VoucherRepository`. Cubre los metodos publicos
+ * del modulo vouchers: `findById`, `findByFolio`,
+ * `findActiveByClient`, `findActiveByClientAndDistributor`,
+ * `list`, `getAndIncrementFolioSeq`, `create`.
+ */
+export function createVoucherRepositoryMock(): jest.Mocked<VoucherRepository> {
+  return {
+    findById: jest.fn(),
+    findByFolio: jest.fn(),
+    findActiveByClient: jest.fn(),
+    findActiveByClientAndDistributor: jest.fn(),
+    list: jest.fn(),
+    getAndIncrementFolioSeq: jest.fn(),
+    create: jest.fn(),
+  } as unknown as jest.Mocked<VoucherRepository>;
 }
