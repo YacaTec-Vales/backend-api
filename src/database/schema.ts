@@ -214,6 +214,12 @@ export const branches = appSchema.table('branch', {
   esMatriz: boolean('es_matriz').notNull().default(false),
   address: text('address'),
   managerUserId: uuid('manager_user_id'),
+  /**
+   * Prefijo de 3 letras mayusculas unico que se usa para construir
+   * folios de vouchers con formato D-{PREFIX}-{YYYYMMDD}-{00001}.
+   * Agregado por la migracion 10-branch-folio-prefix.sql.
+   */
+  folioPrefix: text('folio_prefix'),
   isActive: boolean('is_active').notNull().default(true),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true })
@@ -395,6 +401,49 @@ export const emailLog = appSchema.table('email_log', {
   sentAt: timestamp('sent_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * Valores del enum `product_variant` definido en
+ * `database/enums/000_enums.sql`. Usado como tipo Drizzle
+ * via `$type<>()`; no es un enum real de Postgres (no se
+ * materializa con pgEnum porque el enum nativo vive en la
+ * BD canónica).
+ */
+export const productVariantValues = ['NORMAL', 'PLUS'] as const;
+export type ProductVariant = (typeof productVariantValues)[number];
+
+/**
+ * Tabla `app.product`. Catalogo de productos (montos de vales).
+ *
+ * Solo el gerente general / gerente de sucursal edita (R13). El monto
+ * SIEMPRE es multiplo de $100 MXN = 10000 centavos (R5), validado
+ * por CHECK en la BD. El codigo X/Y (paid/total periods) y la
+ * comision/apertura/seguro/interes siguen la convencion canonica.
+ *
+ * Los inserts se hacen desde el repositorio `ProductRepository`;
+ * el backend los expone via GET (cualquier actor autenticado
+ * con `product.read`) y POST (gerentes con `product.create`).
+ */
+export const products = appSchema.table('product', {
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  code: text('code').notNull(),
+  variant: text('variant').$type<ProductVariant>().notNull().default('NORMAL'),
+  costCents: integer('cost_cents').notNull(),
+  totalPeriods: integer('total_periods').notNull(),
+  commissionBps: integer('commission_bps').notNull().default(0),
+  insuranceCents: integer('insurance_cents').notNull().default(0),
+  interestPerPeriodBps: integer('interest_per_period_bps').notNull().default(0),
+  isActive: boolean('is_active').notNull().default(true),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 // Tipos inferidos para uso por repositorios y servicios.
 export type UserEntity = typeof users.$inferSelect;
 export type NewUserEntity = typeof users.$inferInsert;
@@ -542,3 +591,5 @@ export type DistributorEntity = typeof distributors.$inferSelect;
 export type NewDistributorEntity = typeof distributors.$inferInsert;
 export type ClientEntity = typeof clients.$inferSelect;
 export type NewClientEntity = typeof clients.$inferInsert;
+export type ProductEntity = typeof products.$inferSelect;
+export type NewProductEntity = typeof products.$inferInsert;
