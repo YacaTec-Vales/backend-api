@@ -19,6 +19,8 @@ export type { BranchRowShape } from './branch.mapper';
 export { toClientResponseDto } from './client.mapper';
 export type { ClientRowShape } from './client.mapper';
 export { toIso } from './date.utils';
+export { toProductResponseDto } from './product.mapper';
+export type { ProductRowShape } from './product.mapper';
 export { toMailLogItemDto } from './mail-log.mapper';
 export type { EmailLogRowShape } from './mail-log.mapper';
 export { toSessionResponseDto } from './session.mapper';
