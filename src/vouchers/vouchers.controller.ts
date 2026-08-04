@@ -2,21 +2,29 @@
  * @fileoverview Controlador del modulo `vouchers`.
  *
  * Endpoints (prefijo global `api/v1`):
- *  - `POST /vouchers`  emitir vale (solo DISTRIBUIDOR con `voucher.create`).
- *
- * El cancel (`POST /vouchers/:folio/cancel`) y la busqueda (`GET
- * /vouchers/:id`) quedan para commits posteriores (5c-1.b y 5c-1.c).
+ *  - `POST /vouchers`              emitir vale (DISTRIBUIDOR con
+ *                                  `voucher.create`).
+ *  - `POST /vouchers/:folio/cancel`  cancelar vale no feriado
+ *                                  (DISTRIBUIDOR con
+ *                                  `voucher.cancel`).
  *
  * El envelope de respuesta sigue la convencion del proyecto:
- *  - Exito: `{message, data: VoucherResponseDto}` via `AllExceptionsFilter`.
- *  - Error: `{message, error: {code, details?}}` mismo filter.
+ *  - Exito: `{message, data: VoucherResponseDto}`.
+ *  - Error: `{message, error: {code, details?}}`.
  *
  * @module vouchers
  * @author Equipo de desarrollo Mis Vales
  * @since 1.0.0
  */
 
-import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  HttpCode,
+  Param,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiBadRequestResponse,
@@ -24,12 +32,14 @@ import {
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
+  ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { VouchersService } from './vouchers.service';
 import { CreateVoucherDto } from './dto/create-voucher.dto';
+import { CancelVoucherDto } from './dto/cancel-voucher.dto';
 import { VoucherResponseDto } from './dto/voucher-response.dto';
 import { ApiEnvelopeCreatedResponse } from '../shared/decorators/api-envelope-response.decorator';
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
@@ -59,11 +69,6 @@ export class VouchersController {
    * @apiGroup Vouchers
    * @apiVersion 1.0.0
    * @apiPermission voucher.create
-   *
-   * La distribuidora autenticada emite un vale para uno de sus
-   * clientes. El backend determina automaticamente si es PREVALE
-   * (primer vale del cliente con esta distribuidora, R15) o DIGITAL.
-   * Folio generado: `D-{PREFIX}-{YYYYMMDD}-{00001}`.
    */
   @Post()
   @RequirePermissions('voucher.create')
@@ -116,5 +121,59 @@ export class VouchersController {
     @Body() dto: CreateVoucherDto,
   ): Promise<VoucherResponseDto> {
     return this.vouchersService.emit(actor, dto);
+  }
+
+  /**
+   * @api {post} /vouchers/:folio/cancel Cancelar un vale no feriado
+   * @apiName CancelVoucher
+   * @apiGroup Vouchers
+   * @apiVersion 1.0.0
+   * @apiPermission voucher.cancel
+   *
+   * La distribuidora autenticada cancela un vale que no se ha
+   * feriado. Motivo obligatorio en el body. Si el vale era
+   * PREVALE, el flag del cliente se limpia para que el proximo
+   * vale vuelva a ser PREVALE.
+   */
+  @Post(':folio/cancel')
+  @HttpCode(200)
+  @RequirePermissions('voucher.cancel')
+  @ApiOperation({
+    summary: 'Cancelar un vale no feriado',
+    description:
+      'Cancela un vale que la distribuidora emite y que el cliente ' +
+      'no logro feriar. Motivo obligatorio. Si era PREVALE, se ' +
+      'libera el slot para que el proximo vale vuelva a ser PREVALE.',
+  })
+  @ApiOkResponse({
+    description: 'Vale cancelado correctamente.',
+  })
+  @ApiUnauthorizedResponse({
+    description: 'AUTH.* — token invalido, sesion revocada o expirada.',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description:
+      'CLIENT.DISTRIBUTOR_NOT_FOUND (no tienes distribuidora) | ' +
+      'VOUCHER.NOT_OWNED (el vale no es tuyo) | ' +
+      'AUTH.PERMISSION_DENIED (sin voucher.cancel).',
+    type: ErrorResponseDto,
+  })
+  @ApiNotFoundResponse({
+    description: 'VOUCHER.NOT_FOUND (folio no existe).',
+    type: ErrorResponseDto,
+  })
+  @ApiBadRequestResponse({
+    description:
+      'VOUCHER.CANCELLATION_REASON_REQUIRED (reason vacio) | ' +
+      'VOUCHER.NOT_ACTIVE (vale ya liquidado/cancelado).',
+    type: ErrorResponseDto,
+  })
+  cancel(
+    @CurrentUser() actor: RequestUser,
+    @Param('folio') folio: string,
+    @Body() dto: CancelVoucherDto,
+  ): Promise<VoucherResponseDto> {
+    return this.vouchersService.cancel(actor, folio, dto.reason);
   }
 }

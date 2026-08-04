@@ -65,6 +65,10 @@ export const VOUCHER_ERROR_CODES = {
   AMOUNT_TOO_LOW: 'VOUCHER.AMOUNT_BELOW_MIN',
   PREVALE_EXCEEDS_50: 'VOUCHER.PREVALE_EXCEEDS_50_PERCENT',
   CLIENT_HAS_ACTIVE: 'VOUCHER.CLIENT_HAS_ACTIVE',
+  VOUCHER_NOT_FOUND: 'VOUCHER.NOT_FOUND',
+  VOUCHER_NOT_OWNED: 'VOUCHER.NOT_OWNED',
+  VOUCHER_NOT_ACTIVE: 'VOUCHER.NOT_ACTIVE',
+  CANCELLATION_REASON_REQUIRED: 'VOUCHER.CANCELLATION_REASON_REQUIRED',
 } as const;
 
 /**
@@ -271,6 +275,102 @@ export class VouchersService {
     );
 
     return toVoucherResponseDto(inserted);
+  }
+
+  /**
+   * Cancela un vale que no se ha feriado.
+   *
+   * Reglas:
+   *  - El actor debe ser DISTRIBUIDOR (gateado por `voucher.cancel`).
+   *  - El vale debe existir y pertenecer a la distribuidora del actor.
+   *  - El vale debe estar en status='ACTIVO' (no se puede cancelar
+   *    un vale ya liquidado, ya cancelado, o borrado).
+   *  - Si el vale era PREVALE, se limpia el flag
+   *    `client.first_voucher_with_current_distributor_id` para
+   *    que el PROXIMO vale del cliente con esta distribuidora
+   *    vuelva a ser PREVALE (porque el primer vale formal fue
+   *    cancelado, no feriado).
+   *
+   * El credito disponible del distribuidor NO se devuelve aqui
+   * (queda pendiente para el commit 5b-3c).
+   *
+   * @param actor - Usuario autenticado (DISTRIBUIDOR).
+   * @param folio - Folio del vale a cancelar.
+   * @param reason - Motivo de la cancelacion (string libre).
+   * @returns DTO publico del voucher cancelado.
+   */
+  async cancel(
+    actor: RequestUser,
+    folio: string,
+    reason: string,
+  ): Promise<VoucherResponseDto> {
+    if (!reason || !reason.trim()) {
+      throw new BadRequestException({
+        code: VOUCHER_ERROR_CODES.CANCELLATION_REASON_REQUIRED,
+        message: 'El motivo de cancelacion es obligatorio.',
+      });
+    }
+
+    // 1. Distribuidora del actor.
+    const distributor = await this.distributorRepo.findByUserId(actor.id);
+    if (!distributor) {
+      throw new ForbiddenException({
+        code: VOUCHER_ERROR_CODES.ACTOR_NOT_DISTRIBUTOR,
+        message: 'El usuario autenticado no tiene una distribuidora asociada.',
+      });
+    }
+
+    // 2. Voucher existe.
+    const voucher = await this.voucherRepo.findByFolio(folio);
+    if (!voucher) {
+      throw new NotFoundException({
+        code: VOUCHER_ERROR_CODES.VOUCHER_NOT_FOUND,
+        message: 'El vale no existe.',
+        details: { folio },
+      });
+    }
+
+    // 3. Pertenece a la distribuidora del actor.
+    if (voucher.distributorId !== distributor.id) {
+      throw new ForbiddenException({
+        code: VOUCHER_ERROR_CODES.VOUCHER_NOT_OWNED,
+        message: 'El vale no pertenece a esta distribuidora.',
+        details: {
+          folio,
+          expectedDistributorId: distributor.id,
+          actualDistributorId: voucher.distributorId,
+        },
+      });
+    }
+
+    // 4. Cancelar (UPDATE solo si status='ACTIVO').
+    const cancelled = await this.voucherRepo.cancelByFolio(
+      folio,
+      reason.trim(),
+    );
+    if (!cancelled) {
+      // Ya estaba cancelado, liquidado, o borrado.
+      throw new BadRequestException({
+        code: VOUCHER_ERROR_CODES.VOUCHER_NOT_ACTIVE,
+        message: 'El vale no esta en estado activo, no se puede cancelar.',
+        details: {
+          folio,
+          currentStatus: voucher.status,
+        },
+      });
+    }
+
+    // 5. Si era PREVALE, limpiar el flag del cliente para que el
+    //    proximo vale vuelva a ser PREVALE.
+    if (voucher.voucherType === 'PREVALE') {
+      await this.clientRepo.clearFirstVoucher(voucher.clientId);
+    }
+
+    this.logger.log(
+      `voucher cancelado: folio=${folio} reason=${reason.trim()} actor=${actor.id}`,
+    );
+
+    return toVoucherResponseDto(cancelled);
   }
 }
 
