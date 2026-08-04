@@ -25,6 +25,7 @@ import type { AuditLogRepository } from '../../src/database/repositories/audit-l
 import type { RefreshTokenRepository } from '../../src/database/repositories/refresh-token.repository';
 import type { PasswordResetTokenRepository } from '../../src/database/repositories/password-reset-token.repository';
 import type { BranchesRepository } from '../../src/branches/branches.repository';
+import type { ClientRepository } from '../../src/database/repositories/client.repository';
 
 /**
  * Executor "transaccional" reconocible que los mocks de
@@ -152,4 +153,16 @@ export function createBranchesRepositoryMock(): jest.Mocked<BranchesRepository> 
     setManagerUserId: jest.fn(),
     countActiveUsers: jest.fn(),
   } as unknown as jest.Mocked<BranchesRepository>;
+}
+
+/**
+ * Mock tipado de `ClientRepository`. Cubre los metodos publicos
+ * usados por `ClientsService`: `findById`, `findByCurp`, `create`.
+ */
+export function createClientRepositoryMock(): jest.Mocked<ClientRepository> {
+  return {
+    findById: jest.fn(),
+    findByCurp: jest.fn(),
+    create: jest.fn(),
+  } as unknown as jest.Mocked<ClientRepository>;
 }
