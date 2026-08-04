@@ -26,6 +26,7 @@ import type { RefreshTokenRepository } from '../../src/database/repositories/ref
 import type { PasswordResetTokenRepository } from '../../src/database/repositories/password-reset-token.repository';
 import type { BranchesRepository } from '../../src/branches/branches.repository';
 import type { ClientRepository } from '../../src/database/repositories/client.repository';
+import type { ProductRepository } from '../../src/database/repositories/product.repository';
 
 /**
  * Executor "transaccional" reconocible que los mocks de
@@ -165,4 +166,18 @@ export function createClientRepositoryMock(): jest.Mocked<ClientRepository> {
     findByCurp: jest.fn(),
     create: jest.fn(),
   } as unknown as jest.Mocked<ClientRepository>;
+}
+
+/**
+ * Mock tipado de `ProductRepository`. Cubre los metodos publicos
+ * del modulo catalogs: `findActiveById`, `findActiveByCode`,
+ * `listActive`, `create`.
+ */
+export function createProductRepositoryMock(): jest.Mocked<ProductRepository> {
+  return {
+    findActiveById: jest.fn(),
+    findActiveByCode: jest.fn(),
+    listActive: jest.fn(),
+    create: jest.fn(),
+  } as unknown as jest.Mocked<ProductRepository>;
 }
