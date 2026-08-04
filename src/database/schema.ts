@@ -699,3 +699,36 @@ export type VoucherFolioSequenceEntity =
   typeof voucherFolioSequence.$inferSelect;
 export type NewVoucherFolioSequenceEntity =
   typeof voucherFolioSequence.$inferInsert;
+
+/**
+ * Tabla `app.document`. Archivos subidos al storage (MinIO local
+ * o DigitalOcean Spaces).
+ *
+ * Solo guarda metadata; el binario vive en el bucket.
+ * Referenciado por `client.ine_document_id`,
+ * `client.address_proof_document_id`, etc.
+ */
+export const documents = appSchema.table('document', {
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  documentType: text('document_type').notNull(),
+  fileName: text('file_name').notNull(),
+  storagePath: text('storage_path').notNull().unique(),
+  mimeType: text('mime_type').notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  sha256Hash: text('sha256_hash'),
+  uploadedBy: uuid('uploaded_by').notNull(),
+  metadata: jsonb('metadata')
+    .$type<Record<string, unknown>>()
+    .notNull()
+    .default(sql`'{}'::jsonb`),
+  isActive: boolean('is_active').notNull().default(true),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export type DocumentEntity = typeof documents.$inferSelect;
+export type NewDocumentEntity = typeof documents.$inferInsert;
