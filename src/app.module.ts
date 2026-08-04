@@ -44,6 +44,7 @@ import { CoordinadoresModule } from './coordinadores/coordinadores.module';
 import { VerificadoresModule } from './verificadores/verificadores.module';
 import { CajerosModule } from './cajeros/cajeros.module';
 import { DistribuidoresModule } from './distribuidores/distribuidores.module';
+import { ClientsModule } from './clients/clients.module';
 
 import { JwtAuthGuard, RolesGuard } from './shared/guards/auth.guards';
 import { PermissionsGuard } from './shared/guards/permissions.guard';
@@ -95,6 +96,7 @@ import { MustChangePasswordGuard } from './shared/guards/must-change-password.gu
     VerificadoresModule,
     CajerosModule,
     DistribuidoresModule,
+    ClientsModule,
   ],
   controllers: [AppController],
   providers: [

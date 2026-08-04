@@ -444,7 +444,7 @@ export const distributors = appSchema.table('distributor', {
   creditLimitCents: integer('credit_limit_cents').notNull().default(0),
   creditAvailableCents: integer('credit_available_cents').notNull().default(0),
   pointsBalance: integer('points_balance').notNull().default(0),
-  status: text('distributor_status')
+  status: text('status')
     .$type<'ACTIVA' | 'MOROSA' | 'DESHABILITADA' | 'BAJA_VOLUNTARIA'>()
     .notNull()
     .default('ACTIVA'),
@@ -519,6 +519,7 @@ export const clients = appSchema.table('client', {
   ineDocumentId: uuid('ine_document_id'),
   addressProofDocumentId: uuid('address_proof_document_id'),
   bankAccount: jsonb('bank_account')
+    .$type<Record<string, unknown>>()
     .notNull()
     .default(sql`'{}'::jsonb`),
   currentDistributorId: uuid('current_distributor_id').references(
