@@ -155,21 +155,46 @@ describe('VouchersService', () => {
       ...client,
       firstVoucherWithCurrentDistributorId: 'v-prev',
     } as never);
-    voucherRepo.create.mockImplementation(async (data: never) => ({
-      id: 'v-1',
-      folio: data.folio,
-      voucherType: data.voucherType,
-      status: 'ACTIVO',
-      productId: 'p-1',
-      distributorId: 'd-1',
-      clientId: 'c-1',
-      amountCents: data.amountCents,
-      paidPeriods: 0,
-      totalPeriods: 10,
-      totalToPayCents: data.totalToPayCents,
-      paymentPerPeriodCents: data.paymentPerPeriodCents,
-      createdAt: new Date('2026-08-03T12:00:00Z'),
-    }));
+    voucherRepo.create.mockImplementation(async (data) => {
+      const d = data as {
+        folio: string;
+        voucherType: 'PREVALE' | 'DIGITAL';
+        amountCents: number;
+        totalToPayCents: number;
+        paymentPerPeriodCents: number;
+      };
+      return {
+        id: 'v-1',
+        folio: d.folio,
+        voucherType: d.voucherType,
+        status: 'ACTIVO' as const,
+        productId: 'p-1',
+        distributorId: 'd-1',
+        clientId: 'c-1',
+        amountCents: d.amountCents,
+        paidPeriods: 0,
+        totalPeriods: 10,
+        totalToPayCents: d.totalToPayCents,
+        paymentPerPeriodCents: d.paymentPerPeriodCents,
+        createdAt: new Date('2026-08-03T12:00:00Z'),
+        authorizationNumber: null,
+        modificationAuthorizationId: null,
+        openingCommissionCents: 0,
+        insuranceCents: 0,
+        liquidatedAt: null,
+        cancelledAt: null,
+        cancellationReason: null,
+        isActive: true,
+        deletedAt: null,
+        updatedAt: new Date('2026-08-03T12:00:00Z'),
+        destinationBankAccount: {},
+        categoryId: null,
+        categoryCommissionBps: null,
+        openingCommissionBps: 0,
+        interestPerPeriodBps: 0,
+        insuranceRuleSnapshot: {},
+      };
+    });
     const result = await service.emit(actor, {
       clientId: 'c-1',
       productId: 'p-1',
