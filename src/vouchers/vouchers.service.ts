@@ -311,16 +311,7 @@ export class VouchersService {
       });
     }
 
-    // 1. Distribuidora del actor.
-    const distributor = await this.distributorRepo.findByUserId(actor.id);
-    if (!distributor) {
-      throw new ForbiddenException({
-        code: VOUCHER_ERROR_CODES.ACTOR_NOT_DISTRIBUTOR,
-        message: 'El usuario autenticado no tiene una distribuidora asociada.',
-      });
-    }
-
-    // 2. Voucher existe.
+    // 1. Voucher existe.
     const voucher = await this.voucherRepo.findByFolio(folio);
     if (!voucher) {
       throw new NotFoundException({
@@ -330,8 +321,10 @@ export class VouchersService {
       });
     }
 
-    // 3. Pertenece a la distribuidora del actor.
-    if (voucher.distributorId !== distributor.id) {
+    // 2. Distribuidora del actor (si la tiene). Para gerentes sin
+    //    distribuidora propia, permitimos cancelar cualquier vale.
+    const distributor = await this.distributorRepo.findByUserId(actor.id);
+    if (distributor && voucher.distributorId !== distributor.id) {
       throw new ForbiddenException({
         code: VOUCHER_ERROR_CODES.VOUCHER_NOT_OWNED,
         message: 'El vale no pertenece a esta distribuidora.',

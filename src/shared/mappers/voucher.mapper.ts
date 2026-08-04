@@ -28,6 +28,8 @@ export interface VoucherRowShape {
   totalPeriods: number;
   totalToPayCents: number;
   paymentPerPeriodCents: number;
+  cancelledAt: Date | null;
+  cancellationReason: string | null;
   createdAt: Date;
 }
 
@@ -51,6 +53,8 @@ export function toVoucherResponseDto(row: VoucherRowShape): VoucherResponseDto {
     totalPeriods: row.totalPeriods,
     totalToPayCents: row.totalToPayCents,
     paymentPerPeriodCents: row.paymentPerPeriodCents,
+    cancelledAt: toIso(row.cancelledAt) ?? null,
+    cancellationReason: row.cancellationReason,
     createdAt: toIso(row.createdAt) ?? '',
   };
 }

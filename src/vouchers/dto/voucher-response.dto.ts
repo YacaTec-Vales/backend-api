@@ -65,6 +65,18 @@ export class VoucherResponseDto {
   })
   paymentPerPeriodCents!: number;
 
+  @ApiProperty({
+    description: 'Fecha de cancelacion (ISO 8601) o null si no esta cancelado.',
+    nullable: true,
+  })
+  cancelledAt!: string | null;
+
+  @ApiProperty({
+    description: 'Motivo de cancelacion o null si no esta cancelado.',
+    nullable: true,
+  })
+  cancellationReason!: string | null;
+
   @ApiProperty({ description: 'Fecha de emision (ISO 8601).' })
   createdAt!: string;
 }
