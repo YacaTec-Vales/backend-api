@@ -25,6 +25,7 @@ import {
   integer,
   jsonb,
   inet,
+  date,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
@@ -413,3 +414,130 @@ export type AuditLogEntity = typeof auditLog.$inferSelect;
 export type NewAuditLogEntity = typeof auditLog.$inferInsert;
 export type EmailLogEntity = typeof emailLog.$inferSelect;
 export type NewEmailLogEntity = typeof emailLog.$inferInsert;
+
+/**
+ * Tabla `app.distributor`. Distribuidora = cliente del sistema.
+ *
+ * Una distribuidora maneja una linea de credito que reparte en
+ * vales a clientes finales. La PK es la `distributor_number` (texto
+ * UNIQUE) para que sea estable como referencia humana; ademas hay
+ * un `id` UUID para FKs internas (la BD canonica usa solo `id` UUID
+ * y `distributor_number` separado, replicamos ese shape).
+ *
+ * Si necesitas referenciar la fila desde `client.current_distributor_id`,
+ * `solicitation.distributor_id` o `voucher.distributor_id`, usa
+ * `distributors.id` (no el numero).
+ *
+ * La constraint CHECK de R8 (credit_disponible_cents <= limite) NO
+ * se enforce a nivel BD todavia: la capa de aplicacion es responsable
+ * de mantenerla consistente. Documentado para futura migracion.
+ */
+export const distributors = appSchema.table('distributor', {
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  distributorNumber: text('distributor_number').notNull().unique(),
+  userId: uuid('user_id').notNull().unique(),
+  categoryId: uuid('category_id').notNull(),
+  coordinatorId: uuid('coordinator_id').notNull(),
+  branchId: uuid('branch_id').notNull(),
+  creditLimitCents: integer('credit_limit_cents').notNull().default(0),
+  creditAvailableCents: integer('credit_available_cents').notNull().default(0),
+  pointsBalance: integer('points_balance').notNull().default(0),
+  status: text('distributor_status')
+    .$type<'ACTIVA' | 'MOROSA' | 'DESHABILITADA' | 'BAJA_VOLUNTARIA'>()
+    .notNull()
+    .default('ACTIVA'),
+  activatedAt: timestamp('activated_at', { withTimezone: true }),
+  generalData: jsonb('general_data')
+    .notNull()
+    .default(sql`'{}'::jsonb`),
+  additionalData: jsonb('additional_data')
+    .notNull()
+    .default(sql`'{}'::jsonb`),
+  bankAccount: jsonb('bank_account')
+    .notNull()
+    .default(sql`'{}'::jsonb`),
+  initialFeeCents: integer('initial_fee_cents'),
+  contractDocumentId: uuid('contract_document_id'),
+  delinquentRelationsCount: integer('delinquent_relations_count')
+    .notNull()
+    .default(0),
+  isActive: boolean('is_active').notNull().default(true),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+/**
+ * Tabla `app.client`. Cliente final del sistema.
+ *
+ * Reglas:
+ *  - R3: UN SOLO cliente por CURP en TODO el sistema. La BD lo blinda
+ *    con `curp` UNIQUE NOT NULL + `citext` (case-insensitive). Por
+ *    eso el endpoint `POST /clients` valida antes de insertar y, si
+ *    existe, devuelve 409 con `details` (no se duplica).
+ *  - `current_distributor_id`: la distribuidora que registro al
+ *    cliente. Este campo es lo que mantiene la ligadura cliente-sucursal
+ *    mencionada en la transcripcion ("el cliente tiene que ir a la
+ *    sucursal donde esta su distribuidora actual"). Cambia con un
+ *    flujo de transferencia (pendiente de implementar).
+ *  - `first_voucher_with_current_distributor_id`: cuando se emita el
+ *    primer vale (PREVALE), apunta al voucher correspondiente. Se usa
+ *    para decidir si el siguiente vale es PREVALE o DIGITAL (R15).
+ *  - `ine_document_id` y `address_proof_document_id` quedan NULL al
+ *    alta cruda (este turno). Se suben en la sucursal con la conexion
+ *    a DO Spaces (turno aparte, ver transcripcion).
+ *  - `bank_account` es JSONB con la CLABE y banco destino. Se rellena
+ *    despues (el cliente la trae fisicamente al "feriar" el prevale).
+ *
+ * El modelo NO enforce R4 (un vale activo por cliente) porque esa
+ * validacion es multi-tabla (cliente + voucher); vive en la capa de
+ * servicio al momento de emitir el vale.
+ */
+export const clients = appSchema.table('client', {
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  curp: text('curp').notNull().unique(),
+  firstName: text('first_name').notNull(),
+  lastNamePaternal: text('last_name_paternal').notNull(),
+  lastNameMaternal: text('last_name_maternal').notNull(),
+  rfc: text('rfc'),
+  birthDate: date('birth_date'),
+  street: text('street'),
+  streetNumber: text('street_number'),
+  colonia: text('colonia'),
+  postalCode: text('postal_code'),
+  birthPlace: text('birth_place'),
+  state: text('state'),
+  city: text('city'),
+  ineDocumentId: uuid('ine_document_id'),
+  addressProofDocumentId: uuid('address_proof_document_id'),
+  bankAccount: jsonb('bank_account')
+    .notNull()
+    .default(sql`'{}'::jsonb`),
+  currentDistributorId: uuid('current_distributor_id').references(
+    (): AnyPgColumn => distributors.id,
+  ),
+  firstVoucherWithCurrentDistributorId: uuid(
+    'first_voucher_with_current_distributor_id',
+  ),
+  isActive: boolean('is_active').notNull().default(true),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export type DistributorEntity = typeof distributors.$inferSelect;
+export type NewDistributorEntity = typeof distributors.$inferInsert;
+export type ClientEntity = typeof clients.$inferSelect;
+export type NewClientEntity = typeof clients.$inferInsert;
