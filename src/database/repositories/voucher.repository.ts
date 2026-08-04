@@ -254,4 +254,46 @@ export class VoucherRepository {
     const [row] = await this.writeDb.insert(vouchers).values(data).returning();
     return row;
   }
+
+  /**
+   * Marca un voucher como CANCELADO con un reason. Solo si esta
+   * en status='ACTIVO' y NO esta borrado.
+   *
+   * Tipicamente usado por `VouchersService.cancel` cuando la dis-
+   * tribuidora decide cancelar un vale que no se ha feriado.
+   *
+   * Patron: UPDATE ... WHERE status='ACTIVO' AND deleted_at IS NULL
+   * para evitar cancelar vales ya liquidados o ya cancelados.
+   *
+   * Conexion: `DRIZZLE_WRITE`.
+   *
+   * @param voucherId - UUID del voucher.
+   * @param reason - Motivo de la cancelacion (string libre, ej
+   *   'cancelled_by_distributor').
+   * @returns Entidad actualizada o `null` si no cambio nada
+   *   (voucher no existe, ya esta cancelado/liquidado, o borrado).
+   */
+  async cancelByFolio(
+    folio: string,
+    reason: string,
+  ): Promise<VoucherEntity | null> {
+    const [row] = await this.writeDb
+      .update(vouchers)
+      .set({
+        status: 'CANCELADO',
+        cancellationReason: reason,
+        cancelledAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(vouchers.folio, folio),
+          eq(vouchers.status, 'ACTIVO'),
+          isNull(vouchers.deletedAt),
+        ),
+      )
+      .returning();
+    return row ?? null;
+  }
 }
+

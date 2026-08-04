@@ -167,6 +167,7 @@ export function createClientRepositoryMock(): jest.Mocked<ClientRepository> {
     findByCurp: jest.fn(),
     create: jest.fn(),
     updateFirstVoucher: jest.fn(),
+    clearFirstVoucher: jest.fn(),
   } as unknown as jest.Mocked<ClientRepository>;
 }
 
@@ -199,5 +200,6 @@ export function createVoucherRepositoryMock(): jest.Mocked<VoucherRepository> {
     list: jest.fn(),
     getAndIncrementFolioSeq: jest.fn(),
     create: jest.fn(),
+    cancelByFolio: jest.fn(),
   } as unknown as jest.Mocked<VoucherRepository>;
 }

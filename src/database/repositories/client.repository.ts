@@ -136,4 +136,40 @@ export class ClientRepository {
       .returning({ id: clients.id });
     return result.length > 0;
   }
+  /**
+   * Limpia el flag `firstVoucherWithCurrentDistributorId` del cliente.
+   *
+   * Usado por `VouchersService.cancel` cuando se cancela un vale
+   * PREVALE. La razon: si la distribuidora cancelo un vale que era
+   * el primer vale del cliente con esta distribuidora, queremos
+   * que el siguiente vale emitido por esta distribuidora VUELVA a
+   * ser PREVALE (porque la regla R15 es "primer vale con la
+   * distribuidora actual", y el primer vale fue cancelado, no
+   * feriado).
+   *
+   * Idempotente: si el campo ya es NULL, el UPDATE no afecta filas.
+   *
+   * Conexion: `DRIZZLE_WRITE`.
+   *
+   * @param clientId - UUID del cliente.
+   * @returns `true` si la actualizacion afecto una fila; `false` si
+   *   el campo ya era NULL.
+   */
+  async clearFirstVoucher(clientId: string): Promise<boolean> {
+    const result = await this.writeDb
+      .update(clients)
+      .set({
+        firstVoucherWithCurrentDistributorId: null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(clients.id, clientId),
+          isNull(clients.deletedAt),
+        ),
+      )
+      .returning({ id: clients.id });
+    return result.length > 0;
+  }
 }
+
