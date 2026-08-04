@@ -93,4 +93,47 @@ export class ClientRepository {
     const [row] = await this.writeDb.insert(clients).values(data).returning();
     return row;
   }
+
+  /**
+   * Marca el primer vale del cliente con su distribuidora actual.
+   *
+   * Usado por `VouchersService.emit()` cuando se determina que el
+   * vale que se acaba de insertar es PREVALE (R15). El campo
+   * `firstVoucherWithCurrentDistributorId` queda persistido en BD
+   * y NO se vuelve a actualizar (un cliente solo tiene UN primer
+   * vale con su distribuidora actual).
+   *
+   * Condiciones del UPDATE (todas deben cumplirse):
+   *  - El cliente existe y no esta borrado.
+   *  - El campo `firstVoucherWithCurrentDistributorId` es NULL
+   *    (todavia no se ha marcado). Si ya esta marcado, la
+   *    operacion es un no-op (idempotente, no devuelve error).
+   *
+   * Conexion: `DRIZZLE_WRITE`.
+   *
+   * @param clientId - UUID del cliente.
+   * @param voucherId - UUID del voucher que sera su primer vale.
+   * @returns `true` si la actualizacion afecto una fila; `false`
+   *   si el cliente no existe o ya tenia un primer vale.
+   */
+  async updateFirstVoucher(
+    clientId: string,
+    voucherId: string,
+  ): Promise<boolean> {
+    const result = await this.writeDb
+      .update(clients)
+      .set({
+        firstVoucherWithCurrentDistributorId: voucherId,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(clients.id, clientId),
+          isNull(clients.deletedAt),
+          isNull(clients.firstVoucherWithCurrentDistributorId),
+        ),
+      )
+      .returning({ id: clients.id });
+    return result.length > 0;
+  }
 }

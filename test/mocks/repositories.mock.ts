@@ -166,6 +166,7 @@ export function createClientRepositoryMock(): jest.Mocked<ClientRepository> {
     findById: jest.fn(),
     findByCurp: jest.fn(),
     create: jest.fn(),
+    updateFirstVoucher: jest.fn(),
   } as unknown as jest.Mocked<ClientRepository>;
 }
 

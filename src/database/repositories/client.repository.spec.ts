@@ -20,7 +20,7 @@ import { createClientRepositoryMock } from '../../../test/mocks/repositories.moc
 describe('ClientRepository (mock tipado)', () => {
   it('expone todos los metodos publicos esperados', () => {
     const mock = createClientRepositoryMock();
-    const expected = ['findById', 'findByCurp', 'create'];
+    const expected = ['findById', 'findByCurp', 'create', 'updateFirstVoucher'];
     for (const method of expected) {
       expect(typeof (mock as unknown as Record<string, unknown>)[method]).toBe(
         'function',
