@@ -822,5 +822,98 @@ export const documents = appSchema.table('document', {
     .defaultNow(),
 });
 
+/**
+ * Tabla `app.solicitation`. Expediente de la pre-solicitud al rechazo
+ * de una Distribuidora (regla 2.0 - flujo de alta ver §6.1 de
+ * `docs/sistema/reglas-2.0.md`).
+ *
+ * Estados posibles (de app.solicitation_status):
+ *   - PRE_SOLICITUD     transitorio; el sistema lo salta a EN_VERIFICACION al insertar
+ *   - EN_VERIFICACION   activo mientras el verificador visita
+ *   - DICTAMINADA       el verificador termino; pendiente del gerente
+ *   - AUTORIZADA        el gerente autorizo; crea Distribuidor + user
+ *   - RECHAZADA         cerrada por verificador (kill switch) o gerente
+ *
+ * Verdict (de app.solicitation_verdict):
+ *   - PENDIENTE  aun no dictamenado
+ *   - CUMPLE     verificador acepta
+ *   - NO_CUMPLE  verificador rechaza (puede ser kill switch)
+ *
+ * Las dos columnas JSONB (`generalData`, `additionalData`) almacenan
+ * los datos capturados por el Coordinador en la tablet. No se migran
+ * a tablas relacionales - son datos historicos congelados que
+ * sobreviven un eventual rechazo (auditoría fria).
+ *
+ * El verificador NO edita estos JSONB. Solo escribe en sus propios
+ * campos (`verifierId`, `verdict`, `verifierComments`, `verificationPhotos`,
+ * `verifiedAt`).
+ *
+ * Decisiones de diseno:
+ *   - PK uuid default gen_random_uuid (consistente con el resto del schema).
+ *   - `solicitationStatusAt`: timestamp del ultimo cambio de estado (auditoria).
+ *   - `verificationPhotos` jsonb con array de urls `app.document`.
+ *   - `deletedAt` soft delete (los rechazados NO se eliminan fisicamente).
+ *
+ * Migracion fisica de la tabla: NO incluida. La tabla ya existe en BD
+ * desde el seed base (900_processes.sql). Esta definicion Drizzle es
+ * un mapeo TypeScript del schema BD existente.
+ *
+ * @module database/schema
+ * @author Equipo de desarrollo Mis Vales
+ * @since 2.1.0
+ */
+export const solicitations = appSchema.table('solicitation', {
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  coordinatorId: uuid('coordinator_id')
+    .notNull()
+    .references(() => users.id),
+  verifierId: uuid('verifier_id').references(() => users.id),
+  branchId: uuid('branch_id')
+    .notNull()
+    .references(() => branches.id),
+  generalData: jsonb('general_data')
+    .notNull()
+    .default(sql`'{}'::jsonb`),
+  additionalData: jsonb('additional_data')
+    .notNull()
+    .default(sql`'{}'::jsonb`),
+  verificationPhotos: jsonb('verification_photos')
+    .notNull()
+    .default(sql`'[]'::jsonb`),
+  verdict: text('verdict')
+    .$type<'PENDIENTE' | 'CUMPLE' | 'NO_CUMPLE'>()
+    .notNull()
+    .default('PENDIENTE'),
+  verifierComments: text('verifier_comments'),
+  verifiedAt: timestamp('verified_at', { withTimezone: true }),
+  status: text('status')
+    .$type<
+      | 'PRE_SOLICITUD'
+      | 'EN_VERIFICACION'
+      | 'DICTAMINADA'
+      | 'AUTORIZADA'
+      | 'RECHAZADA'
+    >()
+    .notNull()
+    .default('PRE_SOLICITUD'),
+  distributorId: uuid('distributor_id').references(() => distributors.id),
+  rejectionReason: text('rejection_reason'),
+  solicitationStatusAt: timestamp('solicitation_status_at', {
+    withTimezone: true,
+  }),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+});
+
+export type SolicitationEntity = typeof solicitations.$inferSelect;
+export type NewSolicitationEntity = typeof solicitations.$inferInsert;
+
 export type DocumentEntity = typeof documents.$inferSelect;
 export type NewDocumentEntity = typeof documents.$inferInsert;
