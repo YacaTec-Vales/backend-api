@@ -162,14 +162,8 @@ export class ClientRepository {
         firstVoucherWithCurrentDistributorId: null,
         updatedAt: new Date(),
       })
-      .where(
-        and(
-          eq(clients.id, clientId),
-          isNull(clients.deletedAt),
-        ),
-      )
+      .where(and(eq(clients.id, clientId), isNull(clients.deletedAt)))
       .returning({ id: clients.id });
     return result.length > 0;
   }
 }
-
