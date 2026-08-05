@@ -214,6 +214,9 @@ export class BranchesService {
         esMatriz: dto.esMatriz ?? dto.branchType === 'MATRIZ',
         address: dto.address ?? null,
         managerUserId,
+        cutoffDay: dto.cutoffDay ?? null,
+        paymentDay: dto.paymentDay ?? null,
+        earlyPaymentDays: dto.earlyPaymentDays ?? null,
       });
     });
 
@@ -243,7 +246,7 @@ export class BranchesService {
     dto: UpdateBranchDto,
     ctx: { ipAddress: string; userAgent: string; device: string },
   ): Promise<BranchResponseDto> {
-    this.assertActorCanWrite(actor);
+    this.assertActorCanUpdate(actor, branchId, dto);
 
     const existing = await this.branchesRepo.findById(branchId);
     if (!existing || existing.deletedAt) {
@@ -298,6 +301,9 @@ export class BranchesService {
         address: dto.address,
         managerUserId: managerPatch,
         isActive: dto.isActive,
+        cutoffDay: dto.cutoffDay,
+        paymentDay: dto.paymentDay,
+        earlyPaymentDays: dto.earlyPaymentDays,
       });
     });
     if (!updated) {
@@ -405,6 +411,63 @@ export class BranchesService {
   }
 
   /**
+   * Campos de fecha per-branch que el Gerente de Sucursal puede
+   * editar sobre su propia sucursal (regla 2.0).
+   */
+  private static readonly GS_ALLOWED_FIELDS = new Set([
+    'cutoffDay',
+    'paymentDay',
+    'earlyPaymentDays',
+  ]);
+
+  /**
+   * Valida que el actor pueda hacer update.
+   *
+   * - `GERENTE_GENERAL`: puede editar cualquier campo de cualquier
+   *   sucursal.
+   * - `GERENTE_SUCURSAL`: solo puede editar los campos de fecha
+   *   (`cutoffDay`, `paymentDay`, `earlyPaymentDays`) y unicamente
+   *   sobre su propia sucursal (override, regla 2.0).
+   * - Cualquier otro rol: rechazado.
+   */
+  private assertActorCanUpdate(
+    actor: RequestUser,
+    branchId: string,
+    dto: UpdateBranchDto,
+  ): void {
+    if (actor.role === 'GERENTE_GENERAL') return;
+
+    if (actor.role === 'GERENTE_SUCURSAL') {
+      if (actor.branchId !== branchId) {
+        throw new ForbiddenException({
+          code: 'BRANCH.SCOPE_FORBIDDEN',
+          message: 'no puedes editar sucursales que no son la tuya',
+        });
+      }
+      const dtoRecord = dto as unknown as Record<string, unknown>;
+      const presentFields = Object.keys(dtoRecord).filter(
+        (k) => dtoRecord[k] !== undefined,
+      );
+      const disallowed = presentFields.filter(
+        (k) => !BranchesService.GS_ALLOWED_FIELDS.has(k),
+      );
+      if (disallowed.length > 0) {
+        throw new ForbiddenException({
+          code: 'BRANCH.WRITE_FORBIDDEN',
+          message:
+            'como gerente de sucursal solo puedes editar cutoffDay, paymentDay y earlyPaymentDays',
+        });
+      }
+      return;
+    }
+
+    throw new ForbiddenException({
+      code: 'BRANCH.WRITE_FORBIDDEN',
+      message: 'solo el gerente general puede modificar sucursales',
+    });
+  }
+
+  /**
    * Valida que el `managerUserId` propuesto sea un usuario con rol
    * `GERENTE_SUCURSAL` que no este asignado a otra sucursal.
    */
@@ -477,6 +540,9 @@ export class BranchesService {
       esMatriz: entity!.esMatriz,
       address: entity!.address,
       managerUserId: entity!.managerUserId,
+      cutoffDay: entity!.cutoffDay,
+      paymentDay: entity!.paymentDay,
+      earlyPaymentDays: entity!.earlyPaymentDays,
       isActive: entity!.isActive,
       createdAt: entity!.createdAt,
       updatedAt: entity!.updatedAt,

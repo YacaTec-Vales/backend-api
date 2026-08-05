@@ -12,10 +12,13 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
   IsIn,
+  IsInt,
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
@@ -77,4 +80,49 @@ export class UpdateBranchDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  // -----------------------------------------------------------------
+  // Fechas de corte/pago per-branch (regla 2.0 — audio 2026-08-04)
+  // Estos 3 campos pueden ser editados por el GERENTE_SUCURSAL
+  // sobre su propia sucursal (override).
+  // -----------------------------------------------------------------
+
+  @ApiPropertyOptional({
+    example: 15,
+    minimum: 1,
+    maximum: 31,
+    description:
+      'Dia del mes en que se cierra el ciclo y se emiten las relaciones de esta sucursal.',
+  })
+  @IsOptional()
+  @IsInt({ message: 'cutoffDay debe ser un entero' })
+  @Min(1, { message: 'cutoffDay minimo es 1' })
+  @Max(31, { message: 'cutoffDay maximo es 31' })
+  cutoffDay?: number;
+
+  @ApiPropertyOptional({
+    example: 20,
+    minimum: 1,
+    maximum: 31,
+    description:
+      'Dia del mes en que vence el pago de la relacion emitida en el corte de esta sucursal.',
+  })
+  @IsOptional()
+  @IsInt({ message: 'paymentDay debe ser un entero' })
+  @Min(1, { message: 'paymentDay minimo es 1' })
+  @Max(31, { message: 'paymentDay maximo es 31' })
+  paymentDay?: number;
+
+  @ApiPropertyOptional({
+    example: 3,
+    minimum: 0,
+    maximum: 31,
+    description:
+      'Dias previos a la fecha limite en que un abono cuenta como pago anticipado y genera puntos.',
+  })
+  @IsOptional()
+  @IsInt({ message: 'earlyPaymentDays debe ser un entero' })
+  @Min(0, { message: 'earlyPaymentDays minimo es 0' })
+  @Max(31, { message: 'earlyPaymentDays maximo es 31' })
+  earlyPaymentDays?: number;
 }

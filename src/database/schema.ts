@@ -220,6 +220,27 @@ export const branches = appSchema.table('branch', {
    * Agregado por la migracion 10-branch-folio-prefix.sql.
    */
   folioPrefix: text('folio_prefix'),
+  /**
+   * Dia del mes (1..31) en que el sistema cierra el ciclo de esta
+   * Sucursal y emite las relaciones de sus Distribuidoras.
+   * Configurable por el GG; override por el GS de su propia Sucursal.
+   * Regla 2.0 — audio 2026-08-04.
+   */
+  cutoffDay: integer('cutoff_day'),
+  /**
+   * Dia del mes (1..31) en que vence el pago de la relacion emitida
+   * en el corte de esta Sucursal.
+   * Configurable por el GG; override por el GS de su propia Sucursal.
+   * Regla 2.0 — audio 2026-08-04.
+   */
+  paymentDay: integer('payment_day'),
+  /**
+   * Cantidad de dias previos a la fecha limite de pago en los que un
+   * abono cuenta como pago anticipado y genera puntos.
+   * Configurable por el GG; override por el GS de su propia Sucursal.
+   * Regla 2.0 — audio 2026-08-04.
+   */
+  earlyPaymentDays: integer('early_payment_days'),
   isActive: boolean('is_active').notNull().default(true),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true })
