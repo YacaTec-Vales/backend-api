@@ -3,12 +3,9 @@
  *
  * Registra `ClientsController` y `ClientsService`. Consume de
  * `AuthModule` (exportados) `UserRepository` y `AuditLogRepository`;
- * declara su propio `ClientRepository` y necesita acceso al
- * `DRIZZLE_READ` para resolver la distribuidora actual del
- * usuario autenticado.
- *
- * El `DRIZZLE_READ` se inyecta directamente desde `DatabaseModule`
- * (que ya lo exporta).
+ * declara su propio `ClientRepository`. Ademas incluye el
+ * `ClientDistributorHistoryRepository` para la logica de
+ * transferencia (commit 11).
  *
  * @module clients
  * @author Equipo de desarrollo Mis Vales
@@ -21,11 +18,20 @@ import { DatabaseModule } from '../database/database.module';
 import { ClientsController } from './clients.controller';
 import { ClientsService } from './clients.service';
 import { ClientRepository } from '../database/repositories/client.repository';
+import { ClientDistributorHistoryRepository } from '../database/repositories/client-distributor-history.repository';
+import { VoucherRepository } from '../database/repositories/voucher.repository';
+import { DistributorRepository } from '../database/repositories/distributor.repository';
 
 @Module({
   imports: [AuthModule, DatabaseModule],
   controllers: [ClientsController],
-  providers: [ClientsService, ClientRepository],
+  providers: [
+    ClientsService,
+    ClientRepository,
+    ClientDistributorHistoryRepository,
+    VoucherRepository,
+    DistributorRepository,
+  ],
   exports: [ClientsService, ClientRepository],
 })
 export class ClientsModule {}

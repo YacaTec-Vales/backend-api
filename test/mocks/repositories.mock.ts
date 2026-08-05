@@ -26,8 +26,11 @@ import type { RefreshTokenRepository } from '../../src/database/repositories/ref
 import type { PasswordResetTokenRepository } from '../../src/database/repositories/password-reset-token.repository';
 import type { BranchesRepository } from '../../src/branches/branches.repository';
 import type { ClientRepository } from '../../src/database/repositories/client.repository';
+import type { ClientDistributorHistoryRepository } from '../../src/database/repositories/client-distributor-history.repository';
 import type { ProductRepository } from '../../src/database/repositories/product.repository';
 import type { VoucherRepository } from '../../src/database/repositories/voucher.repository';
+import type { DistributorRepository } from '../../src/database/repositories/distributor.repository';
+import type { DocumentRepository } from '../../src/database/repositories/document.repository';
 
 /**
  * Executor "transaccional" reconocible que los mocks de
@@ -169,6 +172,30 @@ export function createClientRepositoryMock(): jest.Mocked<ClientRepository> {
     updateFirstVoucher: jest.fn(),
     clearFirstVoucher: jest.fn(),
   } as unknown as jest.Mocked<ClientRepository>;
+}
+
+export function createClientDistributorHistoryRepositoryMock(): jest.Mocked<ClientDistributorHistoryRepository> {
+  return {
+    create: jest.fn(),
+    listByClient: jest.fn(),
+    rawQuery: jest.fn(),
+  } as unknown as jest.Mocked<ClientDistributorHistoryRepository>;
+}
+
+export function createDistributorRepositoryMock(): jest.Mocked<DistributorRepository> {
+  return {
+    findByUserId: jest.fn(),
+    findById: jest.fn(),
+    create: jest.fn(),
+  } as unknown as jest.Mocked<DistributorRepository>;
+}
+
+export function createDocumentRepositoryMock(): jest.Mocked<DocumentRepository> {
+  return {
+    create: jest.fn(),
+    findById: jest.fn(),
+    findByStoragePath: jest.fn(),
+  } as unknown as jest.Mocked<DocumentRepository>;
 }
 
 /**

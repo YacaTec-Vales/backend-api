@@ -544,6 +544,38 @@ export const products = appSchema.table('product', {
     .defaultNow(),
 });
 
+/**
+ * Tabla `app.client_distributor_history`. Historial de transferencias
+ * de un cliente entre distribuidoras.
+ */
+export const clientDistributorHistory = appSchema.table(
+  'client_distributor_history',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    clientId: uuid('client_id').notNull(),
+    fromDistributorId: uuid('from_distributor_id').notNull(),
+    toDistributorId: uuid('to_distributor_id').notNull(),
+    authorizedBy: uuid('authorized_by').notNull(),
+    authorizationId: uuid('authorization_id'),
+    complaintId: uuid('complaint_id'),
+    reason: text('reason').notNull(),
+    newVoucherId: uuid('new_voucher_id'),
+    effectiveAt: timestamp('effective_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+);
+
+export type ClientDistributorHistoryEntity =
+  typeof clientDistributorHistory.$inferSelect;
+export type NewClientDistributorHistoryEntity =
+  typeof clientDistributorHistory.$inferInsert;
+
 // Tipos inferidos para uso por repositorios y servicios.
 export type UserEntity = typeof users.$inferSelect;
 export type NewUserEntity = typeof users.$inferInsert;
