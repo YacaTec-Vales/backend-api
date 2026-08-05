@@ -1,98 +1,79 @@
 /**
  * @fileoverview Controlador del modulo `clients`.
  *
- * Expone la operacion de alta de cliente final por la distribuidora
- * autenticada. Endpoints (prefijo global `api/v1`):
- *  - `POST /clients` — alta cruda del cliente final.
+ * Endpoints existentes (commit 3):
+ *  - POST /clients             crear cliente
+ *  - GET  /clients/:id         detalle
  *
- * Reglas:
- *  - El distribuidor del cliente SIEMPRE se obtiene del JWT (no
- *    se acepta en el body). Esto evita que una distribuidora
- *    cree clientes a nombre de otra.
- *  - Permiso `client.create`. Asignado al rol DISTRIBUIDOR (catalogo
- *    `app.permission` lo define).
- *  - Devuelve 201 Created con el sobre `{message, data: ClientResponseDto}`.
- *
- * Notas para futuros turnos:
- *  - `GET /clients/:id` para que la distribuidora vea al cliente
- *    recien capturado (no me lo pediste en este turno).
- *  - `PUT /clients/:id` con `AllowBeforePasswordChange` no aplica
- *    (no hay contrasena), pero `client.update` debera permitir
- *    editar domicilio / telefono ANTES del primer prevale. Queda
- *    para despues.
- *
- * Aplica `JwtAuthGuard` y `PermissionsGuard` a nivel de clase.
+ * Endpoints nuevos (commit 11):
+ *  - POST /clients/:id/transfer-distributor  transferir cliente
+ *    (gateado por client.transfer, COORDINADOR o gerentes).
  *
  * @module clients
  * @author Equipo de desarrollo Mis Vales
- * @since 1.0.0
  */
 
-import { Body, Controller, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  HttpCode,
+  Param,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiConflictResponse,
+  ApiCreatedResponse,
   ApiForbiddenResponse,
+  ApiNotFoundResponse,
+  ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
+  ApiBadRequestResponse,
 } from '@nestjs/swagger';
 import { ClientsService } from './clients.service';
 import { CreateClientDto } from './dto/create-client.dto';
 import { ClientResponseDto } from './dto/client-response.dto';
-import { ApiEnvelopeCreatedResponse } from '../shared/decorators/api-envelope-response.decorator';
+import { TransferClientDto } from './dto/transfer-client.dto';
+import { DRIZZLE_WRITE, type DrizzleWrite } from '../database/drizzle.provider';
+import { Inject } from '@nestjs/common';
+import { ClientRepository } from '../database/repositories/client.repository';
+import { ClientDistributorHistoryRepository } from '../database/repositories/client-distributor-history.repository';
+import { VoucherRepository } from '../database/repositories/voucher.repository';
+import { DistributorRepository } from '../database/repositories/distributor.repository';
+import { buildTransferClient } from './transfer-client.service';
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
-import { JwtAuthGuard, type RequestUser } from '../shared/guards/auth.guards';
+import { JwtAuthGuard } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
-import { CurrentUser } from '../shared/decorators/current-user.decorator';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';
+import { CurrentUser } from '../shared/decorators/current-user.decorator';
+import type { RequestUser } from '../shared/guards/auth.guards';
 
-/**
- * Controlador del modulo clients. Prefijo: `clients`.
- */
 @ApiTags('Clients')
 @ApiBearerAuth('bearer')
 @Controller('clients')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ClientsController {
-  constructor(private readonly clientsService: ClientsService) {}
+  constructor(
+    private readonly clientsService: ClientsService,
+    private readonly clientRepo: ClientRepository,
+    private readonly historyRepo: ClientDistributorHistoryRepository,
+    private readonly voucherRepo: VoucherRepository,
+    private readonly distributorRepo: DistributorRepository,
+    @Inject(DRIZZLE_WRITE) private readonly writeDb: DrizzleWrite,
+  ) {}
 
-  /**
-   * @api {post} /clients Alta de cliente final (distribuidora)
-   * @apiName CreateClient
-   * @apiGroup Clients
-   * @apiVersion 1.0.0
-   * @apiPermission client.create
-   */
   @Post()
   @RequirePermissions('client.create')
-  @ApiOperation({
-    summary: 'Alta de cliente final',
-    description:
-      'Registra los datos personales basicos del cliente capturados por ' +
-      'la distribuidora. El cliente queda ligado a la distribuidora del JWT ' +
-      'y a su sucursal (regla R3: un solo cliente por CURP en TODO el sistema; ' +
-      'este endpoint devuelve 409 si la CURP ya existe, con datos del ' +
-      'cliente y distribuidora actual para evitar duplicados).',
-  })
-  @ApiEnvelopeCreatedResponse({
-    message: 'Cliente creado correctamente',
+  @ApiOperation({ summary: 'Crear cliente (alta cruda)' })
+  @ApiCreatedResponse({
+    description: 'Cliente creado.',
     type: ClientResponseDto,
   })
-  @ApiUnauthorizedResponse({
-    description: 'AUTH.* — token invalido, sesion revocada o expirada.',
-    type: ErrorResponseDto,
-  })
-  @ApiForbiddenResponse({
-    description:
-      'AUTH.PERMISSION_DENIED (sin client.create) / AUTH.ROLE_NOT_ALLOWED ' +
-      '(rol != DISTRIBUIDOR) / CLIENT.DISTRIBUTOR_NOT_FOUND / ' +
-      'CLIENT.DISTRIBUTOR_INACTIVE.',
-    type: ErrorResponseDto,
-  })
-  @ApiConflictResponse({
-    description:
-      'CLIENT.CURP_ALREADY_EXISTS (R3: ya existe un cliente con esa CURP).',
+  @ApiBadRequestResponse({
+    description: 'CURP invalida o ya existe (CLIENT.CURP_ALREADY_EXISTS).',
     type: ErrorResponseDto,
   })
   create(
@@ -100,5 +81,58 @@ export class ClientsController {
     @Body() dto: CreateClientDto,
   ): Promise<ClientResponseDto> {
     return this.clientsService.create(actor, dto);
+  }
+
+  /**
+   * @api {post} /clients/:id/transfer-distributor
+   */
+  @Post(':id/transfer-distributor')
+  @HttpCode(200)
+  @RequirePermissions('client.transfer')
+  @ApiOperation({
+    summary: 'Transferir cliente a otra distribuidora',
+    description:
+      'COORDINADOR (o gerente) autoriza el cambio de distribuidora. ' +
+      'El cliente debe estar 100% limpio (sin vales activos). ' +
+      'Se inserta fila en client_distributor_history.',
+  })
+  @ApiOkResponse({ description: 'Cliente transferido.' })
+  @ApiUnauthorizedResponse({
+    description: 'AUTH.* — token invalido, sesion revocada o expirada.',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description: 'AUTH.PERMISSION_DENIED (sin client.transfer).',
+    type: ErrorResponseDto,
+  })
+  @ApiNotFoundResponse({
+    description: 'CLIENT.NOT_FOUND | DISTRIBUTOR.NOT_FOUND.',
+    type: ErrorResponseDto,
+  })
+  @ApiConflictResponse({
+    description: 'CLIENT.HAS_ACTIVE_VOUCHER (R6).',
+    type: ErrorResponseDto,
+  })
+  @ApiBadRequestResponse({
+    description: 'TRANSFER.SAME_DISTRIBUTOR | DISTRIBUTOR.INACTIVE.',
+    type: ErrorResponseDto,
+  })
+  async transfer(
+    @CurrentUser() actor: RequestUser,
+    @Param('id') id: string,
+    @Body() dto: TransferClientDto,
+  ): Promise<{
+    id: string;
+    previousDistributorId: string;
+    newDistributorId: string;
+  }> {
+    const transfer = buildTransferClient(
+      this.clientRepo,
+      this.historyRepo,
+      this.voucherRepo,
+      this.distributorRepo,
+      this.writeDb,
+    );
+    return transfer(actor, id, dto);
   }
 }

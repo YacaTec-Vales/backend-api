@@ -45,6 +45,11 @@ import { VerificadoresModule } from './verificadores/verificadores.module';
 import { CajerosModule } from './cajeros/cajeros.module';
 import { DistribuidoresModule } from './distribuidores/distribuidores.module';
 import { ClientsModule } from './clients/clients.module';
+import { CatalogsModule } from './catalogs/catalogs.module';
+import { VouchersModule } from './vouchers/vouchers.module';
+import { CashierModule } from './cashier/cashier.module';
+import { ComplaintsModule } from './complaints/complaints.module';
+import { DocumentsModule } from './documents/documents.module';
 
 import { JwtAuthGuard, RolesGuard } from './shared/guards/auth.guards';
 import { PermissionsGuard } from './shared/guards/permissions.guard';
@@ -97,6 +102,11 @@ import { MustChangePasswordGuard } from './shared/guards/must-change-password.gu
     CajerosModule,
     DistribuidoresModule,
     ClientsModule,
+    CatalogsModule,
+    VouchersModule,
+    CashierModule,
+    ComplaintsModule,
+    DocumentsModule,
   ],
   controllers: [AppController],
   providers: [
