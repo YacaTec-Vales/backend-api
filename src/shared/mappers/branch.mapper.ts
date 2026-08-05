@@ -29,6 +29,9 @@ export interface BranchRowShape {
   esMatriz: boolean;
   address: string | null;
   managerUserId: string | null;
+  cutoffDay: number | null;
+  paymentDay: number | null;
+  earlyPaymentDays: number | null;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -66,6 +69,9 @@ export function toBranchResponseDto(row: BranchRowShape): BranchResponseDto {
     address: row.address,
     managerUserId: row.managerUserId,
     manager,
+    cutoffDay: row.cutoffDay,
+    paymentDay: row.paymentDay,
+    earlyPaymentDays: row.earlyPaymentDays,
     isActive: row.isActive,
     createdAt: toIso(row.createdAt) ?? '',
     updatedAt: toIso(row.updatedAt) ?? '',

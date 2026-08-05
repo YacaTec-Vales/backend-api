@@ -301,4 +301,119 @@ describe('BranchesService', () => {
       ).rejects.toBeInstanceOf(ForbiddenException);
     });
   });
+
+  // ==========================================================================
+  // Regla 2.0 — fechas per-branch (cutoffDay, paymentDay, earlyPaymentDays)
+  // ==========================================================================
+
+  describe('create con fechas per-branch', () => {
+    it('crea una sucursal con cutoffDay, paymentDay y earlyPaymentDays', async () => {
+      branchesRepo.findMatriz.mockResolvedValue(null);
+      branchesRepo.insert.mockResolvedValue({
+        id: 'b2',
+        name: 'Sucursal Lerdo',
+        branchType: 'SUCURSAL',
+        esMatriz: false,
+        address: null,
+        managerUserId: null,
+        cutoffDay: 14,
+        paymentDay: 20,
+        earlyPaymentDays: 3,
+        isActive: true,
+        deletedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as never);
+      const result = await service.create(
+        requestUserFactory({ role: 'GERENTE_GENERAL' }),
+        {
+          name: 'Sucursal Lerdo',
+          branchType: 'SUCURSAL',
+          cutoffDay: 14,
+          paymentDay: 20,
+          earlyPaymentDays: 3,
+        } as never,
+        { ipAddress: '127.0.0.1', userAgent: 'jest', device: 'unknown' },
+      );
+      expect(result.name).toBe('Sucursal Lerdo');
+      expect(branchesRepo.insert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          cutoffDay: 14,
+          paymentDay: 20,
+          earlyPaymentDays: 3,
+        }),
+      );
+    });
+  });
+
+  describe('update — permisos GS para fechas per-branch (regla 2.0)', () => {
+    const ctx = { ipAddress: '', userAgent: '', device: '' };
+
+    it('GERENTE_SUCURSAL puede editar cutoffDay/paymentDay/earlyPaymentDays de su sucursal', async () => {
+      branchesRepo.findById.mockResolvedValue({
+        id: 'mi-suc',
+        name: 'Mi Suc',
+        branchType: 'SUCURSAL',
+        esMatriz: false,
+        address: null,
+        managerUserId: null,
+        cutoffDay: 15,
+        paymentDay: 20,
+        earlyPaymentDays: 3,
+        isActive: true,
+        deletedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as never);
+      branchesRepo.update.mockResolvedValue({
+        id: 'mi-suc',
+        name: 'Mi Suc',
+        branchType: 'SUCURSAL',
+        esMatriz: false,
+        address: null,
+        managerUserId: null,
+        cutoffDay: 10,
+        paymentDay: 18,
+        earlyPaymentDays: 5,
+        isActive: true,
+        deletedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as never);
+      const result = await service.update(
+        requestUserFactory({ role: 'GERENTE_SUCURSAL', branchId: 'mi-suc' }),
+        'mi-suc',
+        { cutoffDay: 10, paymentDay: 18, earlyPaymentDays: 5 } as never,
+        ctx,
+      );
+      expect(result).toBeDefined();
+      expect(branchesRepo.update).toHaveBeenCalledTimes(1);
+    });
+
+    it('GERENTE_SUCURSAL NO puede editar fechas de otra sucursal', async () => {
+      await expect(
+        service.update(
+          requestUserFactory({ role: 'GERENTE_SUCURSAL', branchId: 'mi-suc' }),
+          'otra-suc',
+          { cutoffDay: 10 } as never,
+          ctx,
+        ),
+      ).rejects.toMatchObject({
+        response: { code: 'BRANCH.SCOPE_FORBIDDEN' },
+      });
+    });
+
+    it('GERENTE_SUCURSAL NO puede editar campos que no son de fecha', async () => {
+      await expect(
+        service.update(
+          requestUserFactory({ role: 'GERENTE_SUCURSAL', branchId: 'mi-suc' }),
+          'mi-suc',
+          { name: 'Nuevo Nombre', cutoffDay: 10 } as never,
+          ctx,
+        ),
+      ).rejects.toMatchObject({
+        response: { code: 'BRANCH.WRITE_FORBIDDEN' },
+      });
+    });
+  });
 });
