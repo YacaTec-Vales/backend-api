@@ -9,8 +9,16 @@
  * @author Equipo de desarrollo Mis Vales
  */
 
-import { Controller, HttpCode, Param, Post, UseGuards } from '@nestjs/common';
 import {
+  Body,
+  Controller,
+  HttpCode,
+  Param,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBadRequestResponse,
   ApiBearerAuth,
   ApiConflictResponse,
   ApiForbiddenResponse,
@@ -22,6 +30,10 @@ import {
 } from '@nestjs/swagger';
 import { CashierService } from './cashier.service';
 import { FindVoucherResponseDto } from './dto/find-voucher-response.dto';
+import {
+  ConfirmVoucherDto,
+  ConfirmVoucherResponseDto,
+} from './dto/confirm-voucher.dto';
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import { JwtAuthGuard } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
@@ -83,5 +95,46 @@ export class CashierController {
     @Param('folio') folio: string,
   ): Promise<FindVoucherResponseDto> {
     return this.cashierService.findVoucher(actor, folio);
+  }
+
+  /**
+   * @api {post} /cashier/vouchers/confirm/:folio Confirmar feriado del vale
+   */
+  @Post('vouchers/confirm/:folio')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Confirmar el feriado de un vale',
+    description:
+      'La cajera ferie el vale. dataConfirmed=true -> LIQUIDADO con ' +
+      'authorizationNumber. dataConfirmed=false -> se crea queja (commit 10).',
+  })
+  @ApiOkResponse({ description: 'Vale confirmado.' })
+  @ApiUnauthorizedResponse({
+    description: 'AUTH.* — token invalido, sesion revocada o expirada.',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description:
+      'USER.NO_BRANCH | VOUCHER.BRANCH_MISMATCH (vale no es de tu sucursal).',
+    type: ErrorResponseDto,
+  })
+  @ApiNotFoundResponse({
+    description: 'VOUCHER.NOT_FOUND (folio no existe).',
+    type: ErrorResponseDto,
+  })
+  @ApiConflictResponse({
+    description: 'VOUCHER.NOT_ACTIVE (vale no esta en ACTIVO).',
+    type: ErrorResponseDto,
+  })
+  @ApiBadRequestResponse({
+    description: 'VOUCHER.DISCREPANCY_DESCRIPTION_REQUIRED.',
+    type: ErrorResponseDto,
+  })
+  confirmVoucher(
+    @CurrentUser() actor: RequestUser,
+    @Param('folio') folio: string,
+    @Body() dto: ConfirmVoucherDto,
+  ): Promise<ConfirmVoucherResponseDto> {
+    return this.cashierService.confirmVoucher(actor, folio, dto);
   }
 }
