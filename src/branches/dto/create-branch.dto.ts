@@ -9,6 +9,8 @@
 
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  ArrayMinSize,
+  ArrayMaxSize,
   IsBoolean,
   IsIn,
   IsInt,
@@ -19,8 +21,10 @@ import {
   MaxLength,
   Min,
   MinLength,
+  ValidateNested,
 } from 'class-validator';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
+import { BranchCutoffInputDto } from './branch-cutoff-response.dto';
 
 /**
  * Solo trim. Aplica a nombres y direcciones.
@@ -127,4 +131,28 @@ export class CreateBranchDto {
   @Min(0, { message: 'earlyPaymentDays minimo es 0' })
   @Max(31, { message: 'earlyPaymentDays maximo es 31' })
   earlyPaymentDays?: number;
+
+  // -----------------------------------------------------------------
+  // Fechas canonicas via app.branch_cutoff (regla 2.0 - audio 2026-08-04)
+  // -----------------------------------------------------------------
+  // Si se omite, BranchesService.create usa los defaults del repositorio.
+  // Si se envia, debe traer ambas quincenas (position 1 y 2).
+
+  @ApiPropertyOptional({
+    description:
+      'Fechas canonicas de corte y pago (recomendado). 2 quincenas. ' +
+      'Si se envia, sobrescribe los campos planos cutoffDay/paymentDay.',
+    type: () => BranchCutoffInputDto,
+    isArray: true,
+    example: [
+      { position: 1, cutoffDay: 15, paymentDay: 20, earlyPaymentDays: 3 },
+      { position: 2, cutoffDay: 28, paymentDay: 5, earlyPaymentDays: 3 },
+    ],
+  })
+  @IsOptional()
+  @ArrayMinSize(2, { message: 'cutoffs debe traer las 2 quincenas' })
+  @ArrayMaxSize(2, { message: 'cutoffs debe traer maximo 2 quincenas' })
+  @ValidateNested({ each: true })
+  @Type(() => BranchCutoffInputDto)
+  cutoffs?: BranchCutoffInputDto[];
 }
