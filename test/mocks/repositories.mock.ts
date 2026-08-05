@@ -201,5 +201,7 @@ export function createVoucherRepositoryMock(): jest.Mocked<VoucherRepository> {
     getAndIncrementFolioSeq: jest.fn(),
     create: jest.fn(),
     cancelByFolio: jest.fn(),
+    markAsLiquidated: jest.fn(),
+    rawQuery: jest.fn(),
   } as unknown as jest.Mocked<VoucherRepository>;
 }

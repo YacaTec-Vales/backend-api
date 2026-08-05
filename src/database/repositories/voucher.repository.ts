@@ -295,5 +295,46 @@ export class VoucherRepository {
       .returning();
     return row ?? null;
   }
-}
 
+  /**
+   * Marca un voucher como LIQUIDADO con authorizationNumber.
+   * Solo si status='ACTIVO' y no borrado.
+   *
+   * Sema[]ntica: en el esquema canonico, LIQUIDADO es el primer
+   * estado del life cycle post-feria. La conciliacion de abonos
+   * corre en un flujo independiente (no implementado en este commit).
+   */
+  async markAsLiquidated(
+    voucherId: string,
+    authorizationNumber: string,
+  ): Promise<VoucherEntity | null> {
+    const [row] = await this.writeDb
+      .update(vouchers)
+      .set({
+        status: 'LIQUIDADO',
+        authorizationNumber,
+        liquidatedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(vouchers.id, voucherId),
+          eq(vouchers.status, 'ACTIVO'),
+          isNull(vouchers.deletedAt),
+        ),
+      )
+      .returning();
+    return row ?? null;
+  }
+
+  /**
+   * Ejecuta SQL crudo (vouchers) para queries que no encajan
+   * en Drizzle (e.g. INSERT en otras tablas).
+   */
+  async rawQuery(sql: string, params: unknown[]): Promise<unknown[]> {
+    const result = await this.writeDb.execute(sql);
+    const rows = (result as unknown as { rows: unknown[] }).rows;
+    void params;
+    return rows ?? [];
+  }
+}

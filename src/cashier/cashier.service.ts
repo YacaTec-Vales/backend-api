@@ -19,6 +19,7 @@
  */
 
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -28,6 +29,7 @@ import {
 import { ClientRepository } from '../database/repositories/client.repository';
 import { DistributorRepository } from '../database/repositories/distributor.repository';
 import { VoucherRepository } from '../database/repositories/voucher.repository';
+import { VoucherEntity } from '../database/schema';
 import { BranchesRepository } from '../branches/branches.repository';
 import type { RequestUser } from '../shared/guards/auth.guards';
 import {
@@ -164,5 +166,130 @@ export class CashierService {
     this.logger.log(`cashier.findVoucher folio=${folio} actor=${actor.id}`);
 
     return response;
+  }
+
+  /**
+   * Confirma un vale (la cajera lo ferie).
+   */
+  async confirmVoucher(
+    actor: RequestUser,
+    folio: string,
+    dto: {
+      authorizationNumber: string;
+      dataConfirmed: boolean;
+      documents?: Array<{ docId: string; documentType: string }>;
+      discrepancyDescription?: string;
+    },
+  ): Promise<{
+    voucher: import('../vouchers/dto/voucher-response.dto').VoucherResponseDto;
+    dataConfirmed: boolean;
+    complaintId: string | null;
+  }> {
+    if (!actor.branchId) {
+      throw new ForbiddenException({
+        code: CASHIER_ERROR_CODES.USER_NO_BRANCH,
+        message: 'El usuario autenticado no tiene una sucursal asignada.',
+      });
+    }
+
+    const voucher = await this.voucherRepo.findByFolio(folio);
+    if (!voucher) {
+      throw new NotFoundException({
+        code: CASHIER_ERROR_CODES.VOUCHER_NOT_FOUND,
+        message: 'El vale no existe.',
+        details: { folio },
+      });
+    }
+
+    if (voucher.status !== 'ACTIVO') {
+      throw new ConflictException({
+        code: CASHIER_ERROR_CODES.VOUCHER_NOT_ACTIVE,
+        message: 'El vale no esta activo, no se puede confirmar.',
+        details: { folio, currentStatus: voucher.status },
+      });
+    }
+
+    const distributor = await this.distributorRepo.findById(
+      voucher.distributorId,
+    );
+    if (!distributor || distributor.branchId !== actor.branchId) {
+      throw new ForbiddenException({
+        code: CASHIER_ERROR_CODES.BRANCH_MISMATCH,
+        message: 'El cajero no pertenece a la sucursal del vale.',
+      });
+    }
+
+    if (!dto.dataConfirmed && !dto.discrepancyDescription) {
+      throw new BadRequestException({
+        code: 'VOUCHER.DISCREPANCY_DESCRIPTION_REQUIRED',
+        message: 'Si dataConfirmed es false, debes describir la discrepancia.',
+      });
+    }
+
+    if (dto.dataConfirmed) {
+      const updated = await this.voucherRepo.markAsLiquidated(
+        voucher.id,
+        dto.authorizationNumber.trim(),
+      );
+      if (!updated) {
+        throw new ConflictException({
+          code: CASHIER_ERROR_CODES.VOUCHER_NOT_ACTIVE,
+          message: 'El vale cambio de estado, no se puede confirmar.',
+        });
+      }
+      this.logger.log(
+        `cashier.confirmVoucher folio=${folio} dataConfirmed=true actor=${actor.id}`,
+      );
+      return {
+        voucher: toVoucherResponseDto(updated),
+        dataConfirmed: true,
+        complaintId: null,
+      };
+    }
+
+    const complaintId = await this.createComplaint(
+      distributor.id,
+      voucher,
+      actor.id,
+      dto.discrepancyDescription ?? '',
+      dto.documents ?? [],
+    );
+    this.logger.log(
+      `cashier.confirmVoucher folio=${folio} dataConfirmed=false complaintId=${complaintId} actor=${actor.id}`,
+    );
+    return {
+      voucher: toVoucherResponseDto(voucher),
+      dataConfirmed: false,
+      complaintId,
+    };
+  }
+
+  /**
+   * Persiste una queja (app.complaint) para discrepancia.
+   */
+  private async createComplaint(
+    distributorId: string,
+    voucher: VoucherEntity,
+    _actorId: string,
+    description: string,
+    documents: Array<{ docId: string; documentType: string }>,
+  ): Promise<string> {
+    const firstDocId = documents[0]?.docId ?? null;
+    const insertSql = `
+      INSERT INTO app.complaint
+        (distributor_id, description, photo_document_id, status, is_active, created_at, updated_at)
+      VALUES ($1, $2, $3, 'PENDIENTE', true, NOW(), NOW())
+      RETURNING id
+    `;
+    const rows = await this.voucherRepo.rawQuery(insertSql, [
+      distributorId,
+      description,
+      firstDocId,
+    ]);
+    const complaintId = (rows[0] as { id: string }).id;
+    this.logger.log(
+      `complaint creada: id=${complaintId} distributor=${distributorId} voucher=${voucher.folio}`,
+    );
+    return complaintId;
   }
 }
