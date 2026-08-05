@@ -14,6 +14,8 @@
 
 export { toBranchResponseDto } from './branch.mapper';
 export type { BranchRowShape } from './branch.mapper';
+export { toBranchCutoffResponseDto } from './branch-cutoff.mapper';
+export type { BranchCutoffRowShape } from './branch-cutoff.mapper';
 export { toClientResponseDto } from './client.mapper';
 export type { ClientRowShape } from './client.mapper';
 export { toDocumentResponseDto } from './document.mapper';

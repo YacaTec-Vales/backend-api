@@ -23,6 +23,7 @@ import {
   timestamp,
   boolean,
   integer,
+  smallint,
   jsonb,
   inet,
   date,
@@ -221,28 +222,64 @@ export const branches = appSchema.table('branch', {
    */
   folioPrefix: text('folio_prefix'),
   /**
-   * Dia del mes (1..31) en que el sistema cierra el ciclo de esta
-   * Sucursal y emite las relaciones de sus Distribuidoras.
-   * Configurable por el GG; override por el GS de su propia Sucursal.
-   * Regla 2.0 — audio 2026-08-04.
+   * @deprecated Las fechas de corte y pago viven ahora en la tabla
+   * `app.branch_cutoff` (migration 12-branch-fechas-corte.sql). Este
+   * campo se conserva por compatibilidad transitoria y se eliminara
+   * en una limpieza manual posterior.
+   * @see docs/sistema/reglas-2.0.md v2.0.1
    */
   cutoffDay: integer('cutoff_day'),
   /**
-   * Dia del mes (1..31) en que vence el pago de la relacion emitida
-   * en el corte de esta Sucursal.
-   * Configurable por el GG; override por el GS de su propia Sucursal.
-   * Regla 2.0 — audio 2026-08-04.
+   * @deprecated Ver `app.branch_cutoff` (migration 12). Mantenido por
+   * compatibilidad transitoria.
    */
   paymentDay: integer('payment_day'),
   /**
-   * Cantidad de dias previos a la fecha limite de pago en los que un
-   * abono cuenta como pago anticipado y genera puntos.
-   * Configurable por el GG; override por el GS de su propia Sucursal.
-   * Regla 2.0 — audio 2026-08-04.
+   * @deprecated Ver `app.branch_cutoff` (migration 12). Mantenido por
+   * compatibilidad transitoria.
    */
   earlyPaymentDays: integer('early_payment_days'),
   isActive: boolean('is_active').notNull().default(true),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+/**
+ * Tabla `app.branch_cutoff`. Fechas de corte y pago POR SUCURSAL (regla 2.0).
+ *
+ * Una Sucursal tiene 2 filas en esta tabla (position 1 y 2) para
+ * representar las 2 quincenas del mes. La columna `early_payment_days`
+ * es comun a ambas quincenas; `cutoff_day` y `payment_day` son
+ * especificos por quincena.
+ *
+ * Migracion: `infrastructure/database/updates/12-branch-fechas-corte.sql`.
+ *
+ * @module database/schema
+ * @author Equipo de desarrollo Mis Vales
+ * @since 2.0.1
+ */
+export const branchCutoffs = appSchema.table('branch_cutoff', {
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  branchId: uuid('branch_id')
+    .notNull()
+    .references(() => branches.id, { onDelete: 'cascade' }),
+  /**
+   * Quincena del mes: 1 = primera quincena (~corte dia 15),
+   * 2 = segunda quincena (~corte dia 30).
+   * SMALLINT para extensibilidad futura (CHECK 1,2 hoy).
+   */
+  position: smallint('position').notNull(),
+  cutoffDay: integer('cutoff_day').notNull(),
+  paymentDay: integer('payment_day').notNull(),
+  earlyPaymentDays: integer('early_payment_days').notNull().default(3),
+  isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -612,6 +649,8 @@ export type PermissionEntity = typeof permissions.$inferSelect;
 export type RolePermissionEntity = typeof rolePermissions.$inferSelect;
 export type BranchEntity = typeof branches.$inferSelect;
 export type NewBranchEntity = typeof branches.$inferInsert;
+export type BranchCutoffEntity = typeof branchCutoffs.$inferSelect;
+export type NewBranchCutoffEntity = typeof branchCutoffs.$inferInsert;
 export type AuditLogEntity = typeof auditLog.$inferSelect;
 export type NewAuditLogEntity = typeof auditLog.$inferInsert;
 export type EmailLogEntity = typeof emailLog.$inferSelect;
