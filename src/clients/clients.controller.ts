@@ -1,9 +1,9 @@
 /**
- * @fileoverview Controlador del modulo `clients` (extendido).
+ * @fileoverview Controlador del modulo `clients`.
  *
  * Endpoints existentes (commit 3):
  *  - POST /clients             crear cliente
- *  - GET /clients/:id          detalle
+ *  - GET  /clients/:id         detalle
  *
  * Endpoints nuevos (commit 11):
  *  - POST /clients/:id/transfer-distributor  transferir cliente
@@ -24,6 +24,7 @@ import {
 import {
   ApiBearerAuth,
   ApiConflictResponse,
+  ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -33,6 +34,8 @@ import {
   ApiBadRequestResponse,
 } from '@nestjs/swagger';
 import { ClientsService } from './clients.service';
+import { CreateClientDto } from './dto/create-client.dto';
+import { ClientResponseDto } from './dto/client-response.dto';
 import { TransferClientDto } from './dto/transfer-client.dto';
 import { DRIZZLE_WRITE, type DrizzleWrite } from '../database/drizzle.provider';
 import { Inject } from '@nestjs/common';
@@ -48,9 +51,6 @@ import { RequirePermissions } from '../shared/decorators/permissions.decorator';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
 import type { RequestUser } from '../shared/guards/auth.guards';
 
-/**
- * Controlador del modulo `clients`. Prefijo: `clients`.
- */
 @ApiTags('Clients')
 @ApiBearerAuth('bearer')
 @Controller('clients')
@@ -65,9 +65,26 @@ export class ClientsController {
     @Inject(DRIZZLE_WRITE) private readonly writeDb: DrizzleWrite,
   ) {}
 
+  @Post()
+  @RequirePermissions('client.create')
+  @ApiOperation({ summary: 'Crear cliente (alta cruda)' })
+  @ApiCreatedResponse({
+    description: 'Cliente creado.',
+    type: ClientResponseDto,
+  })
+  @ApiBadRequestResponse({
+    description: 'CURP invalida o ya existe (CLIENT.CURP_ALREADY_EXISTS).',
+    type: ErrorResponseDto,
+  })
+  create(
+    @CurrentUser() actor: RequestUser,
+    @Body() dto: CreateClientDto,
+  ): Promise<ClientResponseDto> {
+    return this.clientsService.create(actor, dto);
+  }
+
   /**
    * @api {post} /clients/:id/transfer-distributor
-   * @apiName TransferClient
    */
   @Post(':id/transfer-distributor')
   @HttpCode(200)
@@ -79,17 +96,7 @@ export class ClientsController {
       'El cliente debe estar 100% limpio (sin vales activos). ' +
       'Se inserta fila en client_distributor_history.',
   })
-  @ApiOkResponse({
-    description: 'Cliente transferido.',
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'string' },
-        previousDistributorId: { type: 'string' },
-        newDistributorId: { type: 'string' },
-      },
-    },
-  })
+  @ApiOkResponse({ description: 'Cliente transferido.' })
   @ApiUnauthorizedResponse({
     description: 'AUTH.* — token invalido, sesion revocada o expirada.',
     type: ErrorResponseDto,

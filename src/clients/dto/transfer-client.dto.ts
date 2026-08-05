@@ -10,7 +10,7 @@
 
 import { ApiProperty, ApiSchema } from '@nestjs/swagger';
 import {
-  IsNotEmpty,
+  IsOptional,
   IsString,
   IsUUID,
   MaxLength,
@@ -38,9 +38,14 @@ export class TransferClientDto {
   reason!: string;
 
   /**
-   * Notas opcionales del coordinador.
+   * Notas opcionales del coordinador (max 1000 chars).
    */
-  @IsNotEmpty()
+  @ApiProperty({
+    description: 'Notas opcionales del coordinador.',
+    required: false,
+    maxLength: 1000,
+  })
+  @IsOptional()
   @IsString()
   @MaxLength(1000)
   notes?: string;
