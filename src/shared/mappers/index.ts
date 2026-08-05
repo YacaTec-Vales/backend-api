@@ -27,6 +27,9 @@ export { toMailLogItemDto } from './mail-log.mapper';
 export type { EmailLogRowShape } from './mail-log.mapper';
 export { toSessionResponseDto } from './session.mapper';
 export type { SessionRowShape } from './session.mapper';
+export { toSolicitationResponseDto } from './solicitation.mapper';
+export type { SolicitationRowShape } from './solicitation.mapper';
+
 export { toVoucherResponseDto } from './voucher.mapper';
 export type { VoucherRowShape } from './voucher.mapper';
 export {
