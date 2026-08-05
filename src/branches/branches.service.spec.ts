@@ -383,7 +383,7 @@ describe('BranchesService', () => {
       const result = await service.update(
         requestUserFactory({ role: 'GERENTE_SUCURSAL', branchId: 'mi-suc' }),
         'mi-suc',
-        { cutoffDay: 10, paymentDay: 18, earlyPaymentDays: 5 } as never,
+        { cutoffDay: 10, paymentDay: 18, earlyPaymentDays: 5 },
         ctx,
       );
       expect(result).toBeDefined();
@@ -395,7 +395,7 @@ describe('BranchesService', () => {
         service.update(
           requestUserFactory({ role: 'GERENTE_SUCURSAL', branchId: 'mi-suc' }),
           'otra-suc',
-          { cutoffDay: 10 } as never,
+          { cutoffDay: 10 },
           ctx,
         ),
       ).rejects.toMatchObject({
@@ -408,7 +408,7 @@ describe('BranchesService', () => {
         service.update(
           requestUserFactory({ role: 'GERENTE_SUCURSAL', branchId: 'mi-suc' }),
           'mi-suc',
-          { name: 'Nuevo Nombre', cutoffDay: 10 } as never,
+          { name: 'Nuevo Nombre', cutoffDay: 10 },
           ctx,
         ),
       ).rejects.toMatchObject({
