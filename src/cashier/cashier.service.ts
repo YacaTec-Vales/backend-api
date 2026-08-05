@@ -278,7 +278,7 @@ export class CashierService {
     const insertSql = `
       INSERT INTO app.complaint
         (distributor_id, description, photo_document_id, status, is_active, created_at, updated_at)
-      VALUES ($1, $2, $3, 'PENDIENTE', true, NOW(), NOW())
+      VALUES ($1, $2, $3, 'ABIERTA', true, NOW(), NOW())
       RETURNING id
     `;
     const rows = await this.voucherRepo.rawQuery(insertSql, [

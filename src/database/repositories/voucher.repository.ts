@@ -332,9 +332,17 @@ export class VoucherRepository {
    * en Drizzle (e.g. INSERT en otras tablas).
    */
   async rawQuery(sql: string, params: unknown[]): Promise<unknown[]> {
-    const result = await this.writeDb.execute(sql);
-    const rows = (result as unknown as { rows: unknown[] }).rows;
-    void params;
-    return rows ?? [];
+    const pool = (
+      this.writeDb as unknown as {
+        $client: {
+          query: (
+            sql: string,
+            params: unknown[],
+          ) => Promise<{ rows: unknown[] }>;
+        };
+      }
+    ).$client;
+    const result = await pool.query(sql, params);
+    return result.rows ?? [];
   }
 }
