@@ -22,6 +22,11 @@ const BASE_ENV = {
   DATABASE_READ_NAME: 'vales_yacatec_test',
   JWT_SECRET: 'a'.repeat(32),
   MFA_SECRET_KEY: 'b'.repeat(32),
+  STORAGE_ENDPOINT: 'http://minio.local:9000',
+  STORAGE_BUCKET: 'test-bucket',
+  STORAGE_ACCESS_KEY_ID: 'test-key',
+  STORAGE_SECRET_ACCESS_KEY: 'test-secret',
+  STORAGE_PUBLIC_BASE_URL: 'http://minio.local:9000/test-bucket',
 };
 
 describe('envValidationSchema', () => {
