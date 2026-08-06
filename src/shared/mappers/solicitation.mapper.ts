@@ -64,6 +64,10 @@ function normalizePhotos(raw: unknown): string[] {
 /**
  * Proyeccion de una fila de `app.solicitation` a su DTO publico.
  *
+ * Acepta el row "crudo" del repositorio (`generalData`/`additionalData`
+ * son `unknown` por la inferencia de Drizzle sobre `jsonb`) y normaliza
+ * a `Record<string, unknown>` para el mapper publico.
+ *
  * @param row - Fila del repositorio.
  * @returns DTO publico.
  */
@@ -75,8 +79,8 @@ export function toSolicitationResponseDto(
     coordinatorId: row.coordinatorId,
     verifierId: row.verifierId,
     branchId: row.branchId,
-    generalData: row.generalData,
-    additionalData: row.additionalData,
+    generalData: row.generalData ?? {},
+    additionalData: row.additionalData ?? {},
     verificationPhotos: normalizePhotos(row.verificationPhotos),
     verdict: row.verdict,
     verifierComments: row.verifierComments,
@@ -88,4 +92,26 @@ export function toSolicitationResponseDto(
     createdAt: toIso(row.createdAt) ?? '',
     updatedAt: toIso(row.updatedAt) ?? '',
   };
+}
+
+/**
+ * Variante que acepta el row con `generalData`/`additionalData` como
+ * `unknown` (forma devuelta por `SolicitationRepository.findById` y
+ * compania, ya que Drizzle tipa `jsonb` como `unknown`). Hace el cast
+ * a `SolicitationRowShape` y delega al mapper tipado.
+ *
+ * @param row - Fila cruda del repositorio (con jsonb como `unknown`).
+ * @returns DTO publico.
+ */
+export function toSolicitationResponseDtoFromEntity(
+  row: Omit<SolicitationRowShape, 'generalData' | 'additionalData'> & {
+    generalData: unknown;
+    additionalData: unknown;
+  },
+): SolicitationResponseDto {
+  return toSolicitationResponseDto({
+    ...row,
+    generalData: (row.generalData ?? {}) as Record<string, unknown>,
+    additionalData: (row.additionalData ?? {}) as Record<string, unknown>,
+  });
 }
