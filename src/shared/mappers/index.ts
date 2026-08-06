@@ -32,6 +32,11 @@ export {
   toSolicitationResponseDtoFromEntity,
 } from './solicitation.mapper';
 export type { SolicitationRowShape } from './solicitation.mapper';
+export {
+  toDistribuidorResponseDto,
+  toDistribuidorResponseDtoFromEntity,
+} from './distribuidor.mapper';
+export type { DistributorRowShape } from './distribuidor.mapper';
 
 export { toVoucherResponseDto } from './voucher.mapper';
 export type { VoucherRowShape } from './voucher.mapper';
