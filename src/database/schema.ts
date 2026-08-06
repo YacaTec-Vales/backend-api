@@ -23,6 +23,7 @@ import {
   timestamp,
   boolean,
   integer,
+  bigint,
   smallint,
   jsonb,
   inet,
@@ -682,8 +683,19 @@ export const distributors = appSchema.table('distributor', {
   categoryId: uuid('category_id').notNull(),
   coordinatorId: uuid('coordinator_id').notNull(),
   branchId: uuid('branch_id').notNull(),
-  creditLimitCents: integer('credit_limit_cents').notNull().default(0),
-  creditAvailableCents: integer('credit_available_cents').notNull().default(0),
+  // En BD estas columnas son `BIGINT` (ver
+  // `database/schema/300_business_actors.sql` linea 72). Usamos
+  // `bigint('column', { mode: 'number' })` para que Drizzle mapee a
+  // `BIGINT` y devuelva un `number` JS (no `bigint`). Los valores se
+  // mantienen en centavos; valores reales rara vez superan 10^12, asi
+  // que `number` es seguro hasta 2^53 (Number.MAX_SAFE_INTEGER).
+  // Regla 2.0 §6.1.2.
+  creditLimitCents: bigint('credit_limit_cents', { mode: 'number' })
+    .notNull()
+    .default(0),
+  creditAvailableCents: bigint('credit_available_cents', { mode: 'number' })
+    .notNull()
+    .default(0),
   pointsBalance: integer('points_balance').notNull().default(0),
   status: text('status')
     .$type<'ACTIVA' | 'MOROSA' | 'DESHABILITADA' | 'BAJA_VOLUNTARIA'>()
