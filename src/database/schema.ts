@@ -929,3 +929,69 @@ export type NewSolicitationEntity = typeof solicitations.$inferInsert;
 
 export type DocumentEntity = typeof documents.$inferSelect;
 export type NewDocumentEntity = typeof documents.$inferInsert;
+
+/**
+ * Tabla `app.relation`. Ciclo de quincena del Distribuidor (regla 2.0
+ * §6.1.2). Una relacion agrupa todos los vales emitidos en una
+ * quincena. La Distribuidora paga la relacion (no vales
+ * individuales) entre el `cut_date` y el `payment_deadline_date`.
+ *
+ * Las columnas jsonb (`early_payment_dates`, `destination_accounts`)
+ * quedan como `unknown` en TS y se normalizan en el mapper publico.
+ *
+ * @module database/schema
+ * @author Equipo de desarrollo Mis Vales
+ * @since 2.1.0
+ */
+export const relations = appSchema.table('relation', {
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  referencePayment: text('reference_payment').notNull(),
+  distributorId: uuid('distributor_id').notNull(),
+  cutDate: date('cut_date').notNull(),
+  paymentDeadlineDate: date('payment_deadline_date').notNull(),
+  earlyPaymentDates: jsonb('early_payment_dates')
+    .notNull()
+    .default(sql`'[]'::jsonb`),
+  totalCommissionCents: bigint('total_commission_cents', {
+    mode: 'number',
+  }).notNull(),
+  totalPaymentCents: bigint('total_payment_cents', {
+    mode: 'number',
+  }).notNull(),
+  totalPenaltiesCents: bigint('total_penalties_cents', {
+    mode: 'number',
+  }).notNull(),
+  totalToPayCents: bigint('total_to_pay_cents', { mode: 'number' }).notNull(),
+  totalPaidCents: bigint('total_paid_cents', { mode: 'number' }).notNull(),
+  creditLimitAtCutCents: bigint('credit_limit_at_cut_cents', {
+    mode: 'number',
+  }).notNull(),
+  creditAvailableAtCutCents: bigint('credit_available_at_cut_cents', {
+    mode: 'number',
+  }).notNull(),
+  pointsAtCut: integer('points_at_cut').notNull().default(0),
+  reconciliationStatus: text('reconciliation_status')
+    .$type<'PENDIENTE' | 'PARCIAL' | 'LIQUIDADO' | 'SALDO_FAVOR_SUCURSAL'>()
+    .notNull()
+    .default('PENDIENTE'),
+  destinationAccounts: jsonb('destination_accounts')
+    .notNull()
+    .default(sql`'[]'::jsonb`),
+  declaredDelinquentAt: timestamp('declared_delinquent_at', {
+    withTimezone: true,
+  }),
+  forgivenAt: timestamp('forgiven_at', { withTimezone: true }),
+  isActive: boolean('is_active').notNull().default(true),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export type RelationEntity = typeof relations.$inferSelect;
+export type NewRelationEntity = typeof relations.$inferInsert;
