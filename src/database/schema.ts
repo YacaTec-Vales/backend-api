@@ -995,3 +995,35 @@ export const relations = appSchema.table('relation', {
 
 export type RelationEntity = typeof relations.$inferSelect;
 export type NewRelationEntity = typeof relations.$inferInsert;
+
+/**
+ * Tabla `app.business_config`. Configuracion global del calculo
+ * de la relacion (regla 2.0 §6.1.3, fuente PDF
+ * `Analisis-calculo-relacion.pdf`). Cada fila es un parametro con
+ * `value_cents` XOR `value_bps`. Versionada optimistamente para
+ * que el backend pueda invalidar caches.
+ *
+ * @module database/schema
+ * @author Equipo de desarrollo Mis Vales
+ * @since 2.2.0
+ */
+export const businessConfig = appSchema.table('business_config', {
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  configKey: text('config_key').notNull().unique(),
+  description: text('description').notNull(),
+  valueCents: bigint('value_cents', { mode: 'number' }),
+  valueBps: integer('value_bps'),
+  version: integer('version').notNull().default(1),
+  updatedBy: uuid('updated_by'),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export type BusinessConfigEntity = typeof businessConfig.$inferSelect;
+export type NewBusinessConfigEntity = typeof businessConfig.$inferInsert;
