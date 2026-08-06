@@ -44,6 +44,7 @@ import { CoordinadoresModule } from './coordinadores/coordinadores.module';
 import { VerificadoresModule } from './verificadores/verificadores.module';
 import { CajerosModule } from './cajeros/cajeros.module';
 import { DistribuidoresModule } from './distribuidores/distribuidores.module';
+import { SolicitationsModule } from './distribuidores/solicitations.module';
 import { ClientsModule } from './clients/clients.module';
 import { CatalogsModule } from './catalogs/catalogs.module';
 import { VouchersModule } from './vouchers/vouchers.module';
@@ -101,6 +102,7 @@ import { MustChangePasswordGuard } from './shared/guards/must-change-password.gu
     VerificadoresModule,
     CajerosModule,
     DistribuidoresModule,
+    SolicitationsModule,
     ClientsModule,
     CatalogsModule,
     VouchersModule,
