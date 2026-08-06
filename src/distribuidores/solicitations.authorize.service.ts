@@ -178,6 +178,8 @@ export class SolicitationsAuthorizeService {
     await pool.query('BEGIN', []);
     try {
       // 1. INSERT app.user. Username temporal = `distrib_<correlativo>`.
+      // `role_code` es enum `app.user_type` (no text), asi que casteamos
+      // la cadena literal al tipo enum para que PG acepte el INSERT.
       const userResult = await pool.query(
         `INSERT INTO app.user (
            role_code, branch_id, first_name, last_name_paternal, last_name_maternal,
@@ -185,7 +187,7 @@ export class SolicitationsAuthorizeService {
            personal_data, must_change_password, token_version
          )
          VALUES (
-           'DISTRIBUIDOR'::text, $1, $2, $3, $4,
+           'DISTRIBUIDOR'::app.user_type, $1, $2, $3, $4,
            $5, NULL, $6, $7, 'ACTIVO', TRUE,
            '{}'::jsonb, TRUE, 1
          )
