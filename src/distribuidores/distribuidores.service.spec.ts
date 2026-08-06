@@ -16,6 +16,7 @@ import {
 } from '@nestjs/common';
 import { DistribuidoresService } from './distribuidores.service';
 import type { DistributorEntity } from '../database/schema';
+import type { UserType } from '../shared/types/auth.types';
 
 // ===========================================================================
 // Fixtures
@@ -326,6 +327,123 @@ describe('DistribuidoresService', () => {
           { coordinatorId: 'new-coord', motivo: 'x' },
         ),
       ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('getMyStatus', () => {
+    /**
+     * Pool mock que devuelve una sola fila con los campos que el
+     * service mapea desde `vw_distributor_balance`.
+     */
+    function buildPoolWithBalanceRow(row: Record<string, unknown>) {
+      return {
+        query: jest
+          .fn()
+          .mockImplementation(() => Promise.resolve({ rows: [row] })),
+      };
+    }
+    function buildPoolWithEmpty() {
+      return { query: jest.fn().mockResolvedValue({ rows: [] }) };
+    }
+
+    function buildServiceWithPool(
+      pool: ReturnType<typeof buildPoolWithBalanceRow>,
+    ) {
+      const distributorRepo = buildDistRepo();
+      const service = new DistribuidoresService(
+        distributorRepo as never,
+        { $client: pool } as never,
+        { $client: pool } as never,
+      );
+      return { service, distributorRepo, pool };
+    }
+
+    function buildActorDist(role: UserType = 'DISTRIBUIDOR') {
+      return {
+        id: 'user-dist-1',
+        username: 'test_distrib',
+        role,
+        branchId: BRANCH_ID,
+        tokenVersion: 1,
+        sessionId: 'session-1',
+      };
+    }
+
+    it('devuelve el estado consolidado del Distribuidor', async () => {
+      const pool = buildPoolWithBalanceRow({
+        distributor_id: DIST_ID,
+        distributor_number: 'D-TEST-0001',
+        full_name: 'Test Distribuidor Demo',
+        category_name: 'TEST-Bronze',
+        branch_name: 'TEST Sucursal Lerdo',
+        distributor_status: 'ACTIVA',
+        credit_limit_cents: '1000000',
+        credit_available_cents: '1000000',
+        outstanding_cents: '0',
+        next_cut_date: '2026-09-15',
+        delinquent_relations_count: 0,
+        pending_relations_cents: '56000',
+        points_balance: 0,
+        created_at: '2026-08-05T00:00:00.000Z',
+        activated_at: '2026-08-05T00:00:00.000Z',
+      });
+      const { service } = buildServiceWithPool(pool);
+      const result = await service.getMyStatus(buildActorDist());
+      expect(result.id).toBe(DIST_ID);
+      expect(result.distributorNumber).toBe('D-TEST-0001');
+      expect(result.fullName).toBe('Test Distribuidor Demo');
+      expect(result.categoryName).toBe('TEST-Bronze');
+      expect(result.branchName).toBe('TEST Sucursal Lerdo');
+      expect(result.status).toBe('ACTIVA');
+      expect(result.creditLimitCents).toBe(1_000_000);
+      expect(result.creditAvailableCents).toBe(1_000_000);
+      expect(result.outstandingCents).toBe(0);
+      expect(result.nextCutDate).toBe('2026-09-15');
+      expect(result.pendingRelationsCents).toBe(56_000);
+      expect(pool.query).toHaveBeenCalledWith(
+        expect.stringMatching(/FROM app\.vw_distributor_balance/),
+        ['user-dist-1'],
+      );
+    });
+
+    it('lanza NOT_A_DISTRIBUTOR si el actor no tiene rol DISTRIBUIDOR', async () => {
+      const pool = buildPoolWithBalanceRow({ distributor_id: DIST_ID });
+      const { service } = buildServiceWithPool(pool);
+      await expect(
+        service.getMyStatus(buildActorDist('GERENTE_GENERAL')),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('lanza NOT_FOUND si la vista no devuelve filas', async () => {
+      const pool = buildPoolWithEmpty();
+      const { service } = buildServiceWithPool(pool);
+      await expect(
+        service.getMyStatus(buildActorDist()),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('tolerante a nextCutDate y activatedAt nulos', async () => {
+      const pool = buildPoolWithBalanceRow({
+        distributor_id: DIST_ID,
+        distributor_number: 'D-TEST-0002',
+        full_name: 'Sin activar',
+        category_name: 'Cobre',
+        branch_name: 'Sucursal X',
+        distributor_status: 'ACTIVA',
+        credit_limit_cents: '500000',
+        credit_available_cents: '500000',
+        outstanding_cents: '0',
+        next_cut_date: null,
+        delinquent_relations_count: 0,
+        pending_relations_cents: '0',
+        points_balance: 0,
+        created_at: '2026-08-05T00:00:00.000Z',
+        activated_at: null,
+      });
+      const { service } = buildServiceWithPool(pool);
+      const result = await service.getMyStatus(buildActorDist());
+      expect(result.nextCutDate).toBeNull();
+      expect(result.activatedAt).toBeNull();
     });
   });
 });

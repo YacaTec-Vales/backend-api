@@ -96,6 +96,18 @@ const baseContext = {
   device: 'unknown' as const,
 };
 
+const pochContext = {
+  ipAddress: '127.0.0.1',
+  userAgent: 'poch-mobile',
+  device: 'Poch' as const,
+};
+
+const calipxContext = {
+  ipAddress: '127.0.0.1',
+  userAgent: 'calipx-tablet',
+  device: 'Calipx' as const,
+};
+
 /**
  * Helper que extrae el `code` de negocio del `getResponse()` de
  * un `HttpException`. Las aserciones `rejects.toMatchObject({ code })`
@@ -257,6 +269,65 @@ describe('AuthService', () => {
         5,
         15,
       );
+    });
+
+    it('Distribuidor desde Poch (Poch) emite tokens', async () => {
+      userRepo.findByUsernameOrEmail.mockResolvedValue(
+        buildUser({ roleCode: 'DISTRIBUIDOR' }) as never,
+      );
+      passwordService.verify.mockResolvedValue(true);
+      const result = await service.login(
+        'ana',
+        'PlainPass1',
+        false,
+        pochContext,
+      );
+      expect(result.accessToken).toBe('access.jwt');
+      expect(tokenService.signAccessToken).toHaveBeenCalledWith(
+        expect.objectContaining({ role: 'DISTRIBUIDOR' }),
+      );
+    });
+
+    it('Distribuidor desde Calipx (tablet) lanza WRONG_CLIENT_APP 403', async () => {
+      userRepo.findByUsernameOrEmail.mockResolvedValue(
+        buildUser({ roleCode: 'DISTRIBUIDOR' }) as never,
+      );
+      passwordService.verify.mockResolvedValue(true);
+      try {
+        await service.login('ana', 'PlainPass1', false, calipxContext);
+        fail('Debio lanzar ForbiddenException');
+      } catch (err) {
+        expect(err).toBeInstanceOf(ForbiddenException);
+        expect(codeOf(err)).toBe('AUTH.WRONG_CLIENT_APP');
+      }
+    });
+
+    it('Distribuidor sin header x-client-app (unknown) lanza WRONG_CLIENT_APP', async () => {
+      userRepo.findByUsernameOrEmail.mockResolvedValue(
+        buildUser({ roleCode: 'DISTRIBUIDOR' }) as never,
+      );
+      passwordService.verify.mockResolvedValue(true);
+      try {
+        await service.login('ana', 'PlainPass1', false, baseContext);
+        fail('Debio lanzar ForbiddenException');
+      } catch (err) {
+        expect(err).toBeInstanceOf(ForbiddenException);
+        expect(codeOf(err)).toBe('AUTH.WRONG_CLIENT_APP');
+      }
+    });
+
+    it('Gerente General desde Calipx SI puede autenticarse (no aplica guard)', async () => {
+      userRepo.findByUsernameOrEmail.mockResolvedValue(
+        buildUser({ roleCode: 'GERENTE_GENERAL', branchId: null }) as never,
+      );
+      passwordService.verify.mockResolvedValue(true);
+      const result = await service.login(
+        'ana',
+        'PlainPass1',
+        false,
+        calipxContext,
+      );
+      expect(result.accessToken).toBe('access.jwt');
     });
   });
 
