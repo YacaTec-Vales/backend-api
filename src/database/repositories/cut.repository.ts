@@ -46,6 +46,17 @@ export interface CutVoucherRow {
   categoryCommissionBps: number | null;
   productCode: string;
   productVariant: string;
+  /**
+   * Snapshot del interes por periodo al momento de emitir el vale.
+   * Nullable para vales muy viejos (anteriores al sprint 5); en
+   * ese caso el servicio cae al global de `business_config`.
+   */
+  interestPerPeriodBps: number | null;
+  /**
+   * Snapshot del monto del seguro al emitir el vale (centavos).
+   * Nullable por la misma razon que arriba.
+   */
+  insuranceCents: string | null;
 }
 
 /**
@@ -214,6 +225,8 @@ export class CutRepository {
               v.amount_cents::text    AS amount_cents,
               v.total_periods::int    AS total_periods,
               v.category_commission_bps::int AS category_commission_bps,
+              v.interest_per_period_bps::int AS interest_per_period_bps,
+              v.insurance_cents::text AS insurance_cents,
               p.code                  AS product_code,
               p.variant::text         AS product_variant
          FROM app.voucher v
@@ -238,6 +251,11 @@ export class CutRepository {
         r['category_commission_bps'] === null
           ? null
           : Number(r['category_commission_bps']),
+      interestPerPeriodBps:
+        r['interest_per_period_bps'] === null
+          ? null
+          : Number(r['interest_per_period_bps']),
+      insuranceCents: (r['insurance_cents'] as string | null) ?? null,
       productCode: (r['product_code'] as string | null) ?? '',
       productVariant: (r['product_variant'] as string | null) ?? '',
     }));

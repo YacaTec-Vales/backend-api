@@ -202,6 +202,7 @@ export class CutService {
       let distributorAmount = 0;
       let distributorCommission = 0;
       let distributorInterest = 0;
+      let distributorInsurance = 0;
       let distributorPenalty = 0;
       const relationDetailRows: Array<{
         voucherId: string;
@@ -217,16 +218,33 @@ export class CutService {
 
       for (const v of list) {
         const amount = Number(v.amountCents);
+        // Snapshot de la categoria: si el vale lo tiene, lo usamos;
+        // si no (vales muy viejos sin snapshot), caemos al 0 y el vale
+        // se reporta como warning en otra capa.
         const opening = Math.floor(
           (amount * (v.categoryCommissionBps as number)) / 10000,
         );
-        const interest = Math.floor((amount * interestPerPeriodBps) / 10000);
-        const insurance = insuranceCents;
+        // Snapshot de interes: preferimos `v.interest_per_period_bps`.
+        // Si el vale no lo tiene (anterior al sprint 5), caemos al
+        // global de `business_config` para mantener compatibilidad.
+        const interestBps =
+          v.interestPerPeriodBps !== null
+            ? v.interestPerPeriodBps
+            : interestPerPeriodBps;
+        const interest = Math.floor((amount * interestBps) / 10000);
+        // Snapshot de seguro: preferimos `v.insurance_cents` (que es
+        // una columna de BD escrita al emitir el vale). Si el vale
+        // no la tiene (anterior al sprint 5), caemos al global.
+        const insurance =
+          v.insuranceCents !== null ? Number(v.insuranceCents) : insuranceCents;
+        // La multa por mora SIEMPRE viene del global (es un evento
+        // operativo del momento del corte, no del momento de emision).
         const penalty = isLate ? latePenaltyCents : 0;
         const total = amount + opening + interest + insurance + penalty;
         distributorAmount += amount;
         distributorCommission += opening;
         distributorInterest += interest;
+        distributorInsurance += insurance;
         distributorPenalty += penalty;
         relationDetailRows.push({
           voucherId: v.id,
@@ -261,8 +279,8 @@ export class CutService {
         distributorAmount +
         distributorCommission +
         distributorInterest +
-        distributorPenalty +
-        insuranceCents * list.length;
+        distributorInsurance +
+        distributorPenalty;
       const relationInput: Partial<RelationEntity> = {
         referencePayment,
         distributorId,

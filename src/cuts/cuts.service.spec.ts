@@ -124,6 +124,8 @@ function buildVoucher(
     productCode: string;
     productVariant: string;
     clientId: string;
+    interestPerPeriodBps: number | null;
+    insuranceCents: string | null;
   }> = {},
 ) {
   return {
@@ -136,6 +138,8 @@ function buildVoucher(
     categoryCommissionBps: 300, // 3% Cobre
     productCode: 'P-1',
     productVariant: 'STANDARD',
+    interestPerPeriodBps: 500, // 5% (snapshot canonico)
+    insuranceCents: '10000', // $100 (snapshot canonico)
     ...overrides,
   };
 }
@@ -514,6 +518,105 @@ describe('CutService', () => {
       // Total = 408000
       expect(result.totalToPayCents).toBe(408000);
       expect(result.totalCommissionCents).toBe(10500); // 4500 + 6000
+    });
+  });
+
+  describe('inmutabilidad de snapshots', () => {
+    /**
+     * Regla 2.0 §6.1.3: cuando el gerente actualiza la
+     * configuracion global (seguro, interes, multa, puntos), los
+     * vales ya emitidos deben seguir pagando con las reglas que
+     * tenian cuando se emitieron. Esto protege la contabilidad y
+     * la confianza del Distribuidor.
+     */
+    it('usa el interes del snapshot del vale (5%) aunque el global sea 10%', async () => {
+      const vouchers = [
+        buildVoucher({
+          id: 'v-snap',
+          folio: 'T-SNAP',
+          amountCents: '100000',
+          categoryCommissionBps: 300, // Cobre 3%
+          interestPerPeriodBps: 500, // snapshot: 5%
+        }),
+      ];
+      // El global dice 1000 (10%) pero el snapshot del vale dice 500.
+      const customConfig = BASE_CONFIG.map((c) =>
+        c.key === 'interest_per_period_bps' ? { ...c, valueBps: 1000 } : c,
+      );
+      const { service } = buildService({
+        cutRepo: buildCutRepo({
+          findActiveVouchersForCut: jest.fn().mockResolvedValue(vouchers),
+        }),
+        businessConfig: buildBusinessConfig({
+          list: jest.fn().mockResolvedValue(customConfig),
+        }),
+      });
+      const result = await service.runCut(
+        buildActor(),
+        BRANCH_ID,
+        '2026-08-28',
+      );
+      // amount=100000 + opening=3000 + interest=5000 + insurance=10000 = 118000
+      expect(result.totalToPayCents).toBe(118000);
+    });
+
+    it('usa el seguro del snapshot del vale ($100) aunque el global sea $200', async () => {
+      const vouchers = [
+        buildVoucher({
+          id: 'v-snap-ins',
+          folio: 'T-SNAP-INS',
+          amountCents: '100000',
+          categoryCommissionBps: 300,
+          interestPerPeriodBps: 500,
+          insuranceCents: '10000', // snapshot: $100
+        }),
+      ];
+      // El global dice 20000 ($200).
+      const customConfig = BASE_CONFIG.map((c) =>
+        c.key === 'insurance_cents' ? { ...c, valueCents: 20000 } : c,
+      );
+      const { service } = buildService({
+        cutRepo: buildCutRepo({
+          findActiveVouchersForCut: jest.fn().mockResolvedValue(vouchers),
+        }),
+        businessConfig: buildBusinessConfig({
+          list: jest.fn().mockResolvedValue(customConfig),
+        }),
+      });
+      const result = await service.runCut(
+        buildActor(),
+        BRANCH_ID,
+        '2026-08-28',
+      );
+      // amount=100000 + opening=3000 + interest=5000 + insurance=10000 = 118000
+      // (NO 138000 con el global nuevo).
+      expect(result.totalToPayCents).toBe(118000);
+    });
+
+    it('cae al global si el vale no tiene snapshot (vales muy viejos)', async () => {
+      const vouchers = [
+        buildVoucher({
+          id: 'v-old',
+          folio: 'T-OLD',
+          amountCents: '100000',
+          categoryCommissionBps: 300,
+          interestPerPeriodBps: null, // sin snapshot (vale viejo)
+          insuranceCents: null, // sin snapshot (vale viejo)
+        }),
+      ];
+      const { service } = buildService({
+        cutRepo: buildCutRepo({
+          findActiveVouchersForCut: jest.fn().mockResolvedValue(vouchers),
+        }),
+      });
+      // Con el global canonico (interes 5%, seguro $100):
+      // 100000 + 3000 + 5000 + 10000 = 118000
+      const result = await service.runCut(
+        buildActor(),
+        BRANCH_ID,
+        '2026-08-28',
+      );
+      expect(result.totalToPayCents).toBe(118000);
     });
   });
 
