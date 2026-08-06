@@ -47,6 +47,7 @@ import { DistribuidoresModule } from './distribuidores/distribuidores.module';
 import { SolicitationsModule } from './distribuidores/solicitations.module';
 import { RelationsModule } from './relations/relations.module';
 import { BusinessConfigModule } from './business-config/business-config.module';
+import { CutsModule } from './cuts/cuts.module';
 import { ClientsModule } from './clients/clients.module';
 import { CatalogsModule } from './catalogs/catalogs.module';
 import { VouchersModule } from './vouchers/vouchers.module';
@@ -107,6 +108,7 @@ import { MustChangePasswordGuard } from './shared/guards/must-change-password.gu
     SolicitationsModule,
     RelationsModule,
     BusinessConfigModule,
+    CutsModule,
     ClientsModule,
     CatalogsModule,
     VouchersModule,
