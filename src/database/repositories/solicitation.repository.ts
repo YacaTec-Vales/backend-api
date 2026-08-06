@@ -22,7 +22,7 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, inArray, isNull, desc, asc } from 'drizzle-orm';
+import { and, eq, inArray, isNull, desc, asc, sql } from 'drizzle-orm';
 import {
   DRIZZLE_WRITE,
   DRIZZLE_READ,
@@ -233,5 +233,42 @@ export class SolicitationRepository {
       )
       .orderBy(asc(solicitations.createdAt));
     return rows;
+  }
+
+  /**
+   * Cuenta solicitudes activas (no terminales) de un Coordinador.
+   *
+   * Una solicitud es "activa" cuando su estado esta en
+   * `{PRE_SOLICITUD, EN_VERIFICACION, DICTAMINADA}`. Esto permite
+   * al servicio aplicar la regla "un Coordinador solo puede tener
+   * una solicitud activa a la vez" en `SolicitationsService.create`.
+   *
+   * Las solicitudes en `{AUTORIZADA, RECHAZADA}` NO cuentan porque
+   * el expediente ya esta cerrado (regla 2.0 §6.1.1: la persona
+   * puede volver a aplicar pero como una solicitud NUEVA, no como
+   * edicion de la anterior).
+   *
+   * Conexion: `DRIZZLE_READ`.
+   *
+   * @param coordinatorId - UUID del Coordinador.
+   * @returns Numero de solicitudes activas del Coordinador (>= 0).
+   */
+  async countActiveByCoordinator(coordinatorId: string): Promise<number> {
+    const activeStatuses: SolicitationEntity['status'][] = [
+      'PRE_SOLICITUD',
+      'EN_VERIFICACION',
+      'DICTAMINADA',
+    ];
+    const [row] = await this.readDb
+      .select({ value: sql<number>`count(*)::int` })
+      .from(solicitations)
+      .where(
+        and(
+          eq(solicitations.coordinatorId, coordinatorId),
+          isNull(solicitations.deletedAt),
+          inArray(solicitations.status, activeStatuses),
+        ),
+      );
+    return row?.value ?? 0;
   }
 }

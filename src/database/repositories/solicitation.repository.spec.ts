@@ -219,4 +219,42 @@ describe('SolicitationRepository', () => {
     const rows = await repo.findByIds(ids);
     expect(rows).toHaveLength(2);
   });
+
+  it('countActiveByCoordinator devuelve el conteo de activas', async () => {
+    // El chain select({value}).from(...).where(...) devuelve la primera fila.
+    readDb.select.mockReturnValueOnce({
+      from: () => ({
+        where: () => ({
+          // El `await` consume el Promise<[{value: N}]> y devuelve el row.
+          then: (resolve: (v: unknown) => void) => resolve([{ value: 2 }]),
+        }),
+      }),
+    });
+    const count = await repo.countActiveByCoordinator(BASE_ROW.coordinatorId);
+    expect(count).toBe(2);
+  });
+
+  it('countActiveByCoordinator devuelve 0 cuando no hay activas', async () => {
+    readDb.select.mockReturnValueOnce({
+      from: () => ({
+        where: () => ({
+          then: (resolve: (v: unknown) => void) => resolve([{ value: 0 }]),
+        }),
+      }),
+    });
+    const count = await repo.countActiveByCoordinator('coord-without-sols');
+    expect(count).toBe(0);
+  });
+
+  it('countActiveByCoordinator devuelve 0 si la consulta retorna vacio', async () => {
+    readDb.select.mockReturnValueOnce({
+      from: () => ({
+        where: () => ({
+          then: (resolve: (v: unknown) => void) => resolve([]),
+        }),
+      }),
+    });
+    const count = await repo.countActiveByCoordinator('coord-without-sols');
+    expect(count).toBe(0);
+  });
 });

@@ -22,5 +22,6 @@ export function createSolicitationRepositoryMock(): jest.Mocked<SolicitationRepo
     assignVerifier: jest.fn(),
     softDelete: jest.fn(),
     findByIds: jest.fn(),
+    countActiveByCoordinator: jest.fn(),
   } as unknown as jest.Mocked<SolicitationRepository>;
 }
