@@ -42,6 +42,7 @@ import {
 } from '@nestjs/swagger';
 import { DistribuidoresService } from './distribuidores.service';
 import { DistribuidorResponseDto } from './dto/distribuidor-response.dto';
+import { DistribuidorStatusDto } from './dto/distribuidor-status.dto';
 import { ApiEnvelopeOkResponse } from '../shared/decorators/api-envelope-response.decorator';
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import { JwtAuthGuard } from '../shared/guards/auth.guards';
@@ -136,6 +137,64 @@ class ChangeCoordinatorDto {
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class DistribuidoresController {
   constructor(private readonly service: DistribuidoresService) {}
+
+  /**
+   * `GET /distribuidores/me` — Estado del Distribuidor autenticado.
+   *
+   * Auth: cualquier usuario autenticado con rol `DISTRIBUIDOR`.
+   *
+   * Este endpoint NO requiere `@RequirePermissions('distribuidor.read')`
+   * porque el Distribuidor esta consultando su propio estado, no
+   * operando sobre otro Distribuidor. Si lo invocara un Gerente,
+   * devolveria 403 `DISTRIBUTOR.NOT_A_DISTRIBUTOR`.
+   *
+   * Devuelve (regla 2.0 §6.1.2):
+   *  - Identidad: distributorNumber, fullName, categoryName, branchName.
+   *  - Estado: status.
+   *  - Financiero en centavos: creditLimitCents, creditAvailableCents,
+   *    outstandingCents.
+   *  - Calendario: nextCutDate (proxima fecha de corte de su Sucursal).
+   *  - Morosidad: delinquentRelationsCount, pendingRelationsCents.
+   *  - Puntos: pointsBalance.
+   *
+   * Fuente: vista SQL `app.vw_distributor_balance`.
+   */
+  @Get('me')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Mi estado como Distribuidor',
+    description:
+      'Devuelve el estado consolidado del Distribuidor autenticado ' +
+      '(categoria, sucursal, fecha de proximo corte, credito, ' +
+      'puntos, etc.). Pensado para la home de la app movil (Poch).',
+  })
+  @ApiOkResponse({
+    description: 'Estado consultado correctamente.',
+    type: DistribuidorStatusDto,
+  })
+  @ApiEnvelopeOkResponse({
+    message: 'Estado del Distribuidor consultado correctamente.',
+    type: DistribuidorStatusDto,
+  })
+  @ApiUnauthorizedResponse({
+    description: 'AUTH.* — token invalido.',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description:
+      'DISTRIBUTOR.NOT_A_DISTRIBUTOR (solo aplica a rol DISTRIBUIDOR).',
+    type: ErrorResponseDto,
+  })
+  @ApiNotFoundResponse({
+    description:
+      'DISTRIBUTOR.NOT_FOUND (el usuario no tiene distribuidora asociada).',
+    type: ErrorResponseDto,
+  })
+  getMyStatus(
+    @CurrentUser() actor: RequestUser,
+  ): Promise<DistribuidorStatusDto> {
+    return this.service.getMyStatus(actor);
+  }
 
   /**
    * `GET /distribuidores/:id` — Detalle de un Distribuidor.

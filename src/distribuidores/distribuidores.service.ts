@@ -52,6 +52,7 @@ import {
 import { DistributorRepository } from '../database/repositories/distributor.repository';
 import type { RequestUser } from '../shared/guards/auth.guards';
 import { DistribuidorResponseDto } from './dto/distribuidor-response.dto';
+import { DistribuidorStatusDto } from './dto/distribuidor-status.dto';
 import { toDistribuidorResponseDtoFromEntity } from '../shared/mappers/distribuidor.mapper';
 import type { DistributorEntity } from '../database/schema';
 
@@ -127,6 +128,101 @@ export class DistribuidoresService {
     }
     this.assertActorCanSee(actor, distributor);
     return toDistribuidorResponseDtoFromEntity(distributor);
+  }
+
+  /**
+   * Devuelve el estado operativo consolidado del Distribuidor
+   * autenticado.
+   *
+   * Pensado para la home de `Poch`: el Distribuidor abre la app y
+   * ve de un vistazo su numero, categoria, sucursal, fecha de
+   * proximo corte, monto a pagar, credito disponible, saldo de
+   * puntos, etc.
+   *
+   * El endpoint NO requiere el permiso `distribuidor.read` porque
+   * es la vista del Distribuidor sobre si mismo; los permisos
+   * `distribuidor.*` son para que Coordinadores/Verificadores/
+   * Gerentes operen sobre Distribuidores de su branch.
+   *
+   * Fuente de datos: vista SQL `app.vw_distributor_balance`
+   * (regla 2.0 §6.1.2 consolidada en el schema 400_credit.sql).
+   * La vista ya une `app.distributor` con `app.branch`,
+   * `app.category`, `app.relation` y `app.user`, devolviendo
+   * todos los campos del DTO en una sola query.
+   *
+   * Reglas:
+   *  - Solo aplica a rol `DISTRIBUIDOR`. Si un Gerente u otro rol
+   *    lo invoca, devuelve 403 `DISTRIBUTOR.NOT_A_DISTRIBUTOR`.
+   *  - Si el usuario autenticado no tiene fila en `app.distributor`,
+   *    devuelve 404 `DISTRIBUTOR.NOT_FOUND`.
+   *
+   * @param actor - Usuario autenticado (debe ser `DISTRIBUIDOR`).
+   * @returns Estado consolidado.
+   */
+  async getMyStatus(actor: RequestUser): Promise<DistribuidorStatusDto> {
+    if (actor.role !== 'DISTRIBUIDOR') {
+      throw new ForbiddenException({
+        code: 'DISTRIBUTOR.NOT_A_DISTRIBUTOR',
+        message: 'este endpoint solo aplica a usuarios con rol DISTRIBUIDOR',
+      });
+    }
+    // La vista `vw_distributor_balance` se consulta con el `user_id`
+    // del actor (no el `distributor_id`, que es el FK inverso).
+    const pool = (
+      this.writeDb as unknown as {
+        $client: {
+          query: (
+            sql: string,
+            params: unknown[],
+          ) => Promise<{ rows: Array<Record<string, unknown>> }>;
+        };
+      }
+    ).$client;
+    const result = await pool.query(
+      `SELECT distributor_id::text AS distributor_id,
+              distributor_number,
+              full_name,
+              category_name,
+              branch_name,
+              distributor_status::text AS distributor_status,
+              credit_limit_cents,
+              credit_available_cents,
+              outstanding_cents,
+              next_cut_date::text AS next_cut_date,
+              delinquent_relations_count,
+              pending_relations_cents,
+              points_balance,
+              created_at::text AS created_at,
+              activated_at::text AS activated_at
+         FROM app.vw_distributor_balance
+        WHERE user_id = $1`,
+      [actor.id],
+    );
+    const row = result.rows[0];
+    if (!row) {
+      throw new NotFoundException({
+        code: 'DISTRIBUTOR.NOT_FOUND',
+        message: 'el usuario autenticado no tiene una distribuidora asociada',
+      });
+    }
+    return {
+      id: (row['distributor_id'] as string | null) ?? '',
+      distributorNumber: (row['distributor_number'] as string | null) ?? '',
+      fullName: (row['full_name'] as string | null) ?? '',
+      categoryName: (row['category_name'] as string | null) ?? '',
+      branchName: (row['branch_name'] as string | null) ?? '',
+      status: ((row['distributor_status'] as string | null) ?? 'ACTIVA') as
+        'ACTIVA' | 'MOROSA' | 'DESHABILITADA' | 'BAJA_VOLUNTARIA',
+      creditLimitCents: Number(row['credit_limit_cents'] ?? 0),
+      creditAvailableCents: Number(row['credit_available_cents'] ?? 0),
+      outstandingCents: Number(row['outstanding_cents'] ?? 0),
+      nextCutDate: (row['next_cut_date'] as string | null) ?? null,
+      delinquentRelationsCount: Number(row['delinquent_relations_count'] ?? 0),
+      pendingRelationsCents: Number(row['pending_relations_cents'] ?? 0),
+      pointsBalance: Number(row['points_balance'] ?? 0),
+      createdAt: (row['created_at'] as string | null) ?? '',
+      activatedAt: (row['activated_at'] as string | null) ?? null,
+    };
   }
 
   /**
