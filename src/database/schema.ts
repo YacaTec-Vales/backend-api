@@ -1027,3 +1027,64 @@ export const businessConfig = appSchema.table('business_config', {
 
 export type BusinessConfigEntity = typeof businessConfig.$inferSelect;
 export type NewBusinessConfigEntity = typeof businessConfig.$inferInsert;
+
+/**
+ * Tabla `app.credit_raise_request`. Solicitudes de aumento de
+ * linea de credito del Distribuidor (flujo Coord -> GS/GG, sesion 9).
+ *
+ * Reglas (regla 2.0 §6.1.4 + audio Sebastian 2026-08-06):
+ *  - El Coordinador inicia la solicitud (`status=PENDING`).
+ *  - El Gerente de Sucursal (de su branch) o Gerente General
+ *    (cualquier branch) aprueba / rechaza / aprueba con monto
+ *    diferente al solicitado.
+ *  - Al aprobar, se aplica el cambio en `app.distributor` en la MISMA
+ *    TX que el UPDATE de la solicitud (atomicidad) y se escribe una
+ *    fila en `app.distributor_credit_limit_history` para auditoria.
+ *
+ * Invariantes enforced por CHECK constraints:
+ *  - `requested_amount_cents > 0`.
+ *  - `status=PENDING` => `approved_amount_cents`, `decided_by`, `decided_at` son null.
+ *  - `status IN (APPROVED|REJECTED|CANCELLED)` => `decided_by` y `decided_at` NOT NULL.
+ *  - `status=APPROVED` => `approved_amount_cents IS NOT NULL`.
+ *
+ * @module database/schema
+ * @author Equipo de desarrollo Mis Vales
+ * @since 2.4.0
+ */
+export const creditRaiseRequests = appSchema.table('credit_raise_request', {
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  distributorId: uuid('distributor_id')
+    .notNull()
+    .references(() => distributors.id),
+  branchId: uuid('branch_id')
+    .notNull()
+    .references(() => branches.id),
+  fromCreditLimitCents: bigint('from_credit_limit_cents', {
+    mode: 'number',
+  }).notNull(),
+  requestedAmountCents: bigint('requested_amount_cents', {
+    mode: 'number',
+  }).notNull(),
+  toCreditLimitCents: bigint('to_credit_limit_cents', { mode: 'number' }),
+  approvedAmountCents: bigint('approved_amount_cents', { mode: 'number' }),
+  status: text('status')
+    .notNull()
+    .default('PENDING')
+    .$type<'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED'>(),
+  requestedBy: uuid('requested_by')
+    .notNull()
+    .references(() => users.id),
+  decidedBy: uuid('decided_by').references(() => users.id),
+  reason: text('reason').notNull(),
+  decisionNotes: text('decision_notes'),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  decidedAt: timestamp('decided_at', { withTimezone: true }),
+});
+
+export type CreditRaiseRequestEntity = typeof creditRaiseRequests.$inferSelect;
+export type NewCreditRaiseRequestEntity =
+  typeof creditRaiseRequests.$inferInsert;
