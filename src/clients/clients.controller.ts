@@ -24,10 +24,8 @@ import {
 import {
   ApiBearerAuth,
   ApiConflictResponse,
-  ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
-  ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
@@ -45,6 +43,10 @@ import { VoucherRepository } from '../database/repositories/voucher.repository';
 import { DistributorRepository } from '../database/repositories/distributor.repository';
 import { buildTransferClient } from './transfer-client.service';
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
+import {
+  ApiEnvelopeCreatedResponse,
+  ApiEnvelopeOkResponse,
+} from '../shared/decorators/api-envelope-response.decorator';
 import { JwtAuthGuard } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';
@@ -68,8 +70,8 @@ export class ClientsController {
   @Post()
   @RequirePermissions('client.create')
   @ApiOperation({ summary: 'Crear cliente (alta cruda)' })
-  @ApiCreatedResponse({
-    description: 'Cliente creado.',
+  @ApiEnvelopeCreatedResponse({
+    message: 'Cliente creado correctamente',
     type: ClientResponseDto,
   })
   @ApiBadRequestResponse({
@@ -96,7 +98,18 @@ export class ClientsController {
       'El cliente debe estar 100% limpio (sin vales activos). ' +
       'Se inserta fila en client_distributor_history.',
   })
-  @ApiOkResponse({ description: 'Cliente transferido.' })
+  @ApiEnvelopeOkResponse({
+    message: 'Cliente transferido correctamente',
+    type: undefined,
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        previousDistributorId: { type: 'string' },
+        newDistributorId: { type: 'string' },
+      },
+    },
+  })
   @ApiUnauthorizedResponse({
     description: 'AUTH.* — token invalido, sesion revocada o expirada.',
     type: ErrorResponseDto,

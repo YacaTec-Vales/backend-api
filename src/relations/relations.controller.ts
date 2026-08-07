@@ -39,7 +39,6 @@ import {
   ApiConflictResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
-  ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
@@ -86,13 +85,8 @@ export class RelationsController {
       'Lista las relaciones visibles para el actor. Para ' +
       'DISTRIBUIDOR, devuelve solo las suyas.',
   })
-  @ApiOkResponse({
-    description: 'Relaciones listadas correctamente.',
-    type: RelationResponseDto,
-    isArray: true,
-  })
   @ApiEnvelopeOkResponse({
-    message: 'Relaciones consultadas correctamente.',
+    message: 'Relaciones consultadas correctamente',
     type: RelationResponseDto,
     isArray: true,
   })
@@ -112,12 +106,8 @@ export class RelationsController {
   @HttpCode(HttpStatus.OK)
   @RequirePermissions('relation.read')
   @ApiOperation({ summary: 'Detalle de una relacion' })
-  @ApiOkResponse({
-    description: 'Relacion consultada correctamente.',
-    type: RelationResponseDto,
-  })
   @ApiEnvelopeOkResponse({
-    message: 'Relacion consultada correctamente.',
+    message: 'Relacion consultada correctamente',
     type: RelationResponseDto,
   })
   @ApiUnauthorizedResponse({ description: 'AUTH.*', type: ErrorResponseDto })
@@ -152,12 +142,8 @@ export class RelationsController {
       'Estados: EARLY (anticipado, genera puntos), NORMAL (en plazo), ' +
       'CLOSED (morosa, no se aceptan pagos), PAID (ya liquidada).',
   })
-  @ApiOkResponse({
-    description: 'Ventana consultada correctamente.',
-    type: PaymentWindowDto,
-  })
   @ApiEnvelopeOkResponse({
-    message: 'Ventana de pago consultada correctamente.',
+    message: 'Ventana de pago consultada correctamente',
     type: PaymentWindowDto,
   })
   @ApiUnauthorizedResponse({ description: 'AUTH.*', type: ErrorResponseDto })
@@ -199,12 +185,8 @@ export class RelationsController {
       'LIQUIDADO o SALDO_FAVOR_SUCURSAL). El pago NO es por vale; ' +
       'cubre la relacion completa de la quincena (regla 2.0 §6.1.2).',
   })
-  @ApiOkResponse({
-    description: 'Pago registrado correctamente.',
-    type: RelationResponseDto,
-  })
   @ApiEnvelopeOkResponse({
-    message: 'Pago registrado correctamente.',
+    message: 'Pago registrado correctamente',
     type: RelationResponseDto,
   })
   @ApiUnauthorizedResponse({ description: 'AUTH.*', type: ErrorResponseDto })

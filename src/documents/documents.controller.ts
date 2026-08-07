@@ -22,7 +22,6 @@ import {
   ApiBearerAuth,
   ApiBody,
   ApiConsumes,
-  ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiOperation,
   ApiTags,
@@ -32,6 +31,7 @@ import { DocumentsService } from './documents.service';
 import { UploadMetadataDto } from './dto/upload.dto';
 import { DocumentResponseDto } from './dto/document-response.dto';
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
+import { ApiEnvelopeCreatedResponse } from '../shared/decorators/api-envelope-response.decorator';
 import { JwtAuthGuard } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';
@@ -69,8 +69,8 @@ export class DocumentsController {
       required: ['file', 'documentType'],
     },
   })
-  @ApiCreatedResponse({
-    description: 'Archivo subido.',
+  @ApiEnvelopeCreatedResponse({
+    message: 'Archivo subido correctamente',
     type: DocumentResponseDto,
   })
   @ApiUnauthorizedResponse({

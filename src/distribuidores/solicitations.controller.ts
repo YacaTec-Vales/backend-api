@@ -41,10 +41,8 @@ import {
   ApiBearerAuth,
   ApiBadRequestResponse,
   ApiConflictResponse,
-  ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
-  ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
@@ -111,12 +109,8 @@ export class SolicitationsController {
       'El Coordinador captura los 12 datos generales y los 5 bloques ' +
       'adicionales. El sistema la deja en EN_VERIFICACION.',
   })
-  @ApiCreatedResponse({
-    description: 'Solicitud creada correctamente.',
-    type: SolicitationResponseDto,
-  })
   @ApiEnvelopeCreatedResponse({
-    message: 'Solicitud creada correctamente.',
+    message: 'Solicitud creada correctamente',
     type: SolicitationResponseDto,
   })
   @ApiBadRequestResponse({
@@ -170,9 +164,8 @@ export class SolicitationsController {
       'PATCH parcial de generalData y/o additionalData. Sin umbral ' +
       'de autorizacion (regla 2.0 §6.1 confirmada 2026-08-05).',
   })
-  @ApiOkResponse({ description: 'Solicitud editada correctamente.' })
   @ApiEnvelopeOkResponse({
-    message: 'Solicitud editada correctamente.',
+    message: 'Solicitud editada correctamente',
     type: SolicitationResponseDto,
   })
   @ApiBadRequestResponse({
@@ -221,9 +214,8 @@ export class SolicitationsController {
       'El Verificador se asigna la solicitud para visitarla. ' +
       'Solo solicitudes en EN_VERIFICACION y del mismo branch.',
   })
-  @ApiOkResponse({ description: 'Solicitud tomada correctamente.' })
   @ApiEnvelopeOkResponse({
-    message: 'Solicitud tomada correctamente.',
+    message: 'Solicitud tomada correctamente',
     type: SolicitationResponseDto,
   })
   @ApiForbiddenResponse({
@@ -267,9 +259,8 @@ export class SolicitationsController {
       'kill_switch=true con NO_CUMPLE cierra la solicitud directo ' +
       'como RECHAZADA (fraude evidente, regla 2.0 §6.1.4).',
   })
-  @ApiOkResponse({ description: 'Dictamen registrado correctamente.' })
   @ApiEnvelopeOkResponse({
-    message: 'Dictamen registrado correctamente.',
+    message: 'Dictamen registrado correctamente',
     type: SolicitationResponseDto,
   })
   @ApiBadRequestResponse({
@@ -325,9 +316,8 @@ export class SolicitationsController {
       'serializable (regla 2.0 §6.1.1). Correo bienvenida despues ' +
       'del COMMIT (no aborta si SMTP falla).',
   })
-  @ApiOkResponse({ description: 'Solicitud autorizada correctamente.' })
   @ApiEnvelopeOkResponse({
-    message: 'Solicitud autorizada correctamente.',
+    message: 'Solicitud autorizada correctamente',
     type: AuthorizeSolicitationResponseDto,
   })
   @ApiBadRequestResponse({
@@ -385,9 +375,8 @@ export class SolicitationsController {
       'No se crea blacklist (regla 2.0 §6.1.4): la persona puede ' +
       'volver a aplicar.',
   })
-  @ApiOkResponse({ description: 'Solicitud rechazada correctamente.' })
   @ApiEnvelopeOkResponse({
-    message: 'Solicitud rechazada correctamente.',
+    message: 'Solicitud rechazada correctamente',
     type: SolicitationResponseDto,
   })
   @ApiBadRequestResponse({
@@ -436,13 +425,8 @@ export class SolicitationsController {
   @ApiOperation({
     summary: 'Bandeja de solicitudes visibles para el actor',
   })
-  @ApiOkResponse({
-    description: 'Solicitudes listadas correctamente.',
-    type: SolicitationResponseDto,
-    isArray: true,
-  })
   @ApiEnvelopeOkResponse({
-    message: 'Solicitudes consultadas correctamente.',
+    message: 'Solicitudes consultadas correctamente',
     type: SolicitationResponseDto,
     isArray: true,
   })
@@ -465,9 +449,8 @@ export class SolicitationsController {
   @HttpCode(HttpStatus.OK)
   @RequirePermissions('distribuidor.solicitud.read')
   @ApiOperation({ summary: 'Detalle de solicitud por id' })
-  @ApiOkResponse({ description: 'Solicitud consultada correctamente.' })
   @ApiEnvelopeOkResponse({
-    message: 'Solicitud consultada correctamente.',
+    message: 'Solicitud consultada correctamente',
     type: SolicitationResponseDto,
   })
   @ApiForbiddenResponse({

@@ -29,10 +29,8 @@ import {
   ApiBearerAuth,
   ApiBadRequestResponse,
   ApiConflictResponse,
-  ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
-  ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
@@ -41,7 +39,10 @@ import { VouchersService } from './vouchers.service';
 import { CreateVoucherDto } from './dto/create-voucher.dto';
 import { CancelVoucherDto } from './dto/cancel-voucher.dto';
 import { VoucherResponseDto } from './dto/voucher-response.dto';
-import { ApiEnvelopeCreatedResponse } from '../shared/decorators/api-envelope-response.decorator';
+import {
+  ApiEnvelopeCreatedResponse,
+  ApiEnvelopeOkResponse,
+} from '../shared/decorators/api-envelope-response.decorator';
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import { JwtAuthGuard } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
@@ -81,11 +82,8 @@ export class VouchersController {
       'cliente con esta distribuidora, R15) o DIGITAL. Genera folio ' +
       'atomico via `app.voucher_folio_sequence`.',
   })
-  @ApiCreatedResponse({
-    description: 'Vale emitido correctamente.',
-  })
   @ApiEnvelopeCreatedResponse({
-    message: 'Vale emitido correctamente.',
+    message: 'Vale emitido correctamente',
     type: VoucherResponseDto,
   })
   @ApiUnauthorizedResponse({
@@ -145,8 +143,9 @@ export class VouchersController {
       'no logro feriar. Motivo obligatorio. Si era PREVALE, se ' +
       'libera el slot para que el proximo vale vuelva a ser PREVALE.',
   })
-  @ApiOkResponse({
-    description: 'Vale cancelado correctamente.',
+  @ApiEnvelopeOkResponse({
+    message: 'Vale cancelado correctamente',
+    type: VoucherResponseDto,
   })
   @ApiUnauthorizedResponse({
     description: 'AUTH.* — token invalido, sesion revocada o expirada.',

@@ -23,7 +23,6 @@ import {
   ApiConflictResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
-  ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
@@ -35,6 +34,9 @@ import {
   ConfirmVoucherResponseDto,
 } from './dto/confirm-voucher.dto';
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
+import {
+  ApiEnvelopeOkResponse,
+} from '../shared/decorators/api-envelope-response.decorator';
 import { JwtAuthGuard } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';
@@ -42,7 +44,15 @@ import { CurrentUser } from '../shared/decorators/current-user.decorator';
 import type { RequestUser } from '../shared/guards/auth.guards';
 
 /**
- * Controlador del modulo `cashier`. Prefijo: `cashier`.
+ * @classdesc Controlador del modulo `cashier`.
+ *
+ * Gestiona el flujo de caja: buscar un vale por folio y
+ * confirmar el feriado. Gateado por `JwtAuthGuard` +
+ * `PermissionsGuard`.
+ *
+ * @see CashierService
+ * @author Equipo Mis Vales
+ * @since 1.0.0
  */
 @ApiTags('Cashier')
 @ApiBearerAuth('bearer')
@@ -68,7 +78,10 @@ export class CashierController {
       'pre-cargue el formulario de confirmacion. El cajero debe ' +
       'pertenecer a la misma sucursal que la distribuidora del vale.',
   })
-  @ApiOkResponse({ description: 'Vale encontrado.' })
+  @ApiEnvelopeOkResponse({
+    message: 'Vale encontrado',
+    type: FindVoucherResponseDto,
+  })
   @ApiUnauthorizedResponse({
     description: 'AUTH.* — token invalido, sesion revocada o expirada.',
     type: ErrorResponseDto,
@@ -108,7 +121,10 @@ export class CashierController {
       'La cajera ferie el vale. dataConfirmed=true -> LIQUIDADO con ' +
       'authorizationNumber. dataConfirmed=false -> se crea queja (commit 10).',
   })
-  @ApiOkResponse({ description: 'Vale confirmado.' })
+  @ApiEnvelopeOkResponse({
+    message: 'Vale confirmado',
+    type: ConfirmVoucherResponseDto,
+  })
   @ApiUnauthorizedResponse({
     description: 'AUTH.* — token invalido, sesion revocada o expirada.',
     type: ErrorResponseDto,

@@ -38,7 +38,6 @@ import {
   ApiBadRequestResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
-  ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
@@ -79,12 +78,8 @@ export class CreditRaiseController {
       'que el Gerente de Sucursal (de su branch) o el Gerente ' +
       'General la apruebe o rechace.',
   })
-  @ApiOkResponse({
-    description: 'Solicitud creada en estado PENDING.',
-    type: CreditRaiseRequestDto,
-  })
   @ApiEnvelopeCreatedResponse({
-    message: 'Solicitud creada; pendiente de aprobacion.',
+    message: 'Solicitud creada; pendiente de aprobacion',
     type: CreditRaiseRequestDto,
   })
   @ApiUnauthorizedResponse({ description: 'AUTH.*', type: ErrorResponseDto })
@@ -117,13 +112,8 @@ export class CreditRaiseController {
   @ApiOperation({
     summary: 'Solicitudes de aumento del Distribuidor',
   })
-  @ApiOkResponse({
-    description: 'Lista de solicitudes del Distribuidor.',
-    type: CreditRaiseRequestDto,
-    isArray: true,
-  })
   @ApiEnvelopeOkResponse({
-    message: 'Solicitudes consultadas correctamente.',
+    message: 'Solicitudes consultadas correctamente',
     type: CreditRaiseRequestDto,
     isArray: true,
   })
@@ -151,13 +141,8 @@ export class CreditRaiseController {
       'GS ve solo las de su branch. GG ve las de todas las branches ' +
       '(filtro aplicado por branchId del actor).',
   })
-  @ApiOkResponse({
-    description: 'Solicitudes pendientes.',
-    type: CreditRaiseRequestDto,
-    isArray: true,
-  })
   @ApiEnvelopeOkResponse({
-    message: 'Solicitudes pendientes consultadas correctamente.',
+    message: 'Solicitudes pendientes consultadas correctamente',
     type: CreditRaiseRequestDto,
     isArray: true,
   })
@@ -178,12 +163,8 @@ export class CreditRaiseController {
   @Get('credit-raise-requests/:id')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Detalle de una solicitud' })
-  @ApiOkResponse({
-    description: 'Solicitud consultada correctamente.',
-    type: CreditRaiseRequestDto,
-  })
   @ApiEnvelopeOkResponse({
-    message: 'Solicitud consultada correctamente.',
+    message: 'Solicitud consultada correctamente',
     type: CreditRaiseRequestDto,
   })
   @ApiUnauthorizedResponse({ description: 'AUTH.*', type: ErrorResponseDto })
@@ -216,12 +197,8 @@ export class CreditRaiseController {
       '(regla 2.0 §6.1.4). Aplica el cambio en `app.distributor` y ' +
       'escribe `app.distributor_credit_limit_history` en la misma TX.',
   })
-  @ApiOkResponse({
-    description: 'Solicitud aprobada.',
-    type: CreditRaiseRequestDto,
-  })
   @ApiEnvelopeOkResponse({
-    message: 'Solicitud aprobada; credito incrementado.',
+    message: 'Solicitud aprobada; credito incrementado',
     type: CreditRaiseRequestDto,
   })
   @ApiUnauthorizedResponse({ description: 'AUTH.*', type: ErrorResponseDto })
@@ -264,12 +241,8 @@ export class CreditRaiseController {
       'No aplica cambio de credito. El Distribuidor puede crear ' +
       'una nueva solicitud si lo necesita.',
   })
-  @ApiOkResponse({
-    description: 'Solicitud rechazada.',
-    type: CreditRaiseRequestDto,
-  })
   @ApiEnvelopeOkResponse({
-    message: 'Solicitud rechazada.',
+    message: 'Solicitud rechazada',
     type: CreditRaiseRequestDto,
   })
   @ApiUnauthorizedResponse({ description: 'AUTH.*', type: ErrorResponseDto })

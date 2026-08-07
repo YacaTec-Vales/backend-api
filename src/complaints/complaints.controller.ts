@@ -23,7 +23,6 @@ import {
   ApiConflictResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
-  ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
@@ -34,6 +33,7 @@ import {
   ResolveComplaintResponseDto,
 } from './dto/resolve-complaint.dto';
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
+import { ApiEnvelopeOkResponse } from '../shared/decorators/api-envelope-response.decorator';
 import { JwtAuthGuard } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';
@@ -63,7 +63,10 @@ export class ComplaintsController {
       'la queja. approve -> PROCEDE, reject -> NO_PROCEDE. ' +
       'resolve_notes es obligatorio al rechazar.',
   })
-  @ApiOkResponse({ description: 'Queja resuelta.' })
+  @ApiEnvelopeOkResponse({
+    message: 'Queja resuelta correctamente',
+    type: ResolveComplaintResponseDto,
+  })
   @ApiUnauthorizedResponse({
     description: 'AUTH.* — token invalido, sesion revocada o expirada.',
     type: ErrorResponseDto,

@@ -35,7 +35,6 @@ import {
   ApiBadRequestResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
-  ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
@@ -168,12 +167,8 @@ export class DistribuidoresController {
       '(categoria, sucursal, fecha de proximo corte, credito, ' +
       'puntos, etc.). Pensado para la home de la app movil (Poch).',
   })
-  @ApiOkResponse({
-    description: 'Estado consultado correctamente.',
-    type: DistribuidorStatusDto,
-  })
   @ApiEnvelopeOkResponse({
-    message: 'Estado del Distribuidor consultado correctamente.',
+    message: 'Estado del Distribuidor consultado correctamente',
     type: DistribuidorStatusDto,
   })
   @ApiUnauthorizedResponse({
@@ -207,9 +202,8 @@ export class DistribuidoresController {
   @HttpCode(HttpStatus.OK)
   @RequirePermissions('distribuidor.read')
   @ApiOperation({ summary: 'Detalle de un Distribuidor' })
-  @ApiOkResponse({ description: 'Distribuidor consultado correctamente.' })
   @ApiEnvelopeOkResponse({
-    message: 'Distribuidor consultado correctamente.',
+    message: 'Distribuidor consultado correctamente',
     type: DistribuidorResponseDto,
   })
   @ApiUnauthorizedResponse({
@@ -247,9 +241,8 @@ export class DistribuidoresController {
       '`credit_available_cents`. Regla 2.0 §6.1.2: el incremento ' +
       'no puede superar el limite actual.',
   })
-  @ApiOkResponse({ description: 'Credito incrementado correctamente.' })
   @ApiEnvelopeOkResponse({
-    message: 'Credito incrementado correctamente.',
+    message: 'Credito incrementado correctamente',
     type: DistribuidorResponseDto,
   })
   @ApiBadRequestResponse({
@@ -290,9 +283,8 @@ export class DistribuidoresController {
     description:
       'Discrecional del Gerente (motivacion por buen comportamiento).',
   })
-  @ApiOkResponse({ description: 'Categoria actualizada correctamente.' })
   @ApiEnvelopeOkResponse({
-    message: 'Categoria actualizada correctamente.',
+    message: 'Categoria actualizada correctamente',
     type: DistribuidorResponseDto,
   })
   @ApiForbiddenResponse({
@@ -330,9 +322,8 @@ export class DistribuidoresController {
       'Requiere autorizacion del Gerente. La Distribuidora no ' +
       'puede cambiar de Sucursal por su cuenta.',
   })
-  @ApiOkResponse({ description: 'Coordinador actualizado correctamente.' })
   @ApiEnvelopeOkResponse({
-    message: 'Coordinador actualizado correctamente.',
+    message: 'Coordinador actualizado correctamente',
     type: DistribuidorResponseDto,
   })
   @ApiForbiddenResponse({
