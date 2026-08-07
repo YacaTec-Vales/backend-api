@@ -9,7 +9,7 @@
  * @author Equipo de desarrollo Mis Vales
  */
 
-import { ApiProperty, ApiSchema } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, ApiSchema } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -68,13 +68,12 @@ export class ConfirmVoucherDto {
   @IsBoolean({ message: 'dataConfirmed debe ser booleano' })
   dataConfirmed!: boolean;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description:
       'IDs de los documentos escaneados del cliente (INE, ' +
       'comprobante de domicilio, etc). Pueden ser [] si no se ' +
       'requirio escanear nada.',
     type: () => [DocumentRefDto],
-    required: false,
   })
   @IsOptional()
   @IsArray()
@@ -83,11 +82,10 @@ export class ConfirmVoucherDto {
   @Type(() => DocumentRefDto)
   documents?: DocumentRefDto[];
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     description:
       'Descripcion de la discrepancia (obligatorio si dataConfirmed=false). ' +
       'La cajera documenta campo por campo que difiere.',
-    required: false,
     maxLength: 1000,
   })
   @IsOptional()

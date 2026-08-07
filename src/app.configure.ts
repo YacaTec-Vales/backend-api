@@ -123,6 +123,23 @@ export function configureApplication(
         'Distribuidores',
         'Alta de distribuidoras desde solicitudes aprobadas (scaffold)',
       )
+      .addTag(
+        'Solicitudes',
+        'Flujo de alta de Distribuidora (crear, verificar, autorizar, rechazar)',
+      )
+      .addTag('Clients', 'Alta y consulta de clientes')
+      .addTag('Cashier', 'Flujo de caja (buscar vale, confirmar feriado)')
+      .addTag('Catalogs', 'Catalogo de productos (montos de vales)')
+      .addTag('Complaints', 'Gestion de quejas (resolver)')
+      .addTag('CreditRaise', 'Solicitudes de aumento de linea de credito')
+      .addTag('Cuts', 'Corte de quincena (generacion de relaciones)')
+      .addTag(
+        'BusinessConfig',
+        'Configuracion global del calculo de la relacion',
+      )
+      .addTag('Documents', 'Subida de archivos al storage')
+      .addTag('Vouchers', 'Emision y cancelacion de vales')
+      .addTag('Relations', 'Pagos del Distribuidor (relaciones de quincena)')
       .addTag('App', 'Smoke tests')
       .build();
 

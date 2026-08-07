@@ -26,7 +26,6 @@ import {
   ApiBadRequestResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
-  ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
@@ -62,12 +61,8 @@ export class CutsController {
       'Ejecuta el corte de quincena: genera app.relation + ' +
       'app.relation_detail para cada Distribuidora con vales en el periodo',
   })
-  @ApiOkResponse({
-    description: 'Corte ejecutado.',
-    type: CutResultDto,
-  })
   @ApiEnvelopeOkResponse({
-    message: 'Corte ejecutado correctamente.',
+    message: 'Corte ejecutado correctamente',
     type: CutResultDto,
   })
   @ApiUnauthorizedResponse({ description: 'AUTH.*', type: ErrorResponseDto })

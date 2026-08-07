@@ -8,7 +8,7 @@
  * @author Equipo de desarrollo Mis Vales
  */
 
-import { ApiProperty, ApiSchema } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, ApiSchema } from '@nestjs/swagger';
 import {
   IsOptional,
   IsString,
@@ -40,9 +40,8 @@ export class TransferClientDto {
   /**
    * Notas opcionales del coordinador (max 1000 chars).
    */
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: 'Notas opcionales del coordinador.',
-    required: false,
     maxLength: 1000,
   })
   @IsOptional()

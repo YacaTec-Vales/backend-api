@@ -15,6 +15,7 @@ import {
   Body,
   Controller,
   Get,
+  NotFoundException,
   Param,
   ParseUUIDPipe,
   Post,
@@ -24,10 +25,10 @@ import {
 import {
   ApiBearerAuth,
   ApiConflictResponse,
-  ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOperation,
+  ApiPropertyOptional,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
@@ -50,14 +51,17 @@ import { IsIn, IsOptional } from 'class-validator';
  */
 import type { ProductListFilters } from '../database/repositories/product.repository';
 class ListProductsQueryDto implements ProductListFilters {
+  @ApiPropertyOptional({ enum: ['NORMAL', 'PLUS'], description: 'Filtrar por variante del producto.' })
   @IsOptional()
   @IsIn(['NORMAL', 'PLUS'])
   variant?: 'NORMAL' | 'PLUS';
 
+  @ApiPropertyOptional({ enum: ['costCents', 'code', 'totalPeriods', 'createdAt'], default: 'createdAt', description: 'Campo de ordenamiento.' })
   @IsOptional()
   @IsIn(['costCents', 'code', 'totalPeriods', 'createdAt'])
   sortBy?: 'costCents' | 'code' | 'totalPeriods' | 'createdAt';
 
+  @ApiPropertyOptional({ enum: ['asc', 'desc'], default: 'asc', description: 'Direccion de ordenamiento.' })
   @IsOptional()
   @IsIn(['asc', 'desc'])
   sortOrder?: 'asc' | 'desc';
@@ -136,7 +140,10 @@ export class ProductsController {
   ): Promise<ProductResponseDto> {
     const found = await this.productsService.findById(id);
     if (!found) {
-      throw new Error(`Producto no encontrado: ${id}`);
+      throw new NotFoundException({
+        code: 'PRODUCT.NOT_FOUND',
+        message: 'producto no encontrado',
+      });
     }
     return found;
   }
@@ -156,9 +163,6 @@ export class ProductsController {
       'Crea un producto en el catalogo. Solo `catalog.write`: GERENTE_GENERAL. ' +
       'Valida multiplicidad de $100 MXN (regla R5), limite de 60 quincenas y ' +
       'unicidad (code, variant).',
-  })
-  @ApiCreatedResponse({
-    description: 'Producto creado correctamente',
   })
   @ApiEnvelopeCreatedResponse({
     message: 'Producto creado correctamente',

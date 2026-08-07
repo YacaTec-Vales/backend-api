@@ -28,7 +28,6 @@ import {
   ApiBearerAuth,
   ApiBadRequestResponse,
   ApiForbiddenResponse,
-  ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnauthorizedResponse,
@@ -63,13 +62,8 @@ export class BusinessConfigController {
   @ApiOperation({
     summary: 'Lista la configuracion global del calculo de la relacion',
   })
-  @ApiOkResponse({
-    description: 'Items listados correctamente.',
-    type: BusinessConfigItemDto,
-    isArray: true,
-  })
   @ApiEnvelopeOkResponse({
-    message: 'Configuracion consultada correctamente.',
+    message: 'Configuracion consultada correctamente',
     type: BusinessConfigItemDto,
     isArray: true,
   })
@@ -98,13 +92,8 @@ export class BusinessConfigController {
       'Solo GERENTE_GENERAL. Los cambios quedan registrados en ' +
       'app.audit_log con la operacion y el actor.',
   })
-  @ApiOkResponse({
-    description: 'Items actualizados.',
-    type: BusinessConfigItemDto,
-    isArray: true,
-  })
   @ApiEnvelopeOkResponse({
-    message: 'Configuracion actualizada correctamente.',
+    message: 'Configuracion actualizada correctamente',
     type: BusinessConfigItemDto,
     isArray: true,
   })
