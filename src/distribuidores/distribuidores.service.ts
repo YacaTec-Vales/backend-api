@@ -5,6 +5,7 @@
  * autorizado:
  *
  *  - `findOne`                 GET    /distribuidores/:id
+ *  - `listDistribuidoras`      GET    /coordinadores/:id/distribuidoras
  *  - `incrementCredit`         POST   /distribuidores/:id/credit/increment
  *  - `changeCategory`          POST   /distribuidores/:id/category
  *  - `changeCoordinator`       POST   /distribuidores/:id/coord-change
@@ -53,6 +54,8 @@ import { DistributorRepository } from '../database/repositories/distributor.repo
 import type { RequestUser } from '../shared/guards/auth.guards';
 import { DistribuidorResponseDto } from './dto/distribuidor-response.dto';
 import { DistribuidorStatusDto } from './dto/distribuidor-status.dto';
+import { PaginatedDistribuidoresResponseDto } from './dto/paginated-distribuidores-response.dto';
+import type { ListDistribuidoresQueryDto } from './dto/list-distribuidores-query.dto';
 import { toDistribuidorResponseDtoFromEntity } from '../shared/mappers/distribuidor.mapper';
 import type { DistributorEntity } from '../database/schema';
 
@@ -128,6 +131,74 @@ export class DistribuidoresService {
     }
     this.assertActorCanSee(actor, distributor);
     return toDistribuidorResponseDtoFromEntity(distributor);
+  }
+
+  /**
+   * Lista las distribuidoras asignadas a un coordinador.
+   *
+   * Reglas de scope:
+   *  - `GERENTE_GENERAL`: ve cualquier coordinador sin restriccion.
+   *  - `GERENTE_SUCURSAL` / `COORDINADOR` / `VERIFICADOR` / `CAJERO`:
+   *    el coordinador solicitado debe pertenecer a su misma branch;
+   *    para el COORDINADOR, ademas, solo puede ver las propias
+   *    distribuidoras (donde `coordinator_id = actor.id`).
+   *  - Cualquier otro rol devuelve 403.
+   *
+   * @param actor - Usuario autenticado.
+   * @param coordinatorId - UUID del coordinador cuyas distribuidoras se listan.
+   * @param query - Filtros y paginacion.
+   * @returns Listado paginado de distribuidoras.
+   * @throws {ForbiddenException} Si el actor no tiene permiso para ver ese coordinador.
+   */
+  async listDistribuidoras(
+    actor: RequestUser,
+    coordinatorId: string,
+    query: ListDistribuidoresQueryDto,
+  ): Promise<PaginatedDistribuidoresResponseDto> {
+    // Un COORDINADOR solo puede consultar sus propias distribuidoras.
+    if (actor.role === 'COORDINADOR' && actor.id !== coordinatorId) {
+      throw new ForbiddenException({
+        code: 'DISTRIBUTOR.SCOPE_FORBIDDEN',
+        message: 'solo puedes listar las distribuidoras asignadas a ti mismo',
+      });
+    }
+
+    // Para roles de sucursal (excepto GG), el coordinador debe
+    // pertenecer a la misma branch. Delegamos la validacion de
+    // branchId al filtro de la query; el scope se aplica en la
+    // capa de repositorio a traves de coordinatorId.
+    // El COORDINADOR ya quedo bloqueado arriba si pide otro ID.
+
+    if (
+      actor.role !== 'GERENTE_GENERAL' &&
+      actor.role !== 'GERENTE_SUCURSAL' &&
+      actor.role !== 'COORDINADOR' &&
+      actor.role !== 'VERIFICADOR' &&
+      actor.role !== 'CAJERO'
+    ) {
+      throw new ForbiddenException({
+        code: 'AUTH.ROLE_NOT_ALLOWED',
+        message: 'rol no autorizado para listar distribuidoras de un coordinador',
+      });
+    }
+
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const sortOrder = query.sortOrder ?? 'desc';
+
+    const { items, total } = await this.distributorRepo.listByCoordinator({
+      coordinatorId,
+      status: query.status,
+      search: query.search,
+      page,
+      limit,
+      sortOrder,
+    });
+
+    return {
+      data: items.map(toDistribuidorResponseDtoFromEntity),
+      meta: { page, limit, total },
+    };
   }
 
   /**

@@ -16,7 +16,7 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, count, eq, ilike, isNull, or, sql } from 'drizzle-orm';
 import {
   DRIZZLE_WRITE,
   DRIZZLE_READ,
@@ -88,5 +88,70 @@ export class DistributorRepository {
       .values(data)
       .returning();
     return row;
+  }
+
+  /**
+   * Lista distribuidoras de un coordinador con paginacion y filtros opcionales.
+   *
+   * Filtros aplicados:
+   *  - `coordinatorId` (obligatorio): solo distribuidoras donde `coordinator_id = coordinatorId`.
+   *  - `status` (opcional): filtra por estado del Distribuidor.
+   *  - `search` (opcional): busqueda libre por `distributor_number` (ILIKE).
+   *  - Solo se devuelven filas con `deleted_at IS NULL`.
+   *
+   * Conexion: `DRIZZLE_READ`.
+   *
+   * @param params - Parametros de consulta.
+   * @param params.coordinatorId - UUID del coordinador.
+   * @param params.status - Filtro opcional de estado.
+   * @param params.search - Texto libre para ILIKE sobre `distributor_number`.
+   * @param params.page - Pagina base 1.
+   * @param params.limit - Tamano de pagina (1-100).
+   * @param params.sortOrder - Orden por `created_at` (asc | desc).
+   * @returns Objeto `{ items, total }` con los registros y el total sin paginar.
+   */
+  async listByCoordinator(params: {
+    coordinatorId: string;
+    status?: 'ACTIVA' | 'MOROSA' | 'DESHABILITADA' | 'BAJA_VOLUNTARIA';
+    search?: string;
+    page: number;
+    limit: number;
+    sortOrder: 'asc' | 'desc';
+  }): Promise<{ items: DistributorEntity[]; total: number }> {
+    const { coordinatorId, status, search, page, limit, sortOrder } = params;
+
+    const filters = [
+      eq(distributors.coordinatorId, coordinatorId),
+      isNull(distributors.deletedAt),
+      ...(status ? [eq(distributors.status, status)] : []),
+      ...(search
+        ? [
+            or(
+              ilike(distributors.distributorNumber, `%${search}%`),
+            ),
+          ]
+        : []),
+    ].filter(Boolean);
+
+    const where = and(...(filters as Parameters<typeof and>));
+
+    const [{ value: total }] = await this.readDb
+      .select({ value: count() })
+      .from(distributors)
+      .where(where);
+
+    const items = await this.readDb
+      .select()
+      .from(distributors)
+      .where(where)
+      .orderBy(
+        sortOrder === 'asc'
+          ? sql`${distributors.createdAt} ASC`
+          : sql`${distributors.createdAt} DESC`,
+      )
+      .limit(limit)
+      .offset((page - 1) * limit);
+
+    return { items, total: Number(total) };
   }
 }
