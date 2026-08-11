@@ -1,3 +1,10 @@
+## [0.1.1-rc.1](https://github.com/YacaTec-Vales/backend-api/compare/v0.1.0...v0.1.1-rc.1) (2026-08-11)
+
+### Bug Fixes
+
+* **ci:** alinear release del artefacto con la version calculada por semantic-release ([#24](https://github.com/YacaTec-Vales/backend-api/issues/24)) ([3b9cbc5](https://github.com/YacaTec-Vales/backend-api/commit/3b9cbc546e51f919a96210110fe09e481ef61296))
+* **database:** soportar client cert mTLS en pg.Pool ([#23](https://github.com/YacaTec-Vales/backend-api/issues/23)) ([127f248](https://github.com/YacaTec-Vales/backend-api/commit/127f248a1ef936dc5af14bcec1dc7c41b567f310))
+
 ## [0.1.0-rc.2](https://github.com/YacaTec-Vales/backend-api/compare/v0.1.0-rc.1...v0.1.0-rc.2) (2026-08-03)
 
 ### Bug Fixes
