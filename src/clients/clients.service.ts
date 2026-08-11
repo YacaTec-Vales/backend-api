@@ -42,6 +42,8 @@ import { distributors, branches } from '../database/schema';
 import type { RequestUser } from '../shared/guards/auth.guards';
 import type { CreateClientDto } from './dto/create-client.dto';
 import type { ClientResponseDto } from './dto/client-response.dto';
+import type { PaginatedClientsResponseDto } from './dto/client-response.dto';
+import type { ListClientsQueryDto } from './dto/list-clients-query.dto';
 import { toClientResponseDto } from '../shared/mappers';
 /**
  * Servicio principal del modulo clients.
@@ -58,6 +60,76 @@ export class ClientsService {
     private readonly clientRepo: ClientRepository,
     @Inject(DRIZZLE_READ) private readonly readDb: DrizzleRead,
   ) {}
+
+  /**
+   * Lista paginada de clientes asociados a la distribuidora del
+   * actor autenticado.
+   *
+   * Restricciones:
+   *  - El actor debe tener rol `DISTRIBUIDOR`.
+   *  - La distribuidora debe existir, estar activa y no estar
+   *    borrada logicamente.
+   *
+   * @param actor - Usuario autenticado (rol DISTRIBUIDOR).
+   * @param query - Paginacion y orden.
+   * @returns Listado paginado con meta.
+   * @throws {ForbiddenException} `AUTH.ROLE_NOT_ALLOWED` si el rol no es DISTRIBUIDOR.
+   * @throws {ForbiddenException} `CLIENT.DISTRIBUTOR_NOT_FOUND` si no hay distribuidora para ese user.
+   * @throws {ForbiddenException} `CLIENT.DISTRIBUTOR_INACTIVE` si la distribuidora no esta activa.
+   */
+  async listByDistributor(
+    actor: RequestUser,
+    query: ListClientsQueryDto,
+  ): Promise<PaginatedClientsResponseDto> {
+    if (actor.role !== 'DISTRIBUIDOR') {
+      throw new ForbiddenException({
+        code: 'AUTH.ROLE_NOT_ALLOWED',
+        message: 'Solo distribuidores pueden consultar sus clientes.',
+      });
+    }
+
+    const [distributorRow] = await this.readDb
+      .select({
+        id: distributors.id,
+        isActive: distributors.isActive,
+        deletedAt: distributors.deletedAt,
+        status: distributors.status,
+      })
+      .from(distributors)
+      .where(eq(distributors.userId, actor.id))
+      .limit(1);
+
+    if (
+      !distributorRow ||
+      distributorRow.deletedAt ||
+      !distributorRow.isActive
+    ) {
+      throw new ForbiddenException({
+        code: 'CLIENT.DISTRIBUTOR_NOT_FOUND',
+        message:
+          'No se encontro una distribuidora activa asociada a este usuario.',
+      });
+    }
+
+    if (distributorRow.status !== 'ACTIVA') {
+      throw new ForbiddenException({
+        code: 'CLIENT.DISTRIBUTOR_INACTIVE',
+        message: `La distribuidora no esta activa (status=${distributorRow.status}).`,
+      });
+    }
+
+    const { items, total } = await this.clientRepo.findByDistributorId(
+      distributorRow.id,
+      query.page,
+      query.limit,
+      query.sortOrder,
+    );
+
+    return {
+      data: items.map((row) => toClientResponseDto(row)),
+      meta: { page: query.page, limit: query.limit, total },
+    };
+  }
 
   /**
    * Da de alta un cliente en `app.client`, ligado a la distribuidora
