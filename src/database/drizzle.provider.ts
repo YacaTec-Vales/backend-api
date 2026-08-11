@@ -17,6 +17,7 @@
 
 import { drizzle, NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
+import { readFileSync } from 'node:fs';
 import { DATABASE_CONFIG, DATABASE_READ_CONFIG } from './tokens';
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import type {
@@ -98,9 +99,37 @@ interface BuildPoolParams {
   password: string;
   database: string;
   ssl: boolean;
+  sslKey?: string;
+  sslCert?: string;
+  sslCa?: string;
   poolMin: number;
   poolMax: number;
   label: string;
+}
+
+/**
+ * Construye las opciones SSL para `pg.Pool`.
+ *
+ * - Si `ssl` es `false`, devuelve `false` (sin TLS).
+ * - Con `sslCert` + `sslKey` envia un certificado de cliente (mTLS),
+ *   necesario cuando el servidor exige `clientcert=verify-ca`.
+ * - `rejectUnauthorized` es `true` solo si se provee `sslCa` (verifica
+ *   la cadena del servidor); en caso contrario mantiene el
+ *   comportamiento previo (`sslmode=require` de libpq).
+ *
+ * @param params - Parametros de la conexion.
+ * @returns Opciones SSL para `pg.Pool` o `false`.
+ */
+function buildSslOptions(
+  params: BuildPoolParams,
+): false | Record<string, unknown> {
+  if (!params.ssl) return false;
+  return {
+    rejectUnauthorized: params.sslCa ? true : false,
+    key: params.sslKey ? readFileSync(params.sslKey) : undefined,
+    cert: params.sslCert ? readFileSync(params.sslCert) : undefined,
+    ca: params.sslCa ? readFileSync(params.sslCa) : undefined,
+  };
 }
 
 /**
@@ -117,7 +146,7 @@ function buildPool(params: BuildPoolParams): Pool {
     user: params.user,
     password: params.password,
     database: params.database,
-    ssl: params.ssl ? { rejectUnauthorized: false } : false,
+    ssl: buildSslOptions(params),
     max: params.poolMax,
     min: params.poolMin,
   });
@@ -149,6 +178,9 @@ export const drizzleWriteProvider = {
       password: cfg.password,
       database: cfg.database,
       ssl: cfg.ssl,
+      sslKey: cfg.sslKey,
+      sslCert: cfg.sslCert,
+      sslCa: cfg.sslCa,
       poolMin: cfg.poolMin,
       poolMax: cfg.poolMax,
       label: 'pg-pool-write',
@@ -180,6 +212,9 @@ export const drizzleReadProvider = {
       password: cfg.password,
       database: cfg.database,
       ssl: cfg.ssl,
+      sslKey: cfg.sslKey,
+      sslCert: cfg.sslCert,
+      sslCa: cfg.sslCa,
       poolMin: cfg.poolMin,
       poolMax: cfg.poolMax,
       label: 'pg-pool-read',
