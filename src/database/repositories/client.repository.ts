@@ -21,7 +21,7 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, desc, asc, sql } from 'drizzle-orm';
 import {
   DRIZZLE_WRITE,
   DRIZZLE_READ,
@@ -165,5 +165,56 @@ export class ClientRepository {
       .where(and(eq(clients.id, clientId), isNull(clients.deletedAt)))
       .returning({ id: clients.id });
     return result.length > 0;
+  }
+
+  /**
+   * Lista clientes activos asociados a una distribuidora con
+   * paginacion offset/limit y orden por fecha de creacion.
+   *
+   * Usado por `ClientsService.listByDistributor` para el endpoint
+   * `GET /clients`. Filtra `deletedAt IS NULL` y
+   * `current_distributor_id = distributorId`.
+   *
+   * Conexion: `DRIZZLE_READ`.
+   *
+   * @param distributorId - UUID de la distribuidora.
+   * @param page - Pagina solicitada (1-based).
+   * @param limit - Elementos por pagina.
+   * @param sortOrder - Orden ascendente o descendente.
+   * @returns Items y total para la paginacion.
+   */
+  async findByDistributorId(
+    distributorId: string,
+    page: number,
+    limit: number,
+    sortOrder: 'asc' | 'desc' = 'desc',
+  ): Promise<{ items: ClientEntity[]; total: number }> {
+    const conditions = and(
+      eq(clients.currentDistributorId, distributorId),
+      isNull(clients.deletedAt),
+    );
+
+    const [countResult, items] = await Promise.all([
+      this.readDb
+        .select({ count: sql<number>`count(*)::int` })
+        .from(clients)
+        .where(conditions),
+      this.readDb
+        .select()
+        .from(clients)
+        .where(conditions)
+        .orderBy(
+          sortOrder === 'asc'
+            ? asc(clients.createdAt)
+            : desc(clients.createdAt),
+        )
+        .limit(limit)
+        .offset((page - 1) * limit),
+    ]);
+
+    return {
+      items,
+      total: countResult[0]?.count ?? 0,
+    };
   }
 }

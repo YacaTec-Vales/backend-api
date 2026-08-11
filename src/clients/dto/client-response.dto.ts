@@ -125,3 +125,44 @@ export class ClientResponseDto {
   })
   updatedAt!: string;
 }
+
+/**
+ * Metadatos de paginacion para el listado de clientes.
+ *
+ * @see ClientsController.list
+ */
+@ApiSchema({ name: 'ClientPaginationMeta' })
+export class ClientPaginationMetaDto {
+  /** Pagina actual (1-based). */
+  @ApiProperty({ example: 1 })
+  page!: number;
+
+  /** Elementos por pagina. */
+  @ApiProperty({ example: 20 })
+  limit!: number;
+
+  /** Total de registros que coinciden con el filtro. */
+  @ApiProperty({ example: 42 })
+  total!: number;
+}
+
+/**
+ * DTO de respuesta paginada para `GET /clients`.
+ *
+ * Wrapper `{ data, meta }` que queda dentro del `data` del sobre
+ * de la API. El cliente lee los elementos en `body.data.data` y
+ * la paginacion en `body.data.meta`.
+ *
+ * @see ClientsController.list
+ */
+@ApiSchema({ name: 'PaginatedClientsResponse' })
+export class PaginatedClientsResponseDto {
+  /** Lista de clientes de la pagina actual. */
+  @ApiProperty({ type: [ClientResponseDto] })
+  data!: ClientResponseDto[];
+
+  /** Metadatos de paginacion. */
+  @ApiProperty({ type: ClientPaginationMetaDto })
+  meta!: ClientPaginationMetaDto;
+}
+

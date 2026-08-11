@@ -1,11 +1,9 @@
 /**
  * @fileoverview Controlador del modulo `clients`.
  *
- * Endpoints existentes (commit 3):
- *  - POST /clients             crear cliente
- *  - GET  /clients/:id         detalle
- *
- * Endpoints nuevos (commit 11):
+ * Endpoints:
+ *  - GET  /clients              listar clientes de la distribuidora
+ *  - POST /clients              crear cliente
  *  - POST /clients/:id/transfer-distributor  transferir cliente
  *    (gateado por client.transfer, COORDINADOR o gerentes).
  *
@@ -16,9 +14,11 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   Param,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -33,7 +33,11 @@ import {
 } from '@nestjs/swagger';
 import { ClientsService } from './clients.service';
 import { CreateClientDto } from './dto/create-client.dto';
-import { ClientResponseDto } from './dto/client-response.dto';
+import {
+  ClientResponseDto,
+  PaginatedClientsResponseDto,
+} from './dto/client-response.dto';
+import { ListClientsQueryDto } from './dto/list-clients-query.dto';
 import { TransferClientDto } from './dto/transfer-client.dto';
 import { DRIZZLE_WRITE, type DrizzleWrite } from '../database/drizzle.provider';
 import { Inject } from '@nestjs/common';
@@ -66,6 +70,46 @@ export class ClientsController {
     private readonly distributorRepo: DistributorRepository,
     @Inject(DRIZZLE_WRITE) private readonly writeDb: DrizzleWrite,
   ) {}
+
+  /**
+   * @api {get} /clients Listar clientes de la distribuidora
+   * @apiName ListClients
+   * @apiGroup Clients
+   * @apiVersion 1.0.0
+   * @apiPermission DISTRIBUIDOR
+   *
+   * @apiDescription Lista paginada de los clientes asociados a la
+   * distribuidora del actor autenticado. Solo disponible para el
+   * rol DISTRIBUIDOR.
+   */
+  @Get()
+  @ApiOperation({
+    summary: 'Listar clientes de la distribuidora',
+    description:
+      'Devuelve la lista paginada de clientes asociados a la ' +
+      'distribuidora del Distribuidor autenticado. Solo disponible ' +
+      'para usuarios con rol DISTRIBUIDOR.',
+  })
+  @ApiEnvelopeOkResponse({
+    message: 'Clientes consultados correctamente',
+    type: PaginatedClientsResponseDto,
+  })
+  @ApiUnauthorizedResponse({
+    description: 'AUTH.* — token invalido, sesion revocada o expirada.',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description:
+      'AUTH.ROLE_NOT_ALLOWED | CLIENT.DISTRIBUTOR_NOT_FOUND | ' +
+      'CLIENT.DISTRIBUTOR_INACTIVE.',
+    type: ErrorResponseDto,
+  })
+  list(
+    @CurrentUser() actor: RequestUser,
+    @Query() query: ListClientsQueryDto,
+  ): Promise<PaginatedClientsResponseDto> {
+    return this.clientsService.listByDistributor(actor, query);
+  }
 
   @Post()
   @RequirePermissions('client.create')
