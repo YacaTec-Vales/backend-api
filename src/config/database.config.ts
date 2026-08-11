@@ -24,7 +24,9 @@ import { registerAs } from '@nestjs/config';
  * Tipado de la configuracion de base de datos (escritura).
  *
  * - `host` / `port` / `user` / `password` / `database`: conexion TCP.
- * - `ssl`: si `true`, usa TLS con `rejectUnauthorized: false`.
+ * - `ssl`: si `true`, usa TLS. Con `sslKey` + `sslCert` se envia un
+ *   certificado de cliente (mTLS); con `sslCa` se valida la cadena del
+ *   servidor (`rejectUnauthorized: true`).
  * - `poolMin` / `poolMax`: tamanio del pool de conexiones.
  * - `url`: cadena de conexion agregada para diagnostico.
  */
@@ -35,6 +37,9 @@ export interface DatabaseConfig {
   password: string;
   database: string;
   ssl: boolean;
+  sslKey?: string;
+  sslCert?: string;
+  sslCa?: string;
   poolMin: number;
   poolMax: number;
   url: string;
@@ -54,6 +59,9 @@ export interface DatabaseReadConfig {
   password: string;
   database: string;
   ssl: boolean;
+  sslKey?: string;
+  sslCert?: string;
+  sslCa?: string;
   poolMin: number;
   poolMax: number;
   url: string;
@@ -74,10 +82,26 @@ export const databaseConfig = registerAs('database', (): DatabaseConfig => {
   const password = process.env.DATABASE_PASSWORD ?? '';
   const database = process.env.DATABASE_NAME as string;
   const ssl = process.env.DATABASE_SSL === 'true';
+  const sslKey = process.env.DATABASE_SSL_KEY || undefined;
+  const sslCert = process.env.DATABASE_SSL_CERT || undefined;
+  const sslCa = process.env.DATABASE_SSL_CA || undefined;
   const poolMin = parseInt(process.env.DATABASE_POOL_MIN ?? '2', 10);
   const poolMax = parseInt(process.env.DATABASE_POOL_MAX ?? '10', 10);
   const url = `postgres://${user}:${encodeURIComponent(password)}@${host}:${port}/${database}${ssl ? '?sslmode=require' : ''}`;
-  return { host, port, user, password, database, ssl, poolMin, poolMax, url };
+  return {
+    host,
+    port,
+    user,
+    password,
+    database,
+    ssl,
+    sslKey,
+    sslCert,
+    sslCa,
+    poolMin,
+    poolMax,
+    url,
+  };
 });
 
 /**
@@ -99,6 +123,9 @@ export const databaseReadConfig = registerAs(
     const password = process.env.DATABASE_READ_PASSWORD ?? '';
     const database = process.env.DATABASE_READ_NAME as string;
     const ssl = process.env.DATABASE_READ_SSL === 'true';
+    const sslKey = process.env.DATABASE_READ_SSL_KEY || undefined;
+    const sslCert = process.env.DATABASE_READ_SSL_CERT || undefined;
+    const sslCa = process.env.DATABASE_READ_SSL_CA || undefined;
     const poolMin = parseInt(process.env.DATABASE_READ_POOL_MIN ?? '2', 10);
     const poolMax = parseInt(process.env.DATABASE_READ_POOL_MAX ?? '10', 10);
     const url = `postgres://${user}:${encodeURIComponent(password)}@${host}:${port}/${database}${ssl ? '?sslmode=require' : ''}`;
@@ -109,6 +136,9 @@ export const databaseReadConfig = registerAs(
       password,
       database,
       ssl,
+      sslKey,
+      sslCert,
+      sslCa,
       poolMin,
       poolMax,
       url,
