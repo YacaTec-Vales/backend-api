@@ -39,6 +39,13 @@ export const envValidationSchema = Joi.object({
   DATABASE_PASSWORD: Joi.string().allow('').required(),
   DATABASE_NAME: Joi.string().required(),
   DATABASE_SSL: Joi.boolean().default(false),
+  // Certificados de cliente mTLS (rutas a archivos). Opcionales: se
+  // usan solo cuando DATABASE_SSL=true y el servidor exige
+  // `clientcert=verify-ca`. DATABASE_SSL_CA habilita la verificacion
+  // completa de la cadena del servidor.
+  DATABASE_SSL_CERT: Joi.string().allow('').default(''),
+  DATABASE_SSL_KEY: Joi.string().allow('').default(''),
+  DATABASE_SSL_CA: Joi.string().allow('').default(''),
   DATABASE_POOL_MIN: Joi.number().integer().min(1).default(2),
   DATABASE_POOL_MAX: Joi.number().integer().min(1).default(10),
 
@@ -49,6 +56,9 @@ export const envValidationSchema = Joi.object({
   DATABASE_READ_PASSWORD: Joi.string().allow('').required(),
   DATABASE_READ_NAME: Joi.string().required(),
   DATABASE_READ_SSL: Joi.boolean().default(false),
+  DATABASE_READ_SSL_CERT: Joi.string().allow('').default(''),
+  DATABASE_READ_SSL_KEY: Joi.string().allow('').default(''),
+  DATABASE_READ_SSL_CA: Joi.string().allow('').default(''),
   DATABASE_READ_POOL_MIN: Joi.number().integer().min(1).default(2),
   DATABASE_READ_POOL_MAX: Joi.number().integer().min(1).default(10),
 
