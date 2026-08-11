@@ -38,7 +38,7 @@ jobs:
         run: npm run build
 
       - name: Instalar solo prod (para el artefacto)
-        run: npm ci --omit=dev
+        run: npm ci --omit=dev --ignore-scripts
 
       - name: Obtener version de la release generada por semantic-release
         run: |
