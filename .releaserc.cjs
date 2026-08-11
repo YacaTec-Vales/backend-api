@@ -18,6 +18,5 @@ module.exports = {
         releaseNotes,
         ["@semantic-release/changelog", { changelogFile: "CHANGELOG.md" }],
         ["@semantic-release/git", { assets: ["CHANGELOG.md"], message: "chore(release): ${nextRelease.version}" }],
-        github,
       ],
 };

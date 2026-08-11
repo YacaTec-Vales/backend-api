@@ -57,8 +57,13 @@ jobs:
             dist package.json package-lock.json node_modules
           echo "asset=backend-api-${tag}.tar.gz" >> "$GITHUB_ENV"
 
-      - name: Subir artefacto a la release (prerelease)
+      - name: Crear release con artefacto (prerelease)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload "${tag}" "/tmp/release/${asset}" --clobber
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            echo "Release ${tag} ya existe, se omite."
+          else
+            gh release create "${tag}" "/tmp/release/${asset}" \
+              --prerelease --title "${tag}" --notes "Artefacto de la prerelease ${tag}"
+          fi
