@@ -1,3 +1,9 @@
+## [0.1.1-rc.2](https://github.com/YacaTec-Vales/backend-api/compare/v0.1.1-rc.1...v0.1.1-rc.2) (2026-08-11)
+
+### Bug Fixes
+
+* **ci:** no crear release desde semantic-release (inmutables) ([8a0335b](https://github.com/YacaTec-Vales/backend-api/commit/8a0335b7dd94d856654a1dd07b8ec53738fbd8b7))
+
 ## [0.1.1-rc.1](https://github.com/YacaTec-Vales/backend-api/compare/v0.1.0...v0.1.1-rc.1) (2026-08-11)
 
 ### Bug Fixes
