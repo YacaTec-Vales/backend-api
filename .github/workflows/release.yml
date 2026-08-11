@@ -1,7 +1,13 @@
 name: Release
 
+# Se lanza DESPUES de que "Auto Release" (semantic-release) termina,
+# para usar la version CALCULADA (ej. v0.1.1-rc.1) y no el numero que
+# se ponga a mano en el nombre de la rama release/v*.
 on:
-  push:
+  workflow_run:
+    workflows: ["Auto Release"]
+    types:
+      - completed
     branches:
       - 'release/**'
 
@@ -11,9 +17,13 @@ permissions:
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_branch }}
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -30,23 +40,25 @@ jobs:
       - name: Instalar solo prod (para el artefacto)
         run: npm ci --omit=dev
 
+      - name: Obtener version de la release generada por semantic-release
+        run: |
+          TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
+          if [[ -z "${TAG}" ]]; then
+            TAG="${WORKFLOW_BRANCH#release/}"
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_ENV"
+        env:
+          WORKFLOW_BRANCH: ${{ github.event.workflow_run.head_branch }}
+
       - name: Empaquetar artefacto
         run: |
-          TAG="${GITHUB_REF_NAME#release/}"
           mkdir -p /tmp/release
-          tar -czf "/tmp/release/backend-api-${TAG}.tar.gz" \
+          tar -czf "/tmp/release/backend-api-${tag}.tar.gz" \
             dist package.json package-lock.json node_modules
-          echo "asset=backend-api-${TAG}.tar.gz" >> "$GITHUB_ENV"
+          echo "asset=backend-api-${tag}.tar.gz" >> "$GITHUB_ENV"
 
-      - name: Crear GitHub Release v0.0.1 (o actualizar)
+      - name: Subir artefacto a la release (prerelease)
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="${GITHUB_REF_NAME#release/}"
-          if gh release view "${TAG}" >/dev/null 2>&1; then
-            gh release upload "${TAG}" "/tmp/release/${asset}" --clobber
-          else
-            gh release create "${TAG}" "/tmp/release/${asset}" \
-              --title "backend-api ${TAG}" \
-              --notes "Artifact de prueba para el flujo de versionado (build automatico)."
-          fi
+          gh release upload "${tag}" "/tmp/release/${asset}" --clobber
