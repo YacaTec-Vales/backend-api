@@ -3,9 +3,9 @@
  *
  * Registra `ClientsController` y `ClientsService`. Consume de
  * `AuthModule` (exportados) `UserRepository` y `AuditLogRepository`;
- * declara su propio `ClientRepository`. Ademas incluye el
- * `ClientDistributorHistoryRepository` para la logica de
- * transferencia (commit 11).
+ * declara su propio `ClientRepository`. Incluye el
+ * `AuthorizationRepository` para la logica de solicitud de
+ * transferencia (v2.5 — flujo de autorizacion).
  *
  * @module clients
  * @author Equipo de desarrollo Mis Vales
@@ -18,9 +18,9 @@ import { DatabaseModule } from '../database/database.module';
 import { ClientsController } from './clients.controller';
 import { ClientsService } from './clients.service';
 import { ClientRepository } from '../database/repositories/client.repository';
-import { ClientDistributorHistoryRepository } from '../database/repositories/client-distributor-history.repository';
 import { VoucherRepository } from '../database/repositories/voucher.repository';
 import { DistributorRepository } from '../database/repositories/distributor.repository';
+import { AuthorizationRepository } from '../database/repositories/authorization.repository';
 
 @Module({
   imports: [AuthModule, DatabaseModule],
@@ -28,9 +28,9 @@ import { DistributorRepository } from '../database/repositories/distributor.repo
   providers: [
     ClientsService,
     ClientRepository,
-    ClientDistributorHistoryRepository,
     VoucherRepository,
     DistributorRepository,
+    AuthorizationRepository,
   ],
   exports: [ClientsService, ClientRepository],
 })

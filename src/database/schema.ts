@@ -1088,3 +1088,85 @@ export const creditRaiseRequests = appSchema.table('credit_raise_request', {
 export type CreditRaiseRequestEntity = typeof creditRaiseRequests.$inferSelect;
 export type NewCreditRaiseRequestEntity =
   typeof creditRaiseRequests.$inferInsert;
+
+/**
+ * Valores validos del enum `app.authorization_type`.
+ * Tipos de cambio que requieren escalamiento/aprobacion antes de
+ * ejecutarse.
+ */
+export const authorizationTypeValues = [
+  'TRANSFERENCIA_DISTRIBUIDOR',
+  'MODIFICACION_CLIENTE',
+  'INCREMENTO_CREDITO',
+  'CONCILIACION_MANUAL',
+] as const;
+/** Tipo TypeScript para `authorization_type`. */
+export type AuthorizationType = (typeof authorizationTypeValues)[number];
+
+/**
+ * Valores validos del enum `app.authorization_status`.
+ */
+export const authorizationStatusValues = [
+  'PENDIENTE',
+  'APROBADA',
+  'RECHAZADA',
+] as const;
+/** Tipo TypeScript para `authorization_status`. */
+export type AuthorizationStatus = (typeof authorizationStatusValues)[number];
+
+/**
+ * Tabla `app.authorization`. Sala de espera para acciones sensibles.
+ *
+ * Cada fila representa una solicitud de cambio que requiere aprobacion
+ * jerarquica. El flujo es:
+ *  1. Un actor crea el registro con `status = PENDIENTE`.
+ *  2. El autorizante aprueba (`APROBADA`) o rechaza (`RECHAZADA`).
+ *  3. Al aprobar, el sistema ejecuta la accion (ej. transferencia de
+ *     cliente, conciliacion manual, etc.) en la misma transaccion.
+ *
+ * `affected_entity` es JSONB libre que describe la entidad y los
+ * datos necesarios para ejecutar la accion al aprobar (ej.
+ * `{ clientId, fromDistributorId, toDistributorId }` para
+ * `TRANSFERENCIA_DISTRIBUIDOR`).
+ *
+ * La columna `authorization_type` usa un enum nativo de Postgres
+ * (`app.authorization_type`); aqui lo mapeamos con `text.$type<>()`
+ * para consistencia con el resto del schema.
+ *
+ * @module database/schema
+ * @author Equipo de desarrollo Mis Vales
+ * @since 2.5.0
+ */
+export const authorizations = appSchema.table('authorization', {
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  authorizationType: text('authorization_type')
+    .$type<AuthorizationType>()
+    .notNull(),
+  requesterId: uuid('requester_id')
+    .notNull()
+    .references(() => users.id),
+  authorizerId: uuid('authorizer_id').references(() => users.id),
+  affectedEntity: jsonb('affected_entity')
+    .notNull()
+    .default(sql`'{}'::jsonb`),
+  justification: text('justification').notNull(),
+  decisionNotes: text('decision_notes'),
+  status: text('status')
+    .$type<AuthorizationStatus>()
+    .notNull()
+    .default('PENDIENTE'),
+  decidedAt: timestamp('decided_at', { withTimezone: true }),
+  isActive: boolean('is_active').notNull().default(true),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export type AuthorizationEntity = typeof authorizations.$inferSelect;
+export type NewAuthorizationEntity = typeof authorizations.$inferInsert;

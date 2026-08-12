@@ -4,8 +4,8 @@
  * Endpoints:
  *  - GET  /clients              listar clientes de la distribuidora
  *  - POST /clients              crear cliente
- *  - POST /clients/:id/transfer-distributor  transferir cliente
- *    (gateado por client.transfer, COORDINADOR o gerentes).
+ *  - POST /clients/:id/transfer-distributor  solicitar transferencia
+ *    (gateado por client.transfer, DISTRIBUIDOR, COORDINADOR o gerentes).
  *
  * @module clients
  * @author Equipo de desarrollo Mis Vales
@@ -39,13 +39,12 @@ import {
 } from './dto/client-response.dto';
 import { ListClientsQueryDto } from './dto/list-clients-query.dto';
 import { TransferClientDto } from './dto/transfer-client.dto';
-import { DRIZZLE_WRITE, type DrizzleWrite } from '../database/drizzle.provider';
-import { Inject } from '@nestjs/common';
 import { ClientRepository } from '../database/repositories/client.repository';
-import { ClientDistributorHistoryRepository } from '../database/repositories/client-distributor-history.repository';
 import { VoucherRepository } from '../database/repositories/voucher.repository';
 import { DistributorRepository } from '../database/repositories/distributor.repository';
+import { AuthorizationRepository } from '../database/repositories/authorization.repository';
 import { buildTransferClient } from './transfer-client.service';
+import { AuthorizationResponseDto } from '../autorizaciones/dto/authorization-response.dto';
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import {
   ApiEnvelopeCreatedResponse,
@@ -65,10 +64,9 @@ export class ClientsController {
   constructor(
     private readonly clientsService: ClientsService,
     private readonly clientRepo: ClientRepository,
-    private readonly historyRepo: ClientDistributorHistoryRepository,
     private readonly voucherRepo: VoucherRepository,
     private readonly distributorRepo: DistributorRepository,
-    @Inject(DRIZZLE_WRITE) private readonly writeDb: DrizzleWrite,
+    private readonly authRepo: AuthorizationRepository,
   ) {}
 
   /**
@@ -130,29 +128,33 @@ export class ClientsController {
   }
 
   /**
-   * @api {post} /clients/:id/transfer-distributor
+   * @api {post} /clients/:id/transfer-distributor Solicitar transferencia
+   * @apiName TransferClient
+   * @apiGroup Clients
+   * @apiVersion 2.5.0
+   * @apiPermission client.transfer
+   *
+   * @apiDescription Crea una solicitud de transferencia de cliente
+   * entre distribuidoras. El registro queda en estado PENDIENTE en
+   * la tabla `app.authorization`. La distribuidora destino debe
+   * aceptar (POST /autorizaciones/:id/aceptar-destino) y luego el
+   * Coordinador de la distribuidora origen aprueba
+   * (POST /autorizaciones/:id/aprobar).
    */
   @Post(':id/transfer-distributor')
   @HttpCode(200)
   @RequirePermissions('client.transfer')
   @ApiOperation({
-    summary: 'Transferir cliente a otra distribuidora',
+    summary: 'Solicitar transferencia de cliente a otra distribuidora',
     description:
-      'COORDINADOR (o gerente) autoriza el cambio de distribuidora. ' +
-      'El cliente debe estar 100% limpio (sin vales activos). ' +
-      'Se inserta fila en client_distributor_history.',
+      'Crea solicitud de transferencia (PENDIENTE) en app.authorization. ' +
+      'Flujo: 1) Distribuidor solicita, 2) distribuidora destino acepta, ' +
+      '3) Coordinador de la distribuidora origen aprueba y se ejecuta ' +
+      'la transferencia. El cliente debe estar 100% limpio (sin vales activos).',
   })
   @ApiEnvelopeOkResponse({
-    message: 'Cliente transferido correctamente',
-    type: undefined,
-    schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'string' },
-        previousDistributorId: { type: 'string' },
-        newDistributorId: { type: 'string' },
-      },
-    },
+    message: 'Solicitud de transferencia creada correctamente',
+    type: AuthorizationResponseDto,
   })
   @ApiUnauthorizedResponse({
     description: 'AUTH.* — token invalido, sesion revocada o expirada.',
@@ -171,24 +173,21 @@ export class ClientsController {
     type: ErrorResponseDto,
   })
   @ApiBadRequestResponse({
-    description: 'TRANSFER.SAME_DISTRIBUTOR | DISTRIBUTOR.INACTIVE.',
+    description:
+      'TRANSFER.SAME_DISTRIBUTOR | DISTRIBUTOR.INACTIVE | ' +
+      'CLIENT.NO_CURRENT_DISTRIBUTOR.',
     type: ErrorResponseDto,
   })
   async transfer(
     @CurrentUser() actor: RequestUser,
     @Param('id') id: string,
     @Body() dto: TransferClientDto,
-  ): Promise<{
-    id: string;
-    previousDistributorId: string;
-    newDistributorId: string;
-  }> {
+  ): Promise<AuthorizationResponseDto> {
     const transfer = buildTransferClient(
       this.clientRepo,
-      this.historyRepo,
       this.voucherRepo,
       this.distributorRepo,
-      this.writeDb,
+      this.authRepo,
     );
     return transfer(actor, id, dto);
   }

@@ -140,6 +140,7 @@ export function configureApplication(
       .addTag('Documents', 'Subida de archivos al storage')
       .addTag('Vouchers', 'Emision y cancelacion de vales')
       .addTag('Relations', 'Pagos del Distribuidor (relaciones de quincena)')
+      .addTag('Autorizaciones', 'Flujo de aprobacion/rechazo de acciones sensibles (transferencias, conciliaciones, etc.)')
       .addTag('App', 'Smoke tests')
       .build();
 
