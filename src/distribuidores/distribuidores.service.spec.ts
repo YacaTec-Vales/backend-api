@@ -17,6 +17,7 @@ import {
 import { DistribuidoresService } from './distribuidores.service';
 import type { DistributorEntity } from '../database/schema';
 import type { UserType } from '../shared/types/auth.types';
+import { createBranchRepositoryMock } from '../../test/mocks/repositories.mock';
 
 // ===========================================================================
 // Fixtures
@@ -93,9 +94,11 @@ function buildActor(
 
 function buildService() {
   const distributorRepo = buildDistRepo();
+  const branchRepo = createBranchRepositoryMock();
   const pool = buildPoolMock();
   const service = new DistribuidoresService(
     distributorRepo as never,
+    branchRepo,
     pool as never,
     pool as never,
   );
@@ -350,8 +353,10 @@ describe('DistribuidoresService', () => {
       pool: ReturnType<typeof buildPoolWithBalanceRow>,
     ) {
       const distributorRepo = buildDistRepo();
+      const branchRepo = createBranchRepositoryMock();
       const service = new DistribuidoresService(
         distributorRepo as never,
+        branchRepo,
         { $client: pool } as never,
         { $client: pool } as never,
       );

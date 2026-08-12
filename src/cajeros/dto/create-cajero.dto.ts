@@ -24,28 +24,44 @@ const trimLower = ({ value }: { value: unknown }): unknown => {
 };
 
 export class CreateCajeroDto {
-  @ApiProperty({ description: 'Nombre(s) del cajero.', minLength: 2, maxLength: 100 })
+  @ApiProperty({
+    description: 'Nombre(s) del cajero.',
+    minLength: 2,
+    maxLength: 100,
+  })
   @IsString()
   @MinLength(2)
   @MaxLength(100)
   @Transform(trimOnly)
   firstName: string;
 
-  @ApiProperty({ description: 'Apellido paterno.', minLength: 2, maxLength: 100 })
+  @ApiProperty({
+    description: 'Apellido paterno.',
+    minLength: 2,
+    maxLength: 100,
+  })
   @IsString()
   @MinLength(2)
   @MaxLength(100)
   @Transform(trimOnly)
   lastNamePaternal: string;
 
-  @ApiProperty({ description: 'Apellido materno.', minLength: 2, maxLength: 100 })
+  @ApiProperty({
+    description: 'Apellido materno.',
+    minLength: 2,
+    maxLength: 100,
+  })
   @IsString()
   @MinLength(2)
   @MaxLength(100)
   @Transform(trimOnly)
   lastNameMaternal: string;
 
-  @ApiProperty({ description: 'Correo electronico del cajero.', format: 'email', maxLength: 255 })
+  @ApiProperty({
+    description: 'Correo electronico del cajero.',
+    format: 'email',
+    maxLength: 255,
+  })
   @IsEmail()
   @MaxLength(255)
   @Transform(trimLower)

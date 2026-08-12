@@ -51,17 +51,28 @@ import { IsIn, IsOptional } from 'class-validator';
  */
 import type { ProductListFilters } from '../database/repositories/product.repository';
 class ListProductsQueryDto implements ProductListFilters {
-  @ApiPropertyOptional({ enum: ['NORMAL', 'PLUS'], description: 'Filtrar por variante del producto.' })
+  @ApiPropertyOptional({
+    enum: ['NORMAL', 'PLUS'],
+    description: 'Filtrar por variante del producto.',
+  })
   @IsOptional()
   @IsIn(['NORMAL', 'PLUS'])
   variant?: 'NORMAL' | 'PLUS';
 
-  @ApiPropertyOptional({ enum: ['costCents', 'code', 'totalPeriods', 'createdAt'], default: 'createdAt', description: 'Campo de ordenamiento.' })
+  @ApiPropertyOptional({
+    enum: ['costCents', 'code', 'totalPeriods', 'createdAt'],
+    default: 'createdAt',
+    description: 'Campo de ordenamiento.',
+  })
   @IsOptional()
   @IsIn(['costCents', 'code', 'totalPeriods', 'createdAt'])
   sortBy?: 'costCents' | 'code' | 'totalPeriods' | 'createdAt';
 
-  @ApiPropertyOptional({ enum: ['asc', 'desc'], default: 'asc', description: 'Direccion de ordenamiento.' })
+  @ApiPropertyOptional({
+    enum: ['asc', 'desc'],
+    default: 'asc',
+    description: 'Direccion de ordenamiento.',
+  })
   @IsOptional()
   @IsIn(['asc', 'desc'])
   sortOrder?: 'asc' | 'desc';

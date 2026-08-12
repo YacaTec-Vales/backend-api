@@ -94,9 +94,7 @@ export const buildTransferClient = (
     }
 
     // 2. La nueva distribuidora existe y esta activa.
-    const newDistributor = await distributorRepo.findById(
-      dto.newDistributorId,
-    );
+    const newDistributor = await distributorRepo.findById(dto.newDistributorId);
     if (!newDistributor) {
       throw new NotFoundException({
         code: TRANSFER_ERROR_CODES.TARGET_DISTRIBUTOR_NOT_FOUND,
@@ -124,8 +122,7 @@ export const buildTransferClient = (
     if (activeVoucher) {
       throw new ConflictException({
         code: TRANSFER_ERROR_CODES.CLIENT_HAS_ACTIVE_VOUCHER,
-        message:
-          'el cliente tiene un vale activo, no se puede transferir',
+        message: 'el cliente tiene un vale activo, no se puede transferir',
         details: { activeFolio: activeVoucher.folio },
       });
     }
@@ -158,16 +155,13 @@ export const buildTransferClient = (
 /**
  * Convierte una entidad de autorizacion a DTO publico.
  */
-function toResponseDto(
-  auth: AuthorizationEntity,
-): AuthorizationResponseDto {
+function toResponseDto(auth: AuthorizationEntity): AuthorizationResponseDto {
   return {
     id: auth.id,
     authorizationType: auth.authorizationType,
     requesterId: auth.requesterId,
     authorizerId: auth.authorizerId ?? null,
-    affectedEntity:
-      (auth.affectedEntity as Record<string, unknown>) ?? {},
+    affectedEntity: (auth.affectedEntity as Record<string, unknown>) ?? {},
     justification: auth.justification,
     status: auth.status,
     decisionNotes: auth.decisionNotes ?? null,

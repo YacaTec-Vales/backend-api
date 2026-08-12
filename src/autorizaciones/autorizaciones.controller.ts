@@ -41,9 +41,7 @@ import { AutorizacionesService } from './autorizaciones.service';
 import { ApproveAuthorizationDto } from './dto/approve-authorization.dto';
 import { RejectAuthorizationDto } from './dto/reject-authorization.dto';
 import { AuthorizationResponseDto } from './dto/authorization-response.dto';
-import {
-  ApiEnvelopeOkResponse,
-} from '../shared/decorators/api-envelope-response.decorator';
+import { ApiEnvelopeOkResponse } from '../shared/decorators/api-envelope-response.decorator';
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import { JwtAuthGuard } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
@@ -105,10 +103,8 @@ export class AutorizacionesController {
     description: 'AUTH.PERMISSION_DENIED (sin autorizacion.read).',
     type: ErrorResponseDto,
   })
-  list(
-    @CurrentUser() actor: RequestUser,
-  ): Promise<AuthorizationResponseDto[]> {
-    return this.service.listPending(actor);
+  list(): Promise<AuthorizationResponseDto[]> {
+    return this.service.listPending();
   }
 
   /**
@@ -182,8 +178,7 @@ export class AutorizacionesController {
     type: ErrorResponseDto,
   })
   @ApiConflictResponse({
-    description:
-      'AUTHORIZATION.NOT_PENDING o AUTHORIZATION.ALREADY_ACCEPTED.',
+    description: 'AUTHORIZATION.NOT_PENDING o AUTHORIZATION.ALREADY_ACCEPTED.',
     type: ErrorResponseDto,
   })
   @ApiBadRequestResponse({

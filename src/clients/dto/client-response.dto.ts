@@ -165,4 +165,3 @@ export class PaginatedClientsResponseDto {
   @ApiProperty({ type: ClientPaginationMetaDto })
   meta!: ClientPaginationMetaDto;
 }
-

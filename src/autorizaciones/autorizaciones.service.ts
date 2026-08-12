@@ -36,10 +36,7 @@ import { AuthorizationRepository } from '../database/repositories/authorization.
 import { ClientRepository } from '../database/repositories/client.repository';
 import { ClientDistributorHistoryRepository } from '../database/repositories/client-distributor-history.repository';
 import { DistributorRepository } from '../database/repositories/distributor.repository';
-import {
-  DRIZZLE_WRITE,
-  type DrizzleWrite,
-} from '../database/drizzle.provider';
+import { DRIZZLE_WRITE, type DrizzleWrite } from '../database/drizzle.provider';
 import type { AuthorizationEntity } from '../database/schema';
 import type { RequestUser } from '../shared/guards/auth.guards';
 import { AuthorizationResponseDto } from './dto/authorization-response.dto';
@@ -98,12 +95,9 @@ export class AutorizacionesService {
    *  - COORDINADOR: las que afectan a distribuidoras bajo su cargo.
    *  - DISTRIBUIDOR: las que lo involucran como solicitante o destino.
    *
-   * @param _actor - Usuario autenticado.
    * @returns Lista de autorizaciones en formato publico.
    */
-  async listPending(
-    _actor: RequestUser,
-  ): Promise<AuthorizationResponseDto[]> {
+  async listPending(): Promise<AuthorizationResponseDto[]> {
     // Por ahora, devolvemos todas las pendientes. El scope fino
     // se implementara cuando se definan las reglas de visibilidad
     // por tipo y rol.
@@ -155,11 +149,12 @@ export class AutorizacionesService {
     if (auth.authorizationType !== 'TRANSFERENCIA_DISTRIBUIDOR') {
       throw new BadRequestException({
         code: ERROR_CODES.TYPE_NOT_IMPLEMENTED,
-        message: 'solo las transferencias de distribuidor soportan aceptacion destino',
+        message:
+          'solo las transferencias de distribuidor soportan aceptacion destino',
       });
     }
 
-    const entity = auth.affectedEntity as unknown as TransferAffectedEntity;
+    const entity = auth.affectedEntity as TransferAffectedEntity;
 
     if (entity.destinationAccepted) {
       throw new ConflictException({
@@ -242,9 +237,7 @@ export class AutorizacionesService {
     await this.assertPending(id);
     const updated = await this.authRepo.reject(id, actor.id, reason);
 
-    this.logger.log(
-      `authorization rejected: auth=${id} actor=${actor.id}`,
-    );
+    this.logger.log(`authorization rejected: auth=${id} actor=${actor.id}`);
 
     return this.toResponseDto(updated);
   }
@@ -268,14 +261,13 @@ export class AutorizacionesService {
     auth: AuthorizationEntity,
     notes?: string,
   ): Promise<AuthorizationResponseDto> {
-    const entity = auth.affectedEntity as unknown as TransferAffectedEntity;
+    const entity = auth.affectedEntity as TransferAffectedEntity;
 
     // 1. Validar que destino acepto.
     if (!entity.destinationAccepted) {
       throw new BadRequestException({
         code: ERROR_CODES.DESTINATION_NOT_ACCEPTED,
-        message:
-          'la distribuidora destino aun no acepta la transferencia',
+        message: 'la distribuidora destino aun no acepta la transferencia',
       });
     }
 
@@ -434,8 +426,7 @@ export class AutorizacionesService {
       authorizationType: auth.authorizationType,
       requesterId: auth.requesterId,
       authorizerId: auth.authorizerId ?? null,
-      affectedEntity:
-        (auth.affectedEntity as Record<string, unknown>) ?? {},
+      affectedEntity: (auth.affectedEntity as Record<string, unknown>) ?? {},
       justification: auth.justification,
       status: auth.status,
       decisionNotes: auth.decisionNotes ?? null,
