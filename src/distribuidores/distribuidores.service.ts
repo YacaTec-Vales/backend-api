@@ -44,6 +44,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { BranchRepository } from '../database/repositories/branch.repository';
 import {
   DRIZZLE_WRITE,
   DRIZZLE_READ,
@@ -90,6 +91,16 @@ export interface ChangeCoordinatorInput {
 }
 
 /**
+ * Parametros para `changeBranch`.
+ */
+export interface ChangeBranchInput {
+  /** UUID de la nueva sucursal. */
+  branchId: string;
+  /** Motivo textual. */
+  motivo: string;
+}
+
+/**
  * Servicio principal del modulo distribuidores (post-alta).
  *
  * Inyectado en `DistribuidoresController`.
@@ -100,6 +111,7 @@ export class DistribuidoresService {
 
   constructor(
     private readonly distributorRepo: DistributorRepository,
+    private readonly branchRepo: BranchRepository,
     @Inject(DRIZZLE_WRITE) private readonly writeDb: DrizzleWrite,
     @Inject(DRIZZLE_READ) private readonly readDb: DrizzleRead,
   ) {}
@@ -459,6 +471,70 @@ export class DistribuidoresService {
     return toDistribuidorResponseDtoFromEntity(updated);
   }
 
+  /**
+   * Cambia la sucursal de la distribuidora.
+   *
+   * Regla 2.0 §6.1.3: solo el Gerente General puede mover una
+   * Distribuidora a otra sucursal (accion administrativa directa,
+   * sin flujo de autorizacion). El rastro queda en `app.audit_log`
+   * via el trigger de auditoria.
+   *
+   * @param actor - Gerente General autenticado.
+   * @param distributorId - UUID del distribuidor.
+   * @param input - Nueva sucursal y motivo.
+   * @returns DTO publico actualizado.
+   * @throws {ForbiddenException} AUTH.ROLE_NOT_ALLOWED si no es GG.
+   * @throws {NotFoundException} DISTRIBUTOR.NOT_FOUND.
+   * @throws {NotFoundException} BRANCH.NOT_FOUND.
+   * @throws {BadRequestException} DISTRIBUTOR.SAME_BRANCH.
+   */
+  async changeBranch(
+    actor: RequestUser,
+    distributorId: string,
+    input: ChangeBranchInput,
+  ): Promise<DistribuidorResponseDto> {
+    if (actor.role !== 'GERENTE_GENERAL') {
+      throw new ForbiddenException({
+        code: 'AUTH.ROLE_NOT_ALLOWED',
+        message: 'solo el Gerente General puede cambiar de sucursal a una distribuidora',
+      });
+    }
+    const distributor = await this.distributorRepo.findById(distributorId);
+    if (!distributor) {
+      throw new NotFoundException({
+        code: 'DISTRIBUTOR.NOT_FOUND',
+        message: 'el distribuidor no existe',
+      });
+    }
+    if (distributor.branchId === input.branchId) {
+      throw new BadRequestException({
+        code: 'DISTRIBUTOR.SAME_BRANCH',
+        message: 'la distribuidora ya pertenece a esta sucursal',
+      });
+    }
+    const branch = await this.branchRepo.findActiveById(input.branchId);
+    if (!branch) {
+      throw new NotFoundException({
+        code: 'BRANCH.NOT_FOUND',
+        message: 'la sucursal destino no existe o no esta activa',
+      });
+    }
+    await this.updateDistributor(distributorId, {
+      branchId: input.branchId,
+    });
+    this.logger.log(
+      `Cambio sucursal: dist=${distributorId} branch=${input.branchId} actor=${actor.id}`,
+    );
+    const updated = await this.distributorRepo.findById(distributorId);
+    if (!updated) {
+      throw new NotFoundException({
+        code: 'DISTRIBUTOR.NOT_FOUND',
+        message: 'el distribuidor desaparecio despues del update',
+      });
+    }
+    return toDistribuidorResponseDtoFromEntity(updated);
+  }
+
   // ===========================================================================
   // Helpers privados
   // ===========================================================================
@@ -539,6 +615,7 @@ export class DistribuidoresService {
       creditAvailableCents: number;
       categoryId: string;
       coordinatorId: string;
+      branchId: string;
     }>,
   ): Promise<void> {
     const sets: string[] = [];
@@ -559,6 +636,10 @@ export class DistribuidoresService {
     if (patch.coordinatorId !== undefined) {
       sets.push(`coordinator_id = $${paramIdx++}`);
       values.push(patch.coordinatorId);
+    }
+    if (patch.branchId !== undefined) {
+      sets.push(`branch_id = $${paramIdx++}`);
+      values.push(patch.branchId);
     }
     if (sets.length === 0) return;
     sets.push(`updated_at = NOW()`);

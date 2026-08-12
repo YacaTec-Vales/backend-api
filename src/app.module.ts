@@ -55,6 +55,7 @@ import { VouchersModule } from './vouchers/vouchers.module';
 import { CashierModule } from './cashier/cashier.module';
 import { ComplaintsModule } from './complaints/complaints.module';
 import { DocumentsModule } from './documents/documents.module';
+import { AutorizacionesModule } from './autorizaciones/autorizaciones.module';
 
 import { JwtAuthGuard, RolesGuard } from './shared/guards/auth.guards';
 import { PermissionsGuard } from './shared/guards/permissions.guard';
@@ -117,6 +118,7 @@ import { MustChangePasswordGuard } from './shared/guards/must-change-password.gu
     CashierModule,
     ComplaintsModule,
     DocumentsModule,
+    AutorizacionesModule,
   ],
   controllers: [AppController],
   providers: [

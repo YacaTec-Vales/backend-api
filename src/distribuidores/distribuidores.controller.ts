@@ -42,6 +42,7 @@ import {
 import { DistribuidoresService } from './distribuidores.service';
 import { DistribuidorResponseDto } from './dto/distribuidor-response.dto';
 import { DistribuidorStatusDto } from './dto/distribuidor-status.dto';
+import { ChangeBranchDto } from './dto/change-branch.dto';
 import { ApiEnvelopeOkResponse } from '../shared/decorators/api-envelope-response.decorator';
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import { JwtAuthGuard } from '../shared/guards/auth.guards';
@@ -341,6 +342,49 @@ export class DistribuidoresController {
   ): Promise<DistribuidorResponseDto> {
     return this.service.changeCoordinator(actor, id, {
       coordinatorId: dto.coordinatorId,
+      motivo: dto.motivo,
+    });
+  }
+
+  /**
+   * `POST /distribuidores/:id/branch-change` — Cambia Sucursal.
+   *
+   * Auth: GERENTE_GENERAL con `distribuidor.branch.change`.
+   * Regla 2.0 §6.1.3: la Distribuidora no puede cambiar de Sucursal
+   * por su cuenta. Solo el Gerente General puede hacerlo.
+   */
+  @Post(':id/branch-change')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions('distribuidor.branch.change')
+  @ApiOperation({
+    summary: 'Cambiar Sucursal asignada',
+    description:
+      'Solo el Gerente General puede cambiar a una Distribuidora ' +
+      'de Sucursal.',
+  })
+  @ApiEnvelopeOkResponse({
+    message: 'Sucursal actualizada correctamente',
+    type: DistribuidorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description: 'AUTH.ROLE_NOT_ALLOWED | AUTH.PERMISSION_DENIED.',
+    type: ErrorResponseDto,
+  })
+  @ApiNotFoundResponse({
+    description: 'DISTRIBUTOR.NOT_FOUND | BRANCH.NOT_FOUND.',
+    type: ErrorResponseDto,
+  })
+  @ApiBadRequestResponse({
+    description: 'DISTRIBUTOR.SAME_BRANCH.',
+    type: ErrorResponseDto,
+  })
+  changeBranch(
+    @CurrentUser() actor: RequestUser,
+    @Param('id') id: string,
+    @Body() dto: ChangeBranchDto,
+  ): Promise<DistribuidorResponseDto> {
+    return this.service.changeBranch(actor, id, {
+      branchId: dto.branchId,
       motivo: dto.motivo,
     });
   }
