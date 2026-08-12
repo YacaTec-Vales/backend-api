@@ -54,6 +54,25 @@ export class BranchResponseDto {
   @ApiProperty({ type: BranchManagerInfoDto, nullable: true })
   manager: BranchManagerInfoDto | null;
 
+  // Fechas de corte/pago per-branch (regla 2.0)
+  @ApiProperty({
+    nullable: true,
+    description: 'Dia del mes del corte (1..31).',
+  })
+  cutoffDay: number | null;
+
+  @ApiProperty({
+    nullable: true,
+    description: 'Dia del mes limite de pago (1..31).',
+  })
+  paymentDay: number | null;
+
+  @ApiProperty({
+    nullable: true,
+    description: 'Dias de ventana de pago anticipado.',
+  })
+  earlyPaymentDays: number | null;
+
   @ApiProperty()
   isActive: boolean;
 

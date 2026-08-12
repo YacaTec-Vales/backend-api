@@ -2,8 +2,9 @@
  * @fileoverview Servicio principal de autenticacion.
  *
  * Orquesta el flujo de identidad:
- *  - `login`: valida credenciales, aplica lockout, crea sesion,
- *    emite tokens.
+ *  - `login`: valida credenciales, aplica lockout, valida scope
+ *    de frontend por rol (un Distribuidor solo puede entrar desde
+ *    `Poch`, app movil), crea sesion, emite tokens.
  *  - `refresh`: rota sesion, revalida usuario, emite tokens.
  *  - `logout`: revoca sesion actual o la pasada por parametro.
  *  - `getAuthenticatedUser`: revalida contra BD y devuelve
@@ -100,6 +101,13 @@ export class AuthService {
         message: 'Credenciales invalidas.',
       });
     }
+
+    // Regla 2.0 §3.5: un Distribuidor solo puede autenticarse desde
+    // la app movil (`Poch`). El frontend web (`Tecu`) es para Gerentes;
+    // el de tablet (`Calipx`) es para Coordinadores/Verificadores.
+    // Si el header `x-client-app` viene en otra app o falta, se rechaza
+    // con `AUTH.WRONG_CLIENT_APP` para evitar accesos cross-device.
+    this.assertDistributorAppScope(user.roleCode, context.device);
 
     if (!user.isActive || user.deletedAt || user.userStatus !== 'ACTIVO') {
       throw new ForbiddenException({
@@ -441,5 +449,34 @@ export class AuthService {
       mustChangePassword: user.mustChangePassword,
       permissions: Array.from(permissions),
     };
+  }
+
+  /**
+   * Valida que un Distribuidor solo se autentique desde la app movil
+   * (`Poch`). El resto de roles (Gerentes, Coordinadores,
+   * Verificadores, Cajeros, Administrador) pueden entrar desde
+   * cualquier frontend.
+   *
+   * Regla 2.0 §3.5 (doc sistema): las 4 apps atienden roles
+   * distintos. La Distribuidora opera unicamente desde su celular.
+   *
+   * Si el header `x-client-app` falta o es distinto de `Poch`, lanza
+   * `AUTH.WRONG_CLIENT_APP` con 403.
+   *
+   * @param roleCode - Rol del usuario.
+   * @param device - Frontend reportado por el header `x-client-app`.
+   */
+  private assertDistributorAppScope(
+    roleCode: UserType,
+    device: LoginContext['device'],
+  ): void {
+    if (roleCode !== 'DISTRIBUIDOR') return;
+    if (device === 'Poch') return;
+    throw new ForbiddenException({
+      code: 'AUTH.WRONG_CLIENT_APP',
+      message:
+        'el Distribuidor solo puede iniciar sesion desde la aplicacion movil (Poch)',
+      details: { receivedDevice: device, expectedDevice: 'Poch' },
+    });
   }
 }

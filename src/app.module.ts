@@ -44,6 +44,18 @@ import { CoordinadoresModule } from './coordinadores/coordinadores.module';
 import { VerificadoresModule } from './verificadores/verificadores.module';
 import { CajerosModule } from './cajeros/cajeros.module';
 import { DistribuidoresModule } from './distribuidores/distribuidores.module';
+import { SolicitationsModule } from './distribuidores/solicitations.module';
+import { RelationsModule } from './relations/relations.module';
+import { BusinessConfigModule } from './business-config/business-config.module';
+import { CutsModule } from './cuts/cuts.module';
+import { CreditRaiseModule } from './credit-raise/credit-raise.module';
+import { ClientsModule } from './clients/clients.module';
+import { CatalogsModule } from './catalogs/catalogs.module';
+import { VouchersModule } from './vouchers/vouchers.module';
+import { CashierModule } from './cashier/cashier.module';
+import { ComplaintsModule } from './complaints/complaints.module';
+import { DocumentsModule } from './documents/documents.module';
+import { AutorizacionesModule } from './autorizaciones/autorizaciones.module';
 
 import { JwtAuthGuard, RolesGuard } from './shared/guards/auth.guards';
 import { PermissionsGuard } from './shared/guards/permissions.guard';
@@ -95,6 +107,18 @@ import { MustChangePasswordGuard } from './shared/guards/must-change-password.gu
     VerificadoresModule,
     CajerosModule,
     DistribuidoresModule,
+    SolicitationsModule,
+    RelationsModule,
+    BusinessConfigModule,
+    CutsModule,
+    CreditRaiseModule,
+    ClientsModule,
+    CatalogsModule,
+    VouchersModule,
+    CashierModule,
+    ComplaintsModule,
+    DocumentsModule,
+    AutorizacionesModule,
   ],
   controllers: [AppController],
   providers: [

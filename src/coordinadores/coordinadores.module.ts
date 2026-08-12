@@ -18,10 +18,12 @@ import { DatabaseModule } from '../database/database.module';
 import { UserCreationModule } from '../shared/user-creation/user-creation.module';
 import { CoordinadoresController } from './coordinadores.controller';
 import { CoordinadoresService } from './coordinadores.service';
+import { DistribuidoresService } from '../distribuidores/distribuidores.service';
+import { DistributorRepository } from '../database/repositories/distributor.repository';
 
 @Module({
   imports: [AuthModule, DatabaseModule, UserCreationModule],
   controllers: [CoordinadoresController],
-  providers: [CoordinadoresService],
+  providers: [CoordinadoresService, DistribuidoresService, DistributorRepository],
 })
 export class CoordinadoresModule {}

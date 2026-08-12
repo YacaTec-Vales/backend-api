@@ -52,6 +52,9 @@ export interface BranchAdminRow {
   esMatriz: boolean;
   address: string | null;
   managerUserId: string | null;
+  cutoffDay: number | null;
+  paymentDay: number | null;
+  earlyPaymentDays: number | null;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -175,6 +178,9 @@ export class BranchesRepository {
         esMatriz: branches.esMatriz,
         address: branches.address,
         managerUserId: branches.managerUserId,
+        cutoffDay: branches.cutoffDay,
+        paymentDay: branches.paymentDay,
+        earlyPaymentDays: branches.earlyPaymentDays,
         isActive: branches.isActive,
         createdAt: branches.createdAt,
         updatedAt: branches.updatedAt,
@@ -216,6 +222,9 @@ export class BranchesRepository {
         esMatriz: r.esMatriz,
         address: r.address,
         managerUserId: r.managerUserId,
+        cutoffDay: r.cutoffDay,
+        paymentDay: r.paymentDay,
+        earlyPaymentDays: r.earlyPaymentDays,
         isActive: r.isActive,
         createdAt: r.createdAt,
         updatedAt: r.updatedAt,
@@ -243,6 +252,9 @@ export class BranchesRepository {
     esMatriz: boolean;
     address: string | null;
     managerUserId: string | null;
+    cutoffDay?: number | null;
+    paymentDay?: number | null;
+    earlyPaymentDays?: number | null;
   }): Promise<BranchEntity> {
     const [row] = await this.writeDb
       .insert(branches)
@@ -252,6 +264,9 @@ export class BranchesRepository {
         esMatriz: data.esMatriz,
         address: data.address,
         managerUserId: data.managerUserId,
+        cutoffDay: data.cutoffDay ?? null,
+        paymentDay: data.paymentDay ?? null,
+        earlyPaymentDays: data.earlyPaymentDays ?? null,
         isActive: true,
       })
       .returning();
@@ -276,6 +291,9 @@ export class BranchesRepository {
       esMatriz?: boolean;
       address?: string | null;
       managerUserId?: string | null;
+      cutoffDay?: number | null;
+      paymentDay?: number | null;
+      earlyPaymentDays?: number | null;
       isActive?: boolean;
     },
   ): Promise<BranchEntity | null> {
@@ -289,6 +307,10 @@ export class BranchesRepository {
     if (patch.managerUserId !== undefined)
       set.managerUserId = patch.managerUserId;
     if (patch.isActive !== undefined) set.isActive = patch.isActive;
+    if (patch.cutoffDay !== undefined) set.cutoffDay = patch.cutoffDay;
+    if (patch.paymentDay !== undefined) set.paymentDay = patch.paymentDay;
+    if (patch.earlyPaymentDays !== undefined)
+      set.earlyPaymentDays = patch.earlyPaymentDays;
 
     const [row] = await this.writeDb
       .update(branches)
