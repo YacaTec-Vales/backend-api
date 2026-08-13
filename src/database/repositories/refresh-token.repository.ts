@@ -71,6 +71,33 @@ export class RefreshTokenRepository {
   }
 
   /**
+   * Consulta ligera (SELECT 1 + LIMIT 1) para responder si una
+   * sesion emitida sigue vigente: no revocada y no expirada.
+   *
+   * Usada por `JwtAuthGuard` para invalidar access tokens cuyo
+   * refresh fue revocado (logout, admin revoke, reuso detectado)
+   * sin esperar la expiracion natural del JWT.
+   *
+   * @param sessionId - UUID de la sesion del JWT.
+   * @returns `true` si la sesion existe, no esta revocada y no ha
+   *   expirado. `false` si falta, fue revocada o expiro.
+   */
+  async isSessionActive(sessionId: string): Promise<boolean> {
+    const rows = await this.readDb
+      .select({ id: refreshTokens.id })
+      .from(refreshTokens)
+      .where(
+        and(
+          eq(refreshTokens.id, sessionId),
+          isNull(refreshTokens.revokedAt),
+          sql`${refreshTokens.expiresAt} > now()`,
+        ),
+      )
+      .limit(1);
+    return rows.length > 0;
+  }
+
+  /**
    * Lista sesiones activas (no revocadas) de un usuario.
    *
    * @param userId - UUID del usuario.

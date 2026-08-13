@@ -1,12 +1,14 @@
 /**
- * @fileoverview Controlador de gestion de sesiones del usuario y admin.
+ * @fileoverview Controlador de gestion de sesiones del usuario autenticado.
  *
  * Rutas (prefijo `auth`):
  *  - `GET /auth/sessions` — lista sesiones propias.
  *  - `DELETE /auth/sessions/:id` — cierra una sesion propia.
  *  - `POST /auth/sessions/revoke-others` — cierra todas las demas.
- *  - `POST /auth/users/:id/invalidate-sessions` — admin (requiere
- *    permiso `auth.session.revoke_any`).
+ *
+ * La operacion administrativa de invalidar TODAS las sesiones de un usuario
+ * vive en `UsersController` (ruta canonica `POST /users/:id/invalidate-sessions`,
+ * permiso `auth.session.revoke_any`).
  *
  * Aplica `JwtAuthGuard` y `PermissionsGuard` a nivel de clase.
  *
@@ -16,7 +18,6 @@
  */
 
 import {
-  Body,
   Controller,
   Delete,
   Get,
@@ -26,46 +27,36 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
-  Req,
   UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
-  ApiForbiddenResponse,
   ApiNoContentResponse,
   ApiNotFoundResponse,
   ApiOperation,
-  ApiResponse,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import type { Request } from 'express';
 import { SessionsService } from './sessions.service';
 import { JwtAuthGuard, type RequestUser } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
-import { RequirePermissions } from '../shared/decorators/permissions.decorator';
-import { InvalidateUserSessionsDto } from '../auth/dto/invalidate-user-sessions.dto';
 import { SessionResponseDto } from '../auth/dto/auth-response.dto';
 import { toSessionResponseDto } from '../shared/mappers';
 import { ApiEnvelopeOkResponse } from '../shared/decorators/api-envelope-response.decorator';
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
-import { UsersService } from '../users/users.service';
-import { contextFromRequest } from '../shared/utils/request-context.util';
 
 /**
- * Controlador de sesiones. Prefijo `auth` (compartido con
- * `AuthController`).
+ * Controlador de sesiones del usuario autenticado. Prefijo `auth`
+ * (compartido con `AuthController`). Las acciones administrativas
+ * sobre sesiones de cualquier usuario viven en `UsersController`.
  */
 @ApiTags('Sessions')
 @ApiBearerAuth('bearer')
 @Controller('auth')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class SessionsController {
-  constructor(
-    private readonly sessionsService: SessionsService,
-    private readonly usersService: UsersService,
-  ) {}
+  constructor(private readonly sessionsService: SessionsService) {}
 
   @Get('sessions')
   @ApiOperation({
@@ -137,44 +128,5 @@ export class SessionsController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async revokeOthers(@CurrentUser() user: RequestUser): Promise<void> {
     await this.sessionsService.revokeOthersOwn(user.id, user.sessionId);
-  }
-
-  @Post('users/:id/invalidate-sessions')
-  @RequirePermissions('auth.session.revoke_any')
-  @ApiOperation({
-    summary: 'Invalidar sesiones (admin) — DEPRECADO',
-    description:
-      'Alias deprecado. La ruta canonica es `POST /users/:id/invalidate-sessions`. ' +
-      'Este endpoint se conserva por compatibilidad pero sera eliminado en una version ' +
-      'futura. Delegua directamente a `UsersService.invalidateSessions`.',
-  })
-  @ApiNoContentResponse({ description: 'Sesiones invalidadas.' })
-  @ApiForbiddenResponse({
-    description: 'AUTH.SELF_REVOKE_FORBIDDEN.',
-    type: ErrorResponseDto,
-  })
-  @ApiUnauthorizedResponse({
-    description: 'AUTH.UNAUTHORIZED.',
-    type: ErrorResponseDto,
-  })
-  @ApiResponse({
-    status: 429,
-    description: 'Rate limit.',
-    type: ErrorResponseDto,
-  })
-  @HttpCode(HttpStatus.NO_CONTENT)
-  async invalidateUserSessions(
-    @CurrentUser() actor: RequestUser,
-    @Param('id', new ParseUUIDPipe()) userId: string,
-    @Body() dto: InvalidateUserSessionsDto,
-    @Req() req: Request,
-  ): Promise<void> {
-    const ctx = contextFromRequest(req);
-    await this.usersService.invalidateSessions(
-      actor,
-      userId,
-      dto.reason ?? 'admin_revoke',
-      ctx,
-    );
   }
 }

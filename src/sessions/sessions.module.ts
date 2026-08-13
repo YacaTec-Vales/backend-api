@@ -1,8 +1,13 @@
 /**
- * @fileoverview Modulo de gestion de sesiones.
+ * @fileoverview Modulo de gestion de sesiones del usuario autenticado.
  *
  * Importa `AuthModule` para reutilizar `SessionService` y
  * registra `SessionsController` + `SessionsService`.
+ *
+ * La operacion administrativa de invalidar TODAS las sesiones de un
+ * usuario vive en `UsersModule` (ruta canonica
+ * `POST /users/:id/invalidate-sessions`, permiso
+ * `auth.session.revoke_any`).
  *
  * @module sessions
  * @author Equipo de desarrollo Mis Vales
@@ -11,21 +16,19 @@
 
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
-import { UsersModule } from '../users/users.module';
 import { SessionsController } from './sessions.controller';
 import { SessionsService } from './sessions.service';
 
 /**
- * Modulo de sesiones. Ver `SessionsController` para los endpoints
- * y `SessionsService` para la fachada.
+ * Modulo de sesiones del usuario autenticado. Ver
+ * `SessionsController` para los endpoints y `SessionsService` para
+ * la fachada.
  *
- * Importa `UsersModule` para que el alias deprecado
- * `POST /auth/users/:id/invalidate-sessions` pueda delegar a
- * `UsersService.invalidateSessions` (la ruta canonica es
- * `POST /users/:id/invalidate-sessions`).
+ * Las acciones administrativas sobre sesiones de cualquier usuario
+ * viven en `UsersModule`.
  */
 @Module({
-  imports: [AuthModule, UsersModule],
+  imports: [AuthModule],
   controllers: [SessionsController],
   providers: [SessionsService],
 })

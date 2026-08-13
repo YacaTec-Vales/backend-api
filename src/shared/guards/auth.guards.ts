@@ -31,6 +31,7 @@ import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 import type { UserType, JwtPayload } from '../types/auth.types';
 import { UserRepository } from '../../database/repositories/user.repository';
+import { RefreshTokenRepository } from '../../database/repositories/refresh-token.repository';
 
 /**
  * Extension tipada de `Request` con el usuario autenticado que
@@ -91,6 +92,7 @@ export class JwtAuthGuard implements CanActivate {
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
     private readonly userRepository: UserRepository,
+    private readonly refreshTokenRepository: RefreshTokenRepository,
   ) {}
 
   /**
@@ -153,6 +155,21 @@ export class JwtAuthGuard implements CanActivate {
         message: 'La sesion fue invalidada.',
       });
     }
+
+    // Validacion contra la sesion persistida: garantiza que un
+    // logout, un reuso detectado o un revoke administrativo
+    // invalida el access token de inmediato, sin esperar la
+    // expiracion natural del JWT (15 min).
+    const sessionActive = await this.refreshTokenRepository.isSessionActive(
+      payload.sessionId,
+    );
+    if (!sessionActive) {
+      throw new UnauthorizedException({
+        code: 'AUTH.SESSION_REVOKED',
+        message: 'La sesion fue revocada.',
+      });
+    }
+
     if (
       !state.isActive ||
       state.deletedAt !== null ||

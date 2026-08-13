@@ -115,4 +115,19 @@ export const envValidationSchema = Joi.object({
   MFA_SECRET_KEY: Joi.string().min(32).required(),
   MFA_ISSUER: Joi.string().default('vales-yacatec'),
   MFA_BACKUP_CODES_COUNT: Joi.number().integer().positive().default(10),
+
+  // Object storage (MinIO local o DigitalOcean Spaces en produccion)
+  STORAGE_ENDPOINT: Joi.string().uri().required(),
+  STORAGE_REGION: Joi.string().default('us-east-1'),
+  STORAGE_BUCKET: Joi.string().required(),
+  STORAGE_ACCESS_KEY_ID: Joi.string().required(),
+  STORAGE_SECRET_ACCESS_KEY: Joi.string().required(),
+  STORAGE_FORCE_PATH_STYLE: Joi.boolean().default(true),
+  STORAGE_PUBLIC_BASE_URL: Joi.string().uri().required(),
+  // Limite de tamano para uploads del cajero (en bytes). 10 MB default.
+  STORAGE_MAX_UPLOAD_BYTES: Joi.number().integer().positive().default(10485760),
+  // Mime types permitidos (separados por coma). Default: imagenes y PDF.
+  STORAGE_ALLOWED_MIME_TYPES: Joi.string().default(
+    'image/jpeg,image/png,image/webp,application/pdf',
+  ),
 }).unknown(true);

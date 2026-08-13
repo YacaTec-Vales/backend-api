@@ -16,6 +16,24 @@ permissions:
   contents: read
 
 jobs:
+  lint:
+    name: Lint (ESLint sin warnings)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+      - name: Instalar dependencias
+        run: npm ci
+      # Regla dura del proyecto: `npm run lint` debe terminar con
+      # 0 problemas (errores y warnings). Ver
+      # docu/backend.md seccion 17.1 "Checklist obligatorio".
+      - name: ESLint (sin warnings)
+        run: npm run lint
+
   quality:
     name: Quality (lint + typecheck + build)
     runs-on: ubuntu-latest
@@ -37,7 +55,7 @@ jobs:
 
   unit-coverage:
     name: Unit tests + coverage
-    needs: [quality]
+    needs: [lint, quality]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -60,7 +78,7 @@ jobs:
 
   integration:
     name: Integration tests
-    needs: [quality]
+    needs: [lint, quality]
     runs-on: ubuntu-latest
     # Levanta un PostgreSQL para integration y e2e. Sustituir
     # por Testcontainers o una BD de pruebas dedicada cuando
@@ -111,7 +129,7 @@ jobs:
 
   e2e:
     name: E2E tests
-    needs: [quality]
+    needs: [lint, quality]
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -158,6 +176,7 @@ jobs:
   ci-required:
     name: CI Required (agregador)
     needs:
+      - lint
       - quality
       - unit-coverage
       - integration
@@ -167,13 +186,18 @@ jobs:
     steps:
       - name: Resumen
         run: |
+          echo "lint:           ${{ needs.lint.result }}"
           echo "quality:        ${{ needs.quality.result }}"
           echo "unit-coverage:  ${{ needs.unit-coverage.result }}"
           echo "integration:    ${{ needs.integration.result }}"
           echo "e2e:            ${{ needs.e2e.result }}"
-          if [[ "${{ needs.quality.result }}" != "success" || \
+          # `lint` y `quality` y `unit-coverage` son bloqueantes.
+          # `integration` y `e2e` se monitorean pero aun no son
+          # bloqueantes (siguen en `continue-on-error: true`).
+          if [[ "${{ needs.lint.result }}" != "success" || \
+                "${{ needs.quality.result }}" != "success" || \
                 "${{ needs.unit-coverage.result }}" != "success" ]]; then
-            echo "Fallo critico: quality o unit-coverage no son success."
+            echo "Fallo critico: lint, quality o unit-coverage no son success."
             exit 1
           fi
           if [[ "${{ needs.integration.result }}" == "failure" || \
