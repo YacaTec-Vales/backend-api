@@ -1,0 +1,33 @@
+name: Deploy develop (API)
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy API en servidor dev
+    runs-on: ubuntu-latest
+    environment: develop
+    concurrency:
+      group: deploy-develop
+      cancel-in-progress: false
+    if: github.event_name == 'workflow_dispatch' || github.event.pusher.name != 'github-actions[bot]'
+    steps:
+      - name: Instalar llave SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p ${{ secrets.DEPLOY_PORT }} ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Ejecutar deploy en servidor
+        run: |
+          ssh -i ~/.ssh/deploy_key \
+            -p ${{ secrets.DEPLOY_PORT }} \
+            -o StrictHostKeyChecking=accept-new \
+            -o BatchMode=yes \
+            ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} \
+            "bash /home/mishistema/deploy/deploy-api.sh"
