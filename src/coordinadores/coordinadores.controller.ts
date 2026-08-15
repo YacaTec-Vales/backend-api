@@ -193,7 +193,8 @@ export class CoordinadoresController {
     type: ErrorResponseDto,
   })
   @ApiNotFoundResponse({
-    description: 'COORDINADOR.NOT_FOUND (el UUID no corresponde a un coordinador).',
+    description:
+      'COORDINADOR.NOT_FOUND (el UUID no corresponde a un coordinador).',
     type: ErrorResponseDto,
   })
   listDistribuidoras(

@@ -190,7 +190,8 @@ export class DistribuidoresService {
     ) {
       throw new ForbiddenException({
         code: 'AUTH.ROLE_NOT_ALLOWED',
-        message: 'rol no autorizado para listar distribuidoras de un coordinador',
+        message:
+          'rol no autorizado para listar distribuidoras de un coordinador',
       });
     }
 
@@ -496,7 +497,8 @@ export class DistribuidoresService {
     if (actor.role !== 'GERENTE_GENERAL') {
       throw new ForbiddenException({
         code: 'AUTH.ROLE_NOT_ALLOWED',
-        message: 'solo el Gerente General puede cambiar de sucursal a una distribuidora',
+        message:
+          'solo el Gerente General puede cambiar de sucursal a una distribuidora',
       });
     }
     const distributor = await this.distributorRepo.findById(distributorId);

@@ -34,9 +34,7 @@ import {
   ConfirmVoucherResponseDto,
 } from './dto/confirm-voucher.dto';
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
-import {
-  ApiEnvelopeOkResponse,
-} from '../shared/decorators/api-envelope-response.decorator';
+import { ApiEnvelopeOkResponse } from '../shared/decorators/api-envelope-response.decorator';
 import { JwtAuthGuard } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';

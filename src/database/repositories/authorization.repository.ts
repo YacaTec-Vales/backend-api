@@ -65,9 +65,7 @@ export class AuthorizationRepository {
     const [row] = await this.readDb
       .select()
       .from(authorizations)
-      .where(
-        and(eq(authorizations.id, id), isNull(authorizations.deletedAt)),
-      )
+      .where(and(eq(authorizations.id, id), isNull(authorizations.deletedAt)))
       .limit(1);
     return row ?? null;
   }

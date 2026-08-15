@@ -24,6 +24,10 @@ import { DistributorRepository } from '../database/repositories/distributor.repo
 @Module({
   imports: [AuthModule, DatabaseModule, UserCreationModule],
   controllers: [CoordinadoresController],
-  providers: [CoordinadoresService, DistribuidoresService, DistributorRepository],
+  providers: [
+    CoordinadoresService,
+    DistribuidoresService,
+    DistributorRepository,
+  ],
 })
 export class CoordinadoresModule {}

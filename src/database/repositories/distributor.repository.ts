@@ -125,11 +125,7 @@ export class DistributorRepository {
       isNull(distributors.deletedAt),
       ...(status ? [eq(distributors.status, status)] : []),
       ...(search
-        ? [
-            or(
-              ilike(distributors.distributorNumber, `%${search}%`),
-            ),
-          ]
+        ? [or(ilike(distributors.distributorNumber, `%${search}%`))]
         : []),
     ].filter(Boolean);
 
