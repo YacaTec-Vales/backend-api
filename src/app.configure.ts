@@ -97,7 +97,11 @@ export function configureApplication(
 
   if (mountOpenApi) {
     const swaggerConfig = new DocumentBuilder()
-      .setTitle('Mis Vales Yacatec API')
+      .setTitle(
+        appCfg.serverId
+          ? `Mis Vales Yacatec API [Server ${appCfg.serverId}]`
+          : 'Mis Vales Yacatec API',
+      )
       .setDescription(
         'API REST: autenticacion (JWT + Argon2 + MFA), sesiones, recuperacion de contrasena, gestion administrativa de usuarios.',
       )

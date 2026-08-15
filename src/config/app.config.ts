@@ -33,6 +33,8 @@ export interface AppConfig {
   corsOrigins: string[];
   cookieDomain: string;
   cookieSecure: boolean;
+  /** Identificador de instancia/servidor (load balancer). */
+  serverId: string;
 }
 
 /**
@@ -54,4 +56,5 @@ export const appConfig = registerAs('app', (): AppConfig => ({
     .filter(Boolean),
   cookieDomain: process.env.COOKIE_DOMAIN ?? '',
   cookieSecure: process.env.COOKIE_SECURE === 'true',
+  serverId: process.env.SERVER_ID ?? '',
 }));
