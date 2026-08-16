@@ -50,7 +50,7 @@ export class VerificadoresController {
   constructor(private readonly service: VerificadoresService) {}
 
   @Get()
-  @RequirePermissions('verificadores.read')
+  @RequirePermissions('verificador.read')
   @ApiOperation({ summary: 'Listar verificadores' })
   @ApiEnvelopeOkResponse({
     message: 'Verificadores consultados correctamente',
@@ -68,7 +68,7 @@ export class VerificadoresController {
   }
 
   @Get(':id')
-  @RequirePermissions('verificadores.read')
+  @RequirePermissions('verificador.read')
   @ApiOperation({ summary: 'Detalle de verificador' })
   @ApiEnvelopeOkResponse({
     message: 'Verificador consultado correctamente',
@@ -90,7 +90,7 @@ export class VerificadoresController {
   }
 
   @Post()
-  @RequirePermissions('verificadores.create')
+  @RequirePermissions('verificador.create')
   @ApiOperation({ summary: 'Crear verificador' })
   @ApiEnvelopeCreatedResponse({
     message: 'Verificador creado correctamente',

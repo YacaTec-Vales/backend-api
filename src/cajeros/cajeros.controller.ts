@@ -50,7 +50,7 @@ export class CajerosController {
   constructor(private readonly service: CajerosService) {}
 
   @Get()
-  @RequirePermissions('cajeros.read')
+  @RequirePermissions('cajero.read')
   @ApiOperation({ summary: 'Listar cajeros' })
   @ApiEnvelopeOkResponse({
     message: 'Cajeros consultados correctamente',
@@ -65,7 +65,7 @@ export class CajerosController {
   }
 
   @Get(':id')
-  @RequirePermissions('cajeros.read')
+  @RequirePermissions('cajero.read')
   @ApiOperation({ summary: 'Detalle de cajero' })
   @ApiEnvelopeOkResponse({
     message: 'Cajero consultado correctamente',
@@ -87,7 +87,7 @@ export class CajerosController {
   }
 
   @Post()
-  @RequirePermissions('cajeros.create')
+  @RequirePermissions('cajero.create')
   @ApiOperation({ summary: 'Crear cajero' })
   @ApiEnvelopeCreatedResponse({
     message: 'Cajero creado correctamente',

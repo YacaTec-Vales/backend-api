@@ -70,7 +70,7 @@ export class CoordinadoresController {
   ) {}
 
   @Get()
-  @RequirePermissions('coordinadores.read')
+  @RequirePermissions('coordinador.read')
   @ApiOperation({
     summary: 'Listar coordinadores',
     description:
@@ -92,7 +92,7 @@ export class CoordinadoresController {
   }
 
   @Get(':id')
-  @RequirePermissions('coordinadores.read')
+  @RequirePermissions('coordinador.read')
   @ApiOperation({ summary: 'Detalle de coordinador' })
   @ApiEnvelopeOkResponse({
     message: 'Coordinador consultado correctamente',
@@ -114,7 +114,7 @@ export class CoordinadoresController {
   }
 
   @Post()
-  @RequirePermissions('coordinadores.create')
+  @RequirePermissions('coordinador.create')
   @ApiOperation({
     summary: 'Crear coordinador',
     description:
