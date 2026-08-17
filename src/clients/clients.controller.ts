@@ -177,7 +177,7 @@ export class ClientsController {
    */
   @Post(':id/transfer-distributor')
   @HttpCode(200)
-  @RequirePermissions('client.transfer')
+  @RequirePermissions('distribuidor.solicitud.create')
   @ApiOperation({
     summary: 'Solicitar transferencia de cliente a otra distribuidora',
     description:
