@@ -67,7 +67,7 @@ export class ClientsController {
     private readonly voucherRepo: VoucherRepository,
     private readonly distributorRepo: DistributorRepository,
     private readonly authRepo: AuthorizationRepository,
-  ) { }
+  ) {}
 
   /**
    * @api {get} /clients Listar clientes de la distribuidora
