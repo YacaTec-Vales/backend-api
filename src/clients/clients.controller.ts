@@ -67,7 +67,7 @@ export class ClientsController {
     private readonly voucherRepo: VoucherRepository,
     private readonly distributorRepo: DistributorRepository,
     private readonly authRepo: AuthorizationRepository,
-  ) {}
+  ) { }
 
   /**
    * @api {get} /clients Listar clientes de la distribuidora
@@ -177,7 +177,7 @@ export class ClientsController {
    */
   @Post(':id/transfer-distributor')
   @HttpCode(200)
-  @RequirePermissions('client.transfer')
+  @RequirePermissions('distribuidor.solicitud.create')
   @ApiOperation({
     summary: 'Solicitar transferencia de cliente a otra distribuidora',
     description:
