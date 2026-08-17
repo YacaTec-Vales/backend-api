@@ -1170,3 +1170,118 @@ export const authorizations = appSchema.table('authorization', {
 
 export type AuthorizationEntity = typeof authorizations.$inferSelect;
 export type NewAuthorizationEntity = typeof authorizations.$inferInsert;
+
+/**
+ * Valores válidos del enum `reconciliation_batch_status`.
+ */
+export const reconciliationBatchStatusValues = [
+  'EN_PROCESO',
+  'COMPLETADO',
+  'CON_ERRORES',
+] as const;
+export type ReconciliationBatchStatus =
+  (typeof reconciliationBatchStatusValues)[number];
+
+/**
+ * Tabla `app.reconciliation_batch`.
+ * Registra cada vez que se sube un archivo Excel del banco para conciliar.
+ */
+export const reconciliationBatches = appSchema.table('reconciliation_batch', {
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  uploadedBy: uuid('uploaded_by')
+    .notNull()
+    .references(() => users.id),
+  originalFileName: text('original_file_name').notNull(),
+  storagePath: text('storage_path').notNull(),
+  sheetName: text('sheet_name'),
+  totalMovements: integer('total_movements').notNull().default(0),
+  totalReconciled: integer('total_reconciled').notNull().default(0),
+  totalBranchCreditBalance: bigint('total_branch_credit_balance', {
+    mode: 'number',
+  })
+    .notNull()
+    .default(0),
+  status: text('status')
+    .$type<ReconciliationBatchStatus>()
+    .notNull()
+    .default('EN_PROCESO'),
+  errorLog: jsonb('error_log')
+    .notNull()
+    .default(sql`'[]'::jsonb`),
+  uploadedAt: timestamp('uploaded_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+});
+
+export type ReconciliationBatchEntity =
+  typeof reconciliationBatches.$inferSelect;
+export type NewReconciliationBatchEntity =
+  typeof reconciliationBatches.$inferInsert;
+
+/**
+ * Tabla `app.bank_movement`.
+ * Movimiento individual parseado desde el archivo del banco.
+ */
+export const bankMovements = appSchema.table('bank_movement', {
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  batchId: uuid('batch_id')
+    .notNull()
+    .references(() => reconciliationBatches.id, { onDelete: 'cascade' }),
+  item: integer('item'),
+  concept: text('concept'),
+  reference: text('reference'),
+  paymentCents: bigint('payment_cents', { mode: 'number' }).notNull(),
+  paymentFolio: text('payment_folio'),
+  paymentDate: date('payment_date'),
+  paymentTime: text('payment_time'),
+  paymentType: text('payment_type'),
+  reconciliationId: uuid('reconciliation_id'),
+  rawRow: jsonb('raw_row')
+    .notNull()
+    .default(sql`'{}'::jsonb`),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export type BankMovementEntity = typeof bankMovements.$inferSelect;
+export type NewBankMovementEntity = typeof bankMovements.$inferInsert;
+
+/**
+ * Valores válidos del enum `reconciliation_type`.
+ */
+export const reconciliationTypeValues = ['AUTOMATICA', 'MANUAL'] as const;
+export type ReconciliationType = (typeof reconciliationTypeValues)[number];
+
+/**
+ * Tabla `app.reconciliation`.
+ * Relaciona un movimiento bancario (o un pago manual) con una Relación.
+ */
+export const reconciliations = appSchema.table('reconciliation', {
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  relationId: uuid('relation_id').references(() => relations.id),
+  bankMovementId: uuid('bank_movement_id').references(
+    (): AnyPgColumn => bankMovements.id,
+  ),
+  montoAplicadoCents: bigint('monto_aplicado_cents', {
+    mode: 'number',
+  }).notNull(),
+  reconciliationType: text('reconciliation_type')
+    .$type<ReconciliationType>()
+    .notNull(),
+  authorizationId: uuid('authorization_id').references(() => authorizations.id),
+  notes: text('notes'),
+  reconciledAt: timestamp('reconciled_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export type ReconciliationEntity = typeof reconciliations.$inferSelect;
+export type NewReconciliationEntity = typeof reconciliations.$inferInsert;
