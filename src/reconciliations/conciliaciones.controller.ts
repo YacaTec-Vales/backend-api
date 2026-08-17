@@ -9,7 +9,13 @@ import {
   HttpCode,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiConsumes,
+  ApiBody,
+} from '@nestjs/swagger';
 import { ConciliacionService } from './services/conciliacion.service';
 import { ManualReconciliationDto } from './dto/manual-reconciliation.dto';
 import { Roles } from '../shared/decorators/roles.decorator';
@@ -32,7 +38,8 @@ export class ConciliacionesController {
   @Roles('CAJERO') // Protegido estrictamente para el rol CAJERA
   @ApiOperation({
     summary: 'Subir archivo Excel del banco',
-    description: 'Endpoint para que la cajera suba el archivo del banco (.xlsx) y procese la conciliación automática.',
+    description:
+      'Endpoint para que la cajera suba el archivo del banco (.xlsx) y procese la conciliación automática.',
   })
   @ApiEnvelopeOkResponse({
     message: 'Conciliación automática procesada correctamente',
@@ -72,7 +79,8 @@ export class ConciliacionesController {
   @RequirePermissions('conciliacion.manual')
   @ApiOperation({
     summary: 'Conciliación manual de movimientos',
-    description: 'Procesa un movimiento huérfano ligándolo manualmente a una relación destino, requiriendo autorización de Gerencia.',
+    description:
+      'Procesa un movimiento huérfano ligándolo manualmente a una relación destino, requiriendo autorización de Gerencia.',
   })
   @ApiEnvelopeOkResponse({
     message: 'Conciliación manual ejecutada correctamente',

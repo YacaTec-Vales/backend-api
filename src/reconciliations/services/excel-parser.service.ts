@@ -25,7 +25,7 @@ export class ExcelParserService {
   parseBankExcel(fileBuffer: Buffer): BankMovementRow[] {
     // cellDates: true permite que xlsx convierta números seriales de fecha a objetos Date automáticamente
     const workbook = xlsx.read(fileBuffer, { type: 'buffer', cellDates: true });
-    
+
     const sheetName = 'Hoja1';
     const sheet = workbook.Sheets[sheetName];
 
@@ -35,8 +35,8 @@ export class ExcelParserService {
 
     // El requerimiento establece exclusivamente el rango A1:H4
     // Rango de datos A2:H4 considerando que A1:H1 son los encabezados
-    const rows = xlsx.utils.sheet_to_json<Record<string, any>>(sheet, { 
-      header: 'A', 
+    const rows = xlsx.utils.sheet_to_json<Record<string, any>>(sheet, {
+      header: 'A',
       range: 'A2:H4',
       raw: true,
     });
@@ -87,7 +87,7 @@ export class ExcelParserService {
    */
   private normalizeDate(val: any): string {
     if (!val) return '';
-    
+
     if (val instanceof Date) {
       // Formatear el JS Date a YYYY-MM-DD
       const year = val.getFullYear();
