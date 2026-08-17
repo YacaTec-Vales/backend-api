@@ -185,7 +185,9 @@ export class DistributorRepository {
       branchId ? eq(distributors.branchId, branchId) : undefined,
       isNull(distributors.deletedAt),
       status ? eq(distributors.status, status) : undefined,
-      search ? or(ilike(distributors.distributorNumber, `%${search}%`)) : undefined,
+      search
+        ? or(ilike(distributors.distributorNumber, `%${search}%`))
+        : undefined,
     ].filter(Boolean);
 
     const where = and(...(filters as Parameters<typeof and>));
