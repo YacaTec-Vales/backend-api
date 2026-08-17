@@ -76,10 +76,10 @@ export class BranchesController {
    * @apiName ListBranches
    * @apiGroup Branches
    * @apiVersion 1.0.0
-   * @apiPermission branches.read
+   * @apiPermission branch.read
    */
   @Get()
-  @RequirePermissions('branches.read')
+  @RequirePermissions('branch.read')
   @ApiOperation({
     summary: 'Listar sucursales',
     description:
@@ -105,10 +105,10 @@ export class BranchesController {
    * @apiName GetBranch
    * @apiGroup Branches
    * @apiVersion 1.0.0
-   * @apiPermission branches.read
+   * @apiPermission branch.read
    */
   @Get(':id')
-  @RequirePermissions('branches.read')
+  @RequirePermissions('branch.read')
   @ApiOperation({
     summary: 'Detalle de sucursal',
     description:
@@ -138,10 +138,10 @@ export class BranchesController {
    * @apiName CreateBranch
    * @apiGroup Branches
    * @apiVersion 1.0.0
-   * @apiPermission branches.create
+   * @apiPermission branch.create
    */
   @Post()
-  @RequirePermissions('branches.create')
+  @RequirePermissions('branch.create')
   @ApiOperation({
     summary: 'Crear sucursal',
     description:
@@ -178,10 +178,10 @@ export class BranchesController {
    * @apiName UpdateBranch
    * @apiGroup Branches
    * @apiVersion 1.0.0
-   * @apiPermission branches.update
+   * @apiPermission branch.update
    */
   @Patch(':id')
-  @RequirePermissions('branches.update')
+  @RequirePermissions('branch.update')
   @ApiOperation({
     summary: 'Actualizar sucursal (patch parcial)',
     description:
@@ -223,10 +223,10 @@ export class BranchesController {
    * @apiName DeleteBranch
    * @apiGroup Branches
    * @apiVersion 1.0.0
-   * @apiPermission branches.delete
+   * @apiPermission branch.delete
    */
   @Delete(':id')
-  @RequirePermissions('branches.delete')
+  @RequirePermissions('branch.delete')
   @ApiOperation({
     summary: 'Eliminar sucursal (soft delete)',
     description:
