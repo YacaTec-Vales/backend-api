@@ -20,6 +20,13 @@ import {
 @ApiSchema({ name: 'TransferClientDto' })
 export class TransferClientDto {
   @ApiProperty({
+    description: 'UUID del cliente a transferir.',
+    format: 'uuid',
+  })
+  @IsUUID('4', { message: 'clientId invalido' })
+  clientId!: string;
+
+  @ApiProperty({
     description: 'UUID de la distribuidora destino.',
     format: 'uuid',
   })

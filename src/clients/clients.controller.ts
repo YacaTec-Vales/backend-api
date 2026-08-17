@@ -67,7 +67,7 @@ export class ClientsController {
     private readonly voucherRepo: VoucherRepository,
     private readonly distributorRepo: DistributorRepository,
     private readonly authRepo: AuthorizationRepository,
-  ) { }
+  ) {}
 
   /**
    * @api {get} /clients Listar clientes de la distribuidora
@@ -127,6 +127,17 @@ export class ClientsController {
     return this.clientsService.create(actor, dto);
   }
 
+  /**
+   * @api {get} /clients/:id Detalle de un cliente
+   * @apiName GetClient
+   * @apiGroup Clients
+   * @apiVersion 1.0.0
+   * @apiPermission client.read
+   *
+   * @apiDescription Devuelve los detalles de un cliente por su ID.
+   * Sujeto a reglas de scope: un Distribuidor solo ve a sus propios clientes,
+   * y roles de sucursal solo ven clientes de su misma sucursal.
+   */
   @Get(':id')
   @HttpCode(200)
   @RequirePermissions('client.read')
@@ -162,11 +173,11 @@ export class ClientsController {
   }
 
   /**
-   * @api {post} /clients/:id/transfer-distributor Solicitar transferencia
+   * @api {post} /clients/transfer-distributor Solicitar transferencia
    * @apiName TransferClient
    * @apiGroup Clients
    * @apiVersion 2.5.0
-   * @apiPermission client.transfer
+   * @apiPermission distribuidor.solicitud.create
    *
    * @apiDescription Crea una solicitud de transferencia de cliente
    * entre distribuidoras. El registro queda en estado PENDIENTE en
@@ -175,7 +186,7 @@ export class ClientsController {
    * Coordinador de la distribuidora origen aprueba
    * (POST /autorizaciones/:id/aprobar).
    */
-  @Post(':id/transfer-distributor')
+  @Post('transfer-distributor')
   @HttpCode(200)
   @RequirePermissions('distribuidor.solicitud.create')
   @ApiOperation({
@@ -195,7 +206,7 @@ export class ClientsController {
     type: ErrorResponseDto,
   })
   @ApiForbiddenResponse({
-    description: 'AUTH.PERMISSION_DENIED (sin client.transfer).',
+    description: 'AUTH.PERMISSION_DENIED (sin permisos).',
     type: ErrorResponseDto,
   })
   @ApiNotFoundResponse({
@@ -214,7 +225,6 @@ export class ClientsController {
   })
   async transfer(
     @CurrentUser() actor: RequestUser,
-    @Param('id') id: string,
     @Body() dto: TransferClientDto,
   ): Promise<AuthorizationResponseDto> {
     const transfer = buildTransferClient(
@@ -223,6 +233,6 @@ export class ClientsController {
       this.distributorRepo,
       this.authRepo,
     );
-    return transfer(actor, id, dto);
+    return transfer(actor, dto.clientId, dto);
   }
 }
