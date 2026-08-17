@@ -34,6 +34,7 @@ import {
   Inject,
   Injectable,
   Logger,
+  NotFoundException,
 } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { ClientRepository } from '../database/repositories/client.repository';
@@ -282,5 +283,77 @@ export class ClientsService {
 
     // 6. Proyeccion publica.
     return toClientResponseDto(created);
+  }
+
+  /**
+   * Obtiene el detalle de un cliente por su ID.
+   *
+   * Reglas de scope (multi-rol):
+   *  - GERENTE_GENERAL / ADMINISTRADOR: pueden ver cualquier cliente.
+   *  - DISTRIBUIDOR: solo puede ver clientes asociados a su distribuidora.
+   *  - Otros roles (GERENTE_SUCURSAL, COORDINADOR, VERIFICADOR, CAJERO):
+   *    el cliente debe pertenecer a una distribuidora de la misma sucursal
+   *    que el actor.
+   *
+   * @param actor - Usuario autenticado.
+   * @param id - UUID del cliente.
+   * @returns DTO publico del cliente.
+   * @throws {NotFoundException} `CLIENT.NOT_FOUND` si no existe o esta borrado.
+   * @throws {ForbiddenException} `AUTH.PERMISSION_DENIED` si esta fuera de scope.
+   */
+  async findOne(actor: RequestUser, id: string): Promise<ClientResponseDto> {
+    const client = await this.clientRepo.findById(id);
+
+    if (!client) {
+      throw new NotFoundException({
+        code: 'CLIENT.NOT_FOUND',
+        message: 'No se encontro el cliente especificado.',
+      });
+    }
+
+    if (actor.role === 'GERENTE_GENERAL' || actor.role === 'ADMINISTRADOR') {
+      return toClientResponseDto(client);
+    }
+
+    if (!client.currentDistributorId) {
+      throw new ForbiddenException({
+        code: 'AUTH.PERMISSION_DENIED',
+        message: 'El cliente no tiene una distribuidora asignada.',
+      });
+    }
+
+    const [distributorRow] = await this.readDb
+      .select({
+        userId: distributors.userId,
+        branchId: distributors.branchId,
+      })
+      .from(distributors)
+      .where(eq(distributors.id, client.currentDistributorId))
+      .limit(1);
+
+    if (!distributorRow) {
+      throw new ForbiddenException({
+        code: 'AUTH.PERMISSION_DENIED',
+        message: 'No se pudo validar el scope (distribuidora no encontrada).',
+      });
+    }
+
+    if (actor.role === 'DISTRIBUIDOR') {
+      if (distributorRow.userId !== actor.id) {
+        throw new ForbiddenException({
+          code: 'AUTH.PERMISSION_DENIED',
+          message: 'Solo puedes consultar clientes de tu distribuidora.',
+        });
+      }
+    } else {
+      if (!actor.branchId || distributorRow.branchId !== actor.branchId) {
+        throw new ForbiddenException({
+          code: 'AUTH.PERMISSION_DENIED',
+          message: 'El cliente pertenece a otra sucursal.',
+        });
+      }
+    }
+
+    return toClientResponseDto(client);
   }
 }

@@ -127,6 +127,40 @@ export class ClientsController {
     return this.clientsService.create(actor, dto);
   }
 
+  @Get(':id')
+  @HttpCode(200)
+  @RequirePermissions('client.read')
+  @ApiOperation({
+    summary: 'Detalle de un cliente',
+    description:
+      'Devuelve los detalles de un cliente por su ID. ' +
+      'Sujeto a reglas de scope: un Distribuidor solo ve a sus propios clientes, ' +
+      'y roles de sucursal solo ven clientes de su misma sucursal.',
+  })
+  @ApiEnvelopeOkResponse({
+    message: 'Cliente consultado correctamente',
+    type: ClientResponseDto,
+  })
+  @ApiUnauthorizedResponse({
+    description: 'AUTH.* — token invalido, sesion revocada o expirada.',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description:
+      'AUTH.PERMISSION_DENIED (fuera de scope o sin permiso client.read).',
+    type: ErrorResponseDto,
+  })
+  @ApiNotFoundResponse({
+    description: 'CLIENT.NOT_FOUND.',
+    type: ErrorResponseDto,
+  })
+  findOne(
+    @CurrentUser() actor: RequestUser,
+    @Param('id') id: string,
+  ): Promise<ClientResponseDto> {
+    return this.clientsService.findOne(actor, id);
+  }
+
   /**
    * @api {post} /clients/:id/transfer-distributor Solicitar transferencia
    * @apiName TransferClient
