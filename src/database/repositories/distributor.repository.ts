@@ -150,4 +150,63 @@ export class DistributorRepository {
 
     return { items, total: Number(total) };
   }
+
+  /**
+   * Lista distribuidoras con paginacion y filtros opcionales.
+   *
+   * Filtros aplicados:
+   *  - `branchId` (opcional): solo distribuidoras de esta sucursal.
+   *  - `status` (opcional): filtra por estado del Distribuidor.
+   *  - `search` (opcional): busqueda libre por `distributor_number` (ILIKE).
+   *  - Solo se devuelven filas con `deleted_at IS NULL`.
+   *
+   * Conexion: `DRIZZLE_READ`.
+   *
+   * @param params - Parametros de consulta.
+   * @param params.branchId - UUID de la sucursal (opcional).
+   * @param params.status - Filtro opcional de estado.
+   * @param params.search - Texto libre para ILIKE sobre `distributor_number`.
+   * @param params.page - Pagina base 1.
+   * @param params.limit - Tamano de pagina (1-100).
+   * @param params.sortOrder - Orden por `created_at` (asc | desc).
+   * @returns Objeto `{ items, total }` con los registros y el total sin paginar.
+   */
+  async list(params: {
+    branchId?: string;
+    status?: 'ACTIVA' | 'MOROSA' | 'DESHABILITADA' | 'BAJA_VOLUNTARIA';
+    search?: string;
+    page: number;
+    limit: number;
+    sortOrder: 'asc' | 'desc';
+  }): Promise<{ items: DistributorEntity[]; total: number }> {
+    const { branchId, status, search, page, limit, sortOrder } = params;
+
+    const filters = [
+      branchId ? eq(distributors.branchId, branchId) : undefined,
+      isNull(distributors.deletedAt),
+      status ? eq(distributors.status, status) : undefined,
+      search ? or(ilike(distributors.distributorNumber, `%${search}%`)) : undefined,
+    ].filter(Boolean);
+
+    const where = and(...(filters as Parameters<typeof and>));
+
+    const [{ value: total }] = await this.readDb
+      .select({ value: count() })
+      .from(distributors)
+      .where(where);
+
+    const items = await this.readDb
+      .select()
+      .from(distributors)
+      .where(where)
+      .orderBy(
+        sortOrder === 'asc'
+          ? sql`${distributors.createdAt} ASC`
+          : sql`${distributors.createdAt} DESC`,
+      )
+      .limit(limit)
+      .offset((page - 1) * limit);
+
+    return { items, total: Number(total) };
+  }
 }
