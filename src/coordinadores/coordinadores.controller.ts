@@ -67,7 +67,7 @@ export class CoordinadoresController {
   constructor(
     private readonly service: CoordinadoresService,
     private readonly distribuidoresService: DistribuidoresService,
-  ) { }
+  ) {}
 
   @Get()
   @RequirePermissions('coordinador.read')
