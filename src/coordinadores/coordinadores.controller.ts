@@ -67,7 +67,7 @@ export class CoordinadoresController {
   constructor(
     private readonly service: CoordinadoresService,
     private readonly distribuidoresService: DistribuidoresService,
-  ) {}
+  ) { }
 
   @Get()
   @RequirePermissions('coordinador.read')
@@ -170,7 +170,7 @@ export class CoordinadoresController {
    * @apiError (403) DISTRIBUTOR.SCOPE_FORBIDDEN | AUTH.ROLE_NOT_ALLOWED.
    */
   @Get(':id/distribuidoras')
-  @RequirePermissions('distribuidores.read')
+  @RequirePermissions('distribuidor.read')
   @ApiOperation({
     summary: 'Listar distribuidoras del coordinador',
     description:
