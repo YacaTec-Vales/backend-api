@@ -28,6 +28,7 @@ import {
   HttpStatus,
   Param,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -43,6 +44,8 @@ import { DistribuidoresService } from './distribuidores.service';
 import { DistribuidorResponseDto } from './dto/distribuidor-response.dto';
 import { DistribuidorStatusDto } from './dto/distribuidor-status.dto';
 import { ChangeBranchDto } from './dto/change-branch.dto';
+import { ListDistribuidoresQueryDto } from './dto/list-distribuidores-query.dto';
+import { PaginatedDistribuidoresResponseDto } from './dto/paginated-distribuidores-response.dto';
 import { ApiEnvelopeOkResponse } from '../shared/decorators/api-envelope-response.decorator';
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import { JwtAuthGuard } from '../shared/guards/auth.guards';
@@ -137,6 +140,44 @@ class ChangeCoordinatorDto {
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class DistribuidoresController {
   constructor(private readonly service: DistribuidoresService) {}
+
+  /**
+   * `GET /distribuidores` — Lista distribuidoras por sucursal.
+   *
+   * Auth: `distribuidor.read` (o ser un DISTRIBUIDOR consultando su propia sucursal).
+   * Scope:
+   *  - GERENTE_GENERAL: ve todas.
+   *  - DISTRIBUIDOR / GERENTE_SUCURSAL / COORDINADOR / VERIFICADOR / CAJERO:
+   *    ven las de su sucursal.
+   */
+  @Get()
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions('distribuidor.read')
+  @ApiOperation({
+    summary: 'Listar distribuidoras',
+    description:
+      'Lista paginada de distribuidoras con scope de sucursal. ' +
+      'Un Distribuidor puede ver las distribuidoras de su misma sucursal.',
+  })
+  @ApiEnvelopeOkResponse({
+    message: 'Distribuidoras consultadas correctamente',
+    type: PaginatedDistribuidoresResponseDto,
+  })
+  @ApiUnauthorizedResponse({
+    description: 'AUTH.* — token invalido.',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description:
+      'AUTH.PERMISSION_DENIED (fuera de scope) o AUTH.ROLE_NOT_ALLOWED.',
+    type: ErrorResponseDto,
+  })
+  list(
+    @CurrentUser() actor: RequestUser,
+    @Query() query: ListDistribuidoresQueryDto,
+  ): Promise<PaginatedDistribuidoresResponseDto> {
+    return this.service.list(actor, query);
+  }
 
   /**
    * `GET /distribuidores/me` — Estado del Distribuidor autenticado.

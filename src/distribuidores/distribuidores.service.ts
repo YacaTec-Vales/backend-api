@@ -215,6 +215,75 @@ export class DistribuidoresService {
   }
 
   /**
+   * Lista distribuidoras por sucursal.
+   *
+   * Reglas de scope:
+   *  - `GERENTE_GENERAL`: ve todas (branchId undefined).
+   *  - `GERENTE_SUCURSAL` / `COORDINADOR` / `VERIFICADOR` / `CAJERO`:
+   *    solo ven las de su sucursal (`actor.branchId`).
+   *  - `DISTRIBUIDOR`: solo ve las de su propia sucursal.
+   *
+   * @param actor - Usuario autenticado.
+   * @param query - Filtros y paginacion.
+   * @returns Listado paginado de distribuidoras.
+   */
+  async list(
+    actor: RequestUser,
+    query: ListDistribuidoresQueryDto,
+  ): Promise<PaginatedDistribuidoresResponseDto> {
+    let branchId: string | undefined;
+
+    if (actor.role === 'DISTRIBUIDOR') {
+      const myDist = await this.distributorRepo.findByUserId(actor.id);
+      if (!myDist) {
+        throw new ForbiddenException({
+          code: 'DISTRIBUTOR.NOT_FOUND',
+          message: 'el usuario no tiene distribuidora asociada',
+        });
+      }
+      branchId = myDist.branchId;
+    } else if (
+      actor.role === 'GERENTE_SUCURSAL' ||
+      actor.role === 'COORDINADOR' ||
+      actor.role === 'VERIFICADOR' ||
+      actor.role === 'CAJERO'
+    ) {
+      if (!actor.branchId) {
+        throw new ForbiddenException({
+          code: 'AUTH.PERMISSION_DENIED',
+          message: 'el actor no tiene sucursal asignada',
+        });
+      }
+      branchId = actor.branchId;
+    } else if (actor.role === 'GERENTE_GENERAL') {
+      branchId = undefined; // ve todas
+    } else {
+      throw new ForbiddenException({
+        code: 'AUTH.ROLE_NOT_ALLOWED',
+        message: 'rol no autorizado para listar distribuidoras',
+      });
+    }
+
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const sortOrder = query.sortOrder ?? 'desc';
+
+    const { items, total } = await this.distributorRepo.list({
+      branchId,
+      status: query.status,
+      search: query.search,
+      page,
+      limit,
+      sortOrder,
+    });
+
+    return {
+      data: items.map(toDistribuidorResponseDtoFromEntity),
+      meta: { page, limit, total },
+    };
+  }
+
+  /**
    * Devuelve el estado operativo consolidado del Distribuidor
    * autenticado.
    *
