@@ -2,9 +2,9 @@
  * @fileoverview Controlador del modulo `autorizaciones`.
  *
  * Endpoints (prefijo global `api/v1`):
+ * Endpoints (prefijo global `api/v1`):
  *  - GET    /autorizaciones            bandeja de pendientes
  *  - GET    /autorizaciones/:id        detalle
- *  - POST   /autorizaciones/:id/aceptar-destino  distribuidora destino acepta
  *  - POST   /autorizaciones/:id/aprobar           aprobar solicitud
  *  - POST   /autorizaciones/:id/rechazar          rechazar solicitud
  *
@@ -134,65 +134,6 @@ export class AutorizacionesController {
   }
 
   // =========================================================================
-  // Aceptacion destino (paso 2 de transferencia)
-  // =========================================================================
-
-  /**
-   * @api {post} /autorizaciones/:id/aceptar-destino Distribuidora destino acepta
-   * @apiName AcceptDestination
-   * @apiGroup Autorizaciones
-   * @apiVersion 1.0.0
-   * @apiPermission authorization.approve
-   *
-   * @apiDescription Paso 2 del flujo de transferencia de cliente.
-   * La distribuidora DESTINO acepta la previa transferencia. Despues
-   * de aceptar, el Coordinador de la distribuidora ORIGEN puede
-   * aprobar la solicitud.
-   */
-  @Post(':id/aceptar-destino')
-  @HttpCode(HttpStatus.OK)
-  @RequirePermissions('authorization.approve')
-  @ApiOperation({
-    summary: 'Distribuidora destino acepta la transferencia',
-    description:
-      'Paso 2 del flujo de transferencia. La distribuidora que ' +
-      'recibira al cliente acepta la previa transferencia. Solo ' +
-      'disponible para TRANSFERENCIA_DISTRIBUIDOR.',
-  })
-  @ApiEnvelopeOkResponse({
-    message: 'Transferencia aceptada por la distribuidora destino',
-    type: AuthorizationResponseDto,
-  })
-  @ApiUnauthorizedResponse({
-    description: 'AUTH.* — token invalido.',
-    type: ErrorResponseDto,
-  })
-  @ApiForbiddenResponse({
-    description:
-      'AUTHORIZATION.NOT_DESTINATION_DISTRIBUTOR (el actor no es ' +
-      'la distribuidora destino).',
-    type: ErrorResponseDto,
-  })
-  @ApiNotFoundResponse({
-    description: 'AUTHORIZATION.NOT_FOUND.',
-    type: ErrorResponseDto,
-  })
-  @ApiConflictResponse({
-    description: 'AUTHORIZATION.NOT_PENDING o AUTHORIZATION.ALREADY_ACCEPTED.',
-    type: ErrorResponseDto,
-  })
-  @ApiBadRequestResponse({
-    description: 'AUTHORIZATION.TYPE_NOT_IMPLEMENTED (tipo no soportado).',
-    type: ErrorResponseDto,
-  })
-  acceptDestination(
-    @CurrentUser() actor: RequestUser,
-    @Param('id') id: string,
-  ): Promise<AuthorizationResponseDto> {
-    return this.service.acceptDestination(actor, id);
-  }
-
-  // =========================================================================
   // Aprobar y rechazar
   // =========================================================================
 
@@ -204,11 +145,11 @@ export class AutorizacionesController {
    * @apiPermission authorization.approve
    *
    * @apiDescription Aprueba una autorizacion pendiente. Para
-   * TRANSFERENCIA_DISTRIBUIDOR, ejecuta la transferencia de cliente
+   * TRANSFERENCIA_DISTRIBUIDOR, asigna la nueva distribuidora y ejecuta la transferencia de cliente
    * en una transaccion atomica.
    *
    * Requisitos para transferencias:
-   *  - La distribuidora destino debe haber aceptado.
+   *  - El payload debe incluir `newDistributorId`.
    *  - El actor debe ser el Coordinador de la distribuidora origen
    *    o un Gerente (GS de la misma sucursal, GG cualquiera).
    */
@@ -219,9 +160,8 @@ export class AutorizacionesController {
     summary: 'Aprobar autorizacion pendiente',
     description:
       'Aprueba una autorizacion pendiente. Para transferencias de ' +
-      'cliente, ejecuta el cambio en una TX atomica: UPDATE client, ' +
-      'INSERT history, UPDATE authorization. Requiere que la ' +
-      'distribuidora destino haya aceptado previamente.',
+      'cliente, el autorizante asigna la nueva distribuidora y se ejecuta el cambio ' +
+      'en una TX atomica: UPDATE client, INSERT history, UPDATE authorization.',
   })
   @ApiEnvelopeOkResponse({
     message: 'Autorizacion aprobada correctamente',
@@ -247,7 +187,7 @@ export class AutorizacionesController {
   })
   @ApiBadRequestResponse({
     description:
-      'AUTHORIZATION.DESTINATION_NOT_ACCEPTED o ' +
+      'AUTHORIZATION.MISSING_NEW_DISTRIBUTOR o ' +
       'AUTHORIZATION.TYPE_NOT_IMPLEMENTED.',
     type: ErrorResponseDto,
   })
@@ -256,7 +196,7 @@ export class AutorizacionesController {
     @Param('id') id: string,
     @Body() dto: ApproveAuthorizationDto,
   ): Promise<AuthorizationResponseDto> {
-    return this.service.approve(actor, id, dto.notes);
+    return this.service.approve(actor, id, dto);
   }
 
   /**

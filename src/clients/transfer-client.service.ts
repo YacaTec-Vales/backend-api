@@ -4,19 +4,16 @@
  *
  * Fase 1 del flujo de transferencia:
  *  1. Validar que el cliente existe y tiene distribuidora actual.
- *  2. Validar que la distribuidora destino existe y esta activa.
- *  3. Validar que no sea la misma distribuidora.
- *  4. Validar que el cliente NO tenga vales activos (R6: 100% limpio).
- *  5. Crear registro en `app.authorization` con:
+ *  2. Validar que el cliente NO tenga vales activos (R6: 100% limpio).
+ *  3. Crear registro en `app.authorization` con:
  *     - `authorization_type = TRANSFERENCIA_DISTRIBUIDOR`
  *     - `requester_id = actor.id`
- *     - `affected_entity = { clientId, fromDistributorId,
- *       toDistributorId, destinationAccepted: false }`
+ *     - `affected_entity = { clientId, fromDistributorId }`
  *     - `status = PENDIENTE`
- *  6. Retornar el DTO de la autorizacion creada.
+ *  4. Retornar el DTO de la autorizacion creada.
  *
  * La ejecucion real de la transferencia ocurre en la Fase 2
- * (aprobacion) via `AutorizacionesService.approve()`.
+ * (aprobacion y asignacion) via `AutorizacionesService.approve()`.
  *
  * @module clients
  * @author Equipo de desarrollo Mis Vales
@@ -93,30 +90,6 @@ export const buildTransferClient = (
       });
     }
 
-    // 2. La nueva distribuidora existe y esta activa.
-    const newDistributor = await distributorRepo.findById(dto.newDistributorId);
-    if (!newDistributor) {
-      throw new NotFoundException({
-        code: TRANSFER_ERROR_CODES.TARGET_DISTRIBUTOR_NOT_FOUND,
-        message: 'la distribuidora destino no existe',
-        details: { newDistributorId: dto.newDistributorId },
-      });
-    }
-    if (!newDistributor.isActive) {
-      throw new BadRequestException({
-        code: TRANSFER_ERROR_CODES.TARGET_DISTRIBUTOR_INACTIVE,
-        message: 'la distribuidora destino no esta activa',
-      });
-    }
-
-    // 3. La nueva distribuidora != actual.
-    if (client.currentDistributorId === dto.newDistributorId) {
-      throw new BadRequestException({
-        code: TRANSFER_ERROR_CODES.SAME_DISTRIBUTOR,
-        message: 'el cliente ya pertenece a esta distribuidora',
-      });
-    }
-
     // 4. Cliente sin vales activos (R6).
     const activeVoucher = await voucherRepo.findActiveByClient(clientId);
     if (activeVoucher) {
@@ -127,15 +100,13 @@ export const buildTransferClient = (
       });
     }
 
-    // 5. Crear registro PENDIENTE en app.authorization.
+    // 3. Crear registro PENDIENTE en app.authorization.
     const authorization = await authRepo.create({
       authorizationType: 'TRANSFERENCIA_DISTRIBUIDOR',
       requesterId: actor.id,
       affectedEntity: {
         clientId,
         fromDistributorId: client.currentDistributorId,
-        toDistributorId: dto.newDistributorId,
-        destinationAccepted: false,
       },
       justification: dto.reason,
       status: 'PENDIENTE',
@@ -144,7 +115,7 @@ export const buildTransferClient = (
     logger.log(
       `transfer requested: client=${clientId} ` +
         `from=${client.currentDistributorId} ` +
-        `to=${dto.newDistributorId} actor=${actor.id} ` +
+        `actor=${actor.id} ` +
         `auth=${authorization.id}`,
     );
 
