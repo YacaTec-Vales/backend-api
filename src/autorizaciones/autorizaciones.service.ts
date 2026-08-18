@@ -108,6 +108,57 @@ export class AutorizacionesService {
   }
 
   /**
+   * Lista autorizaciones relacionadas a una distribuidora especifica.
+   *
+   * @param actor - Usuario autenticado.
+   * @param distributorId - UUID de la distribuidora.
+   * @returns Lista de autorizaciones en formato publico.
+   */
+  async listByDistributor(
+    actor: RequestUser,
+    distributorId: string,
+  ): Promise<AuthorizationResponseDto[]> {
+    const distributor = await this.distributorRepo.findById(distributorId);
+    if (!distributor) {
+      throw new NotFoundException({
+        code: 'DISTRIBUTOR.NOT_FOUND',
+        message: 'la distribuidora no existe',
+      });
+    }
+
+    if (actor.role === 'DISTRIBUIDOR') {
+      if (actor.id !== distributor.userId) {
+        throw new ForbiddenException({
+          code: 'AUTH.PERMISSION_DENIED',
+          message: 'solo puedes consultar tus propias autorizaciones',
+        });
+      }
+    } else if (actor.role !== 'GERENTE_GENERAL') {
+      if (
+        actor.role === 'GERENTE_SUCURSAL' ||
+        actor.role === 'COORDINADOR' ||
+        actor.role === 'VERIFICADOR' ||
+        actor.role === 'CAJERO'
+      ) {
+        if (!actor.branchId || actor.branchId !== distributor.branchId) {
+          throw new ForbiddenException({
+            code: 'AUTH.PERMISSION_DENIED',
+            message: 'la distribuidora pertenece a otra sucursal',
+          });
+        }
+      } else {
+        throw new ForbiddenException({
+          code: 'AUTH.ROLE_NOT_ALLOWED',
+          message: 'rol no autorizado para ver autorizaciones de distribuidoras',
+        });
+      }
+    }
+
+    const rows = await this.authRepo.listByDistributor(distributorId);
+    return Promise.all(rows.map((r) => this.toResponseDtoAsync(r)));
+  }
+
+  /**
    * Detalle de una autorizacion por UUID.
    *
    * @param _actor - Usuario autenticado.
