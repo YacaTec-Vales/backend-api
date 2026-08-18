@@ -154,6 +154,28 @@ export class BranchesRepository {
   }
 
   /**
+   * Busca una sucursal activa por `folio_prefix`. La columna es
+   * UNIQUE en BD, por lo que esta consulta sirve para validar que
+   * un prefijo (provisto o generado) no este ya en uso antes de
+   * insertar.
+   *
+   * Conexion: `DRIZZLE_READ`.
+   *
+   * @param folioPrefix - Prefijo de 3 letras (mayusculas).
+   * @returns Entidad o `null`.
+   */
+  async findByFolioPrefix(folioPrefix: string): Promise<BranchEntity | null> {
+    const [row] = await this.readDb
+      .select()
+      .from(branches)
+      .where(
+        and(eq(branches.folioPrefix, folioPrefix), isNull(branches.deletedAt)),
+      )
+      .limit(1);
+    return row ?? null;
+  }
+
+  /**
    * Lista sucursales con filtros y paginacion. Incluye los datos
    * minimos del gerente asignado via LEFT JOIN.
    *
@@ -252,6 +274,7 @@ export class BranchesRepository {
     esMatriz: boolean;
     address: string | null;
     managerUserId: string | null;
+    folioPrefix: string;
     cutoffDay?: number | null;
     paymentDay?: number | null;
     earlyPaymentDays?: number | null;
@@ -264,6 +287,7 @@ export class BranchesRepository {
         esMatriz: data.esMatriz,
         address: data.address,
         managerUserId: data.managerUserId,
+        folioPrefix: data.folioPrefix,
         cutoffDay: data.cutoffDay ?? null,
         paymentDay: data.paymentDay ?? null,
         earlyPaymentDays: data.earlyPaymentDays ?? null,

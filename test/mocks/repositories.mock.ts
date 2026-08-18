@@ -151,6 +151,7 @@ export function createBranchesRepositoryMock(): jest.Mocked<BranchesRepository> 
     findActiveById: jest.fn(),
     findMatriz: jest.fn(),
     findByManagerUserId: jest.fn(),
+    findByFolioPrefix: jest.fn(),
     list: jest.fn(),
     insert: jest.fn(),
     update: jest.fn(),

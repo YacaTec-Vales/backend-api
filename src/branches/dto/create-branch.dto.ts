@@ -17,6 +17,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -88,6 +89,19 @@ export class CreateBranchDto {
   @IsOptional()
   @IsUUID('4', { message: 'el gerente debe ser un UUID valido' })
   managerUserId?: string;
+
+  @ApiPropertyOptional({
+    example: 'NOR',
+    description:
+      'Prefijo de 3 letras mayusculas unico usado en folios de ' +
+      'vouchers (formato D-{PREFIX}-{YYYYMMDD}-{00001}). Si se ' +
+      'omite, se genera automaticamente a partir del nombre.',
+  })
+  @IsOptional()
+  @Matches(/^[A-Z]{3}$/, {
+    message: 'folioPrefix debe ser de exactamente 3 letras en mayusculas',
+  })
+  folioPrefix?: string;
 
   // -----------------------------------------------------------------
   // Fechas de corte/pago per-branch (regla 2.0 — audio 2026-08-04)
