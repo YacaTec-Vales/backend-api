@@ -64,7 +64,7 @@ import type { RequestUser } from '../shared/guards/auth.guards';
 @Controller('autorizaciones')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class AutorizacionesController {
-  constructor(private readonly service: AutorizacionesService) { }
+  constructor(private readonly service: AutorizacionesService) {}
 
   // =========================================================================
   // Lectura
