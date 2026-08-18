@@ -86,7 +86,7 @@ export class AutorizacionesService {
     private readonly distributorRepo: DistributorRepository,
     private readonly userRepo: UserRepository,
     @Inject(DRIZZLE_WRITE) private readonly writeDb: DrizzleWrite,
-  ) {}
+  ) { }
 
   /**
    * Lista autorizaciones pendientes visibles para el actor.
@@ -336,8 +336,8 @@ export class AutorizacionesService {
 
     this.logger.log(
       `transfer approved: auth=${auth.id} client=${entity.clientId} ` +
-        `from=${entity.fromDistributorId} to=${entity.toDistributorId} ` +
-        `actor=${actor.id}`,
+      `from=${entity.fromDistributorId} to=${entity.toDistributorId} ` +
+      `actor=${actor.id}`,
     );
 
     // Leer el registro actualizado.
