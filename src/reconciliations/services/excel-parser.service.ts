@@ -10,7 +10,7 @@ export interface BankMovementRow {
   paymentDate: string;
   paymentTime: string;
   paymentType: string;
-  rawRow: Record<string, any>;
+  rawRow: Record<string, unknown>;
 }
 
 @Injectable()
@@ -26,6 +26,7 @@ export class ExcelParserService {
     // cellDates: true permite que xlsx convierta números seriales de fecha a objetos Date automáticamente
     const workbook = xlsx.read(fileBuffer, { type: 'buffer', cellDates: true });
 
+
     const sheetName = 'Hoja1';
     const sheet = workbook.Sheets[sheetName];
 
@@ -35,7 +36,7 @@ export class ExcelParserService {
 
     // El requerimiento establece exclusivamente el rango A1:H4
     // Rango de datos A2:H4 considerando que A1:H1 son los encabezados
-    const rows = xlsx.utils.sheet_to_json<Record<string, any>>(sheet, {
+    const rows = xlsx.utils.sheet_to_json<Record<string, unknown>>(sheet, {
       header: 'A',
       range: 'A2:H4',
       raw: true,
@@ -52,15 +53,21 @@ export class ExcelParserService {
       const timeRaw = row['G'];
       const typeRaw = row['H'];
 
+      const parseString = (v: unknown): string => {
+        if (typeof v === 'string') return v.trim();
+        if (typeof v === 'number') return String(v);
+        return '';
+      };
+
       return {
         item: typeof itemRaw === 'number' ? itemRaw : null,
-        concept: conceptRaw ? String(conceptRaw).trim() : '',
-        reference: referenceRaw ? String(referenceRaw).trim() : '',
+        concept: parseString(conceptRaw),
+        reference: parseString(referenceRaw),
         paymentAmount: this.normalizePayment(paymentRaw),
-        paymentFolio: folioRaw ? String(folioRaw).trim() : '',
+        paymentFolio: parseString(folioRaw),
         paymentDate: this.normalizeDate(dateRaw),
         paymentTime: this.normalizeTime(timeRaw),
-        paymentType: typeRaw ? String(typeRaw).trim() : '',
+        paymentType: parseString(typeRaw),
         rawRow: row,
       };
     });
@@ -71,7 +78,7 @@ export class ExcelParserService {
   /**
    * Extrae limpiamente el monto de pago (Columna D)
    */
-  private normalizePayment(val: any): number {
+  private normalizePayment(val: unknown): number {
     if (typeof val === 'number') return val;
     if (typeof val === 'string') {
       const clean = val.replace(/[$,\s]/g, '');
@@ -85,8 +92,9 @@ export class ExcelParserService {
    * Normaliza la columna 'Fecha de pago' (Columna F) soportando tanto texto como
    * números seriales de Excel (que xlsx convierte a Date por cellDates: true).
    */
-  private normalizeDate(val: any): string {
+  private normalizeDate(val: unknown): string {
     if (!val) return '';
+
 
     if (val instanceof Date) {
       // Formatear el JS Date a YYYY-MM-DD
@@ -99,7 +107,7 @@ export class ExcelParserService {
     if (typeof val === 'string') {
       const trimmed = val.trim();
       // Si el formato viene como DD/MM/YYYY
-      const parts = trimmed.split(/[\/\-]/);
+      const parts = trimmed.split(new RegExp('[/-]'));
       if (parts.length === 3) {
         if (parts[0].length === 4) {
           return trimmed; // Ya viene YYYY-MM-DD
@@ -110,13 +118,17 @@ export class ExcelParserService {
       return trimmed;
     }
 
-    return String(val);
+    return typeof val === 'string'
+      ? val
+      : typeof val === 'number'
+        ? String(val)
+        : '';
   }
 
   /**
    * Convierte la fracción de día de la columna 'Hora' (Columna G) a formato estándar HH:mm
    */
-  private normalizeTime(val: any): string {
+  private normalizeTime(val: unknown): string {
     if (val == null) return '';
 
     if (typeof val === 'number') {
@@ -141,6 +153,10 @@ export class ExcelParserService {
       return cleaned;
     }
 
-    return String(val);
+    return typeof val === 'string'
+      ? val
+      : typeof val === 'number'
+        ? String(val)
+        : '';
   }
 }
