@@ -36,6 +36,7 @@ import { AuthorizationRepository } from '../database/repositories/authorization.
 import { ClientRepository } from '../database/repositories/client.repository';
 import { ClientDistributorHistoryRepository } from '../database/repositories/client-distributor-history.repository';
 import { DistributorRepository } from '../database/repositories/distributor.repository';
+import { UserRepository } from '../database/repositories/user.repository';
 import { DRIZZLE_WRITE, type DrizzleWrite } from '../database/drizzle.provider';
 import type { AuthorizationEntity } from '../database/schema';
 import type { RequestUser } from '../shared/guards/auth.guards';
@@ -83,6 +84,7 @@ export class AutorizacionesService {
     private readonly clientRepo: ClientRepository,
     private readonly historyRepo: ClientDistributorHistoryRepository,
     private readonly distributorRepo: DistributorRepository,
+    private readonly userRepo: UserRepository,
     @Inject(DRIZZLE_WRITE) private readonly writeDb: DrizzleWrite,
   ) {}
 
@@ -102,7 +104,7 @@ export class AutorizacionesService {
     // se implementara cuando se definan las reglas de visibilidad
     // por tipo y rol.
     const rows = await this.authRepo.listAllPending();
-    return rows.map((r) => this.toResponseDto(r));
+    return Promise.all(rows.map((r) => this.toResponseDtoAsync(r)));
   }
 
   /**
@@ -124,7 +126,7 @@ export class AutorizacionesService {
         message: 'la autorizacion no existe',
       });
     }
-    return this.toResponseDto(auth);
+    return this.toResponseDtoAsync(auth);
   }
 
   /**
@@ -188,7 +190,7 @@ export class AutorizacionesService {
       `transfer accepted by destination: auth=${id} dest=${actor.id}`,
     );
 
-    return this.toResponseDto(updated);
+    return this.toResponseDtoAsync(updated);
   }
 
   /**
@@ -239,7 +241,7 @@ export class AutorizacionesService {
 
     this.logger.log(`authorization rejected: auth=${id} actor=${actor.id}`);
 
-    return this.toResponseDto(updated);
+    return this.toResponseDtoAsync(updated);
   }
 
   // =========================================================================
@@ -340,7 +342,7 @@ export class AutorizacionesService {
 
     // Leer el registro actualizado.
     const updated = await this.authRepo.findById(auth.id);
-    return this.toResponseDto(updated!);
+    return this.toResponseDtoAsync(updated!);
   }
 
   // =========================================================================
@@ -418,15 +420,53 @@ export class AutorizacionesService {
   }
 
   /**
-   * Convierte una entidad de autorizacion a DTO publico.
+   * Convierte una entidad de autorizacion a DTO publico, resolviendo
+   * asincronamente los nombres de las entidades afectadas.
    */
-  private toResponseDto(auth: AuthorizationEntity): AuthorizationResponseDto {
+  private async toResponseDtoAsync(
+    auth: AuthorizationEntity,
+  ): Promise<AuthorizationResponseDto> {
+    const affectedEntity = (auth.affectedEntity as Record<string, unknown>) ?? {};
+    const resolvedNames: Record<string, string> = {};
+
+    if (auth.authorizationType === 'TRANSFERENCIA_DISTRIBUIDOR') {
+      const entity = affectedEntity as unknown as TransferAffectedEntity;
+
+      if (entity.clientId) {
+        const client = await this.clientRepo.findById(entity.clientId);
+        if (client) {
+          resolvedNames.clientName = `${client.firstName} ${client.lastNamePaternal} ${client.lastNameMaternal}`.trim();
+        }
+      }
+
+      if (entity.fromDistributorId) {
+        const fromDist = await this.distributorRepo.findById(entity.fromDistributorId);
+        if (fromDist) {
+          const user = await this.userRepo.findById(fromDist.userId);
+          if (user) {
+            resolvedNames.fromDistributorName = `${user.firstName} ${user.lastNamePaternal} ${user.lastNameMaternal}`.trim();
+          }
+        }
+      }
+
+      if (entity.toDistributorId) {
+        const toDist = await this.distributorRepo.findById(entity.toDistributorId);
+        if (toDist) {
+          const user = await this.userRepo.findById(toDist.userId);
+          if (user) {
+            resolvedNames.toDistributorName = `${user.firstName} ${user.lastNamePaternal} ${user.lastNameMaternal}`.trim();
+          }
+        }
+      }
+    }
+
     return {
       id: auth.id,
       authorizationType: auth.authorizationType,
       requesterId: auth.requesterId,
       authorizerId: auth.authorizerId ?? null,
-      affectedEntity: (auth.affectedEntity as Record<string, unknown>) ?? {},
+      affectedEntity,
+      resolvedNames: Object.keys(resolvedNames).length > 0 ? resolvedNames : undefined,
       justification: auth.justification,
       status: auth.status,
       decisionNotes: auth.decisionNotes ?? null,
