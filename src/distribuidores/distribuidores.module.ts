@@ -23,10 +23,18 @@ import { AutorizacionesModule } from '../autorizaciones/autorizaciones.module';
 import { DistribuidoresController } from './distribuidores.controller';
 import { DistribuidoresService } from './distribuidores.service';
 import { DistributorRepository } from '../database/repositories/distributor.repository';
+import { BranchRepository } from '../database/repositories/branch.repository';
+import { BranchCutoffRepository } from '../database/repositories/branch-cutoff.repository';
 
 @Module({
   imports: [AuthModule, DatabaseModule, AutorizacionesModule],
   controllers: [DistribuidoresController],
-  providers: [DistribuidoresService, DistributorRepository],
+  providers: [
+    DistribuidoresService,
+    DistributorRepository,
+    BranchRepository,
+    BranchCutoffRepository,
+  ],
+  exports: [DistribuidoresService],
 })
 export class DistribuidoresModule {}

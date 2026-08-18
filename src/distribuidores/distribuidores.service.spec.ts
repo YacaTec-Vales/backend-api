@@ -95,14 +95,16 @@ function buildActor(
 function buildService() {
   const distributorRepo = buildDistRepo();
   const branchRepo = createBranchRepositoryMock();
+  const branchCutoffRepo = { listByBranch: jest.fn() };
   const pool = buildPoolMock();
   const service = new DistribuidoresService(
     distributorRepo as never,
     branchRepo,
+    branchCutoffRepo as never,
     pool as never,
     pool as never,
   );
-  return { service, distributorRepo, pool };
+  return { service, distributorRepo, branchCutoffRepo, pool };
 }
 
 // ===========================================================================
@@ -354,9 +356,11 @@ describe('DistribuidoresService', () => {
     ) {
       const distributorRepo = buildDistRepo();
       const branchRepo = createBranchRepositoryMock();
+      const branchCutoffRepo = { listByBranch: jest.fn() };
       const service = new DistribuidoresService(
         distributorRepo as never,
         branchRepo,
+        branchCutoffRepo as never,
         { $client: pool } as never,
         { $client: pool } as never,
       );
