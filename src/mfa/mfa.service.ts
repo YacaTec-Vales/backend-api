@@ -34,7 +34,6 @@ import {
   type DrizzleRead,
 } from '../database/drizzle.provider';
 import { mfaCredentials, users } from '../database/schema';
-import { nanoid } from 'nanoid';
 import { PasswordService } from '../auth/services/password.service';
 import { MFA_CONFIG } from '../database/tokens';
 import type { MfaConfig } from '../config/mfa.config';
@@ -239,14 +238,25 @@ export class MfaService {
   }
 
   /**
-   * Genera N backup codes de un solo uso. Usa `nanoid(10)` y
-   * reemplaza guiones/guiones bajos para evitar caracteres
-   * ambiguos.
+   * Genera N backup codes de un solo uso. Cada codigo tiene 10
+   * caracteres del alfabeto `A-Z0-9` (sin guiones ni caracteres
+   * ambiguos), derivado de `randomBytes` (el repo compila a CJS y
+   * `nanoid@5` es ESM-only, lo que rompia Jest).
    * @param count - Cantidad a generar.
    */
   private generateBackupCodes(count: number): string[] {
-    return Array.from({ length: count }, () =>
-      nanoid(10).replace(/[-_]/g, 'x').toUpperCase(),
+    return Array.from({ length: count }, () => this.randomBackupCode());
+  }
+
+  /**
+   * Genera un codigo de 10 caracteres `A-Z0-9` a partir de bytes
+   * criptograficamente aleatorios.
+   */
+  private randomBackupCode(): string {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    const bytes = randomBytes(10);
+    return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join(
+      '',
     );
   }
 
