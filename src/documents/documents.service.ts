@@ -8,15 +8,22 @@
  * @author Equipo de desarrollo Mis Vales
  */
 
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { createHash, randomUUID } from 'crypto';
 import { StorageService } from '../storage/storage.service';
 import { DocumentRepository } from '../database/repositories/document.repository';
+import type { DocumentEntity } from '../database/schema';
 
 export const DOCUMENTS_ERROR_CODES = {
   FILE_REQUIRED: 'DOCUMENT.FILE_REQUIRED',
   UNSUPPORTED_MIME: 'DOCUMENT.UNSUPPORTED_MIME_TYPE',
   TOO_LARGE: 'DOCUMENT.FILE_TOO_LARGE',
+  NOT_FOUND: 'DOCUMENT.NOT_FOUND',
 } as const;
 
 interface UploadResult {
@@ -91,19 +98,43 @@ export class DocumentsService {
       `document upload: id=${created.id} type=${safeType} key=${path} sha256=${sha256.slice(0, 12)}`,
     );
 
-    const createdAt = created.createdAt;
+    return this.toResult(created, publicUrl);
+  }
+
+  /**
+   * Obtiene un documento activo por UUID y firma una URL de descarga
+   * temporal para su `publicUrl`.
+   *
+   * @throws NotFoundException `DOCUMENT.NOT_FOUND` si no existe o fue
+   *   eliminado logicamente.
+   */
+  async findById(id: string): Promise<UploadResult> {
+    const row = await this.documentRepo.findById(id);
+    if (!row) {
+      throw new NotFoundException({
+        code: DOCUMENTS_ERROR_CODES.NOT_FOUND,
+        message: 'Documento no encontrado o eliminado.',
+      });
+    }
+    const publicUrl = await this.storageService.getSignedUrl(row.storagePath);
+    this.logger.log(`document get: id=${row.id} key=${row.storagePath}`);
+    return this.toResult(row, publicUrl);
+  }
+
+  private toResult(row: DocumentEntity, publicUrl: string): UploadResult {
+    const createdAt = row.createdAt;
     return {
-      id: created.id,
-      documentType: created.documentType,
-      fileName: created.fileName,
-      storagePath: created.storagePath,
+      id: row.id,
+      documentType: row.documentType,
+      fileName: row.fileName,
+      storagePath: row.storagePath,
       publicUrl,
-      mimeType: created.mimeType,
-      sizeBytes: created.sizeBytes,
-      sha256Hash: created.sha256Hash,
-      uploadedBy: created.uploadedBy,
-      metadata: created.metadata,
-      isActive: created.isActive,
+      mimeType: row.mimeType,
+      sizeBytes: row.sizeBytes,
+      sha256Hash: row.sha256Hash,
+      uploadedBy: row.uploadedBy,
+      metadata: row.metadata,
+      isActive: row.isActive,
       createdAt: createdAt.toISOString(),
     };
   }
