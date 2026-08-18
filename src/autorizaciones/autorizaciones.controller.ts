@@ -151,7 +151,7 @@ export class AutorizacionesController {
    */
   @Post(':id/aceptar-destino')
   @HttpCode(HttpStatus.OK)
-  @RequirePermissions('autorizacion.approve')
+  @RequirePermissions('autorization.approve')
   @ApiOperation({
     summary: 'Distribuidora destino acepta la transferencia',
     description:
