@@ -127,8 +127,11 @@ export const buildS3Client = (config: ConfigService): S3Client => {
   const region = config.get<string>('STORAGE_REGION') ?? 'us-east-1';
   const accessKeyId = config.get<string>('STORAGE_ACCESS_KEY_ID');
   const secretAccessKey = config.get<string>('STORAGE_SECRET_ACCESS_KEY');
+  const rawForcePathStyle = config.get<boolean | string>(
+    'STORAGE_FORCE_PATH_STYLE',
+  );
   const forcePathStyle =
-    config.get<string>('STORAGE_FORCE_PATH_STYLE') === 'true';
+    rawForcePathStyle === true || rawForcePathStyle === 'true';
   if (!endpoint || !accessKeyId || !secretAccessKey) {
     throw new Error(
       'STORAGE env: endpoint, accessKeyId, secretAccessKey son requeridas',
