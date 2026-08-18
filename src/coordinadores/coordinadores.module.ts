@@ -21,10 +21,13 @@ import { CoordinadoresService } from './coordinadores.service';
 import { DistribuidoresModule } from '../distribuidores/distribuidores.module';
 
 @Module({
-  imports: [AuthModule, DatabaseModule, UserCreationModule, DistribuidoresModule],
-  controllers: [CoordinadoresController],
-  providers: [
-    CoordinadoresService,
+  imports: [
+    AuthModule,
+    DatabaseModule,
+    UserCreationModule,
+    DistribuidoresModule,
   ],
+  controllers: [CoordinadoresController],
+  providers: [CoordinadoresService],
 })
 export class CoordinadoresModule {}
