@@ -53,6 +53,15 @@ export class AuthorizationResponseDto {
   })
   affectedEntity!: Record<string, unknown>;
 
+  /** Nombres resueltos de las entidades afectadas (opcional). */
+  @ApiPropertyOptional({
+    description:
+      'Nombres resueltos de las entidades involucradas (ej. nombre del cliente, ' +
+      'nombre de la distribuidora origen/destino).',
+    example: { clientName: 'Juan Perez', fromDistributorName: 'Maria Lopez' },
+  })
+  resolvedNames?: Record<string, string>;
+
   /** Justificacion/motivo de la solicitud. */
   @ApiProperty({
     description: 'Justificacion o motivo de la solicitud.',
