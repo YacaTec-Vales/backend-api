@@ -1,6 +1,7 @@
 import {
   Controller,
   Post,
+  Get,
   UseInterceptors,
   UploadedFile,
   Body,
@@ -18,6 +19,8 @@ import {
 } from '@nestjs/swagger';
 import { ConciliacionService } from './services/conciliacion.service';
 import { ManualReconciliationDto } from './dto/manual-reconciliation.dto';
+import { ReconciliationBatchResponseDto } from './dto/reconciliation-batch-response.dto';
+import { BankMovementResponseDto } from './dto/bank-movement-response.dto';
 import { Roles } from '../shared/decorators/roles.decorator';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
@@ -96,5 +99,37 @@ export class ConciliacionesController {
       dto.authorizationId,
       user.id,
     );
+  }
+
+  @Get('batches')
+  @RequirePermissions('reconciliation.read')
+  @ApiOperation({
+    summary: 'Historial de cargas de conciliación',
+    description:
+      'Devuelve el historial de archivos Excel subidos para conciliación automática.',
+  })
+  @ApiEnvelopeOkResponse({
+    message: 'Historial de cargas consultado correctamente',
+    type: ReconciliationBatchResponseDto,
+    isArray: true,
+  })
+  async getBatches(): Promise<ReconciliationBatchResponseDto[]> {
+    return this.conciliacionService.getBatches();
+  }
+
+  @Get('bank-movements/unmatched')
+  @RequirePermissions('reconciliation.read')
+  @ApiOperation({
+    summary: 'Movimientos bancarios huérfanos',
+    description:
+      'Devuelve la lista de movimientos bancarios pendientes de conciliar (huérfanos).',
+  })
+  @ApiEnvelopeOkResponse({
+    message: 'Movimientos bancarios huérfanos consultados correctamente',
+    type: BankMovementResponseDto,
+    isArray: true,
+  })
+  async getUnmatchedBankMovements(): Promise<BankMovementResponseDto[]> {
+    return this.conciliacionService.getUnmatchedBankMovements();
   }
 }

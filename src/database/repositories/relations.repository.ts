@@ -18,7 +18,7 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql, inArray } from 'drizzle-orm';
 import {
   DRIZZLE_WRITE,
   DRIZZLE_READ,
@@ -106,6 +106,56 @@ export class RelationsRepository {
       .select()
       .from(relations)
       .where(isNull(relations.deletedAt))
+      .orderBy(desc(relations.cutDate))
+      .limit(limit);
+  }
+
+  async listPendingByDistributor(
+    distributorId: string,
+    limit = 50,
+  ): Promise<RelationEntity[]> {
+    return this.readDb
+      .select()
+      .from(relations)
+      .where(
+        and(
+          eq(relations.distributorId, distributorId),
+          isNull(relations.deletedAt),
+          inArray(relations.reconciliationStatus, ['PENDIENTE', 'PARCIAL']),
+        ),
+      )
+      .orderBy(desc(relations.cutDate))
+      .limit(limit);
+  }
+
+  async listPendingByBranch(
+    branchId: string,
+    limit = 100,
+  ): Promise<RelationEntity[]> {
+    return this.readDb
+      .select()
+      .from(relations)
+      .where(
+        and(
+          sql`${relations.distributorId} IN (SELECT id FROM app.distributor WHERE branch_id = ${branchId})`,
+          isNull(relations.deletedAt),
+          inArray(relations.reconciliationStatus, ['PENDIENTE', 'PARCIAL']),
+        ),
+      )
+      .orderBy(desc(relations.cutDate))
+      .limit(limit);
+  }
+
+  async listPendingAll(limit = 200): Promise<RelationEntity[]> {
+    return this.readDb
+      .select()
+      .from(relations)
+      .where(
+        and(
+          isNull(relations.deletedAt),
+          inArray(relations.reconciliationStatus, ['PENDIENTE', 'PARCIAL']),
+        ),
+      )
       .orderBy(desc(relations.cutDate))
       .limit(limit);
   }

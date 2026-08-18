@@ -119,6 +119,46 @@ export class RelationsService {
   }
 
   /**
+   * Lista las relaciones pendientes o parciales visibles para el actor.
+   */
+  async listPendingRelations(
+    actor: RequestUser,
+  ): Promise<RelationResponseDto[]> {
+    if (actor.role === 'DISTRIBUIDOR') {
+      const distributor = await this.distributorRepo.findByUserId(actor.id);
+      if (!distributor) {
+        throw new NotFoundException({
+          code: RELATION_ERROR_CODES.NOT_FOUND,
+          message: 'el usuario autenticado no tiene una distribuidora asociada',
+        });
+      }
+      const rows = await this.relationsRepo.listPendingByDistributor(
+        distributor.id,
+      );
+      return rows.map((r) => this.toDto(r));
+    }
+    if (actor.role === 'GERENTE_GENERAL') {
+      const rows = await this.relationsRepo.listPendingAll();
+      return rows.map((r) => this.toDto(r));
+    }
+    if (actor.role === 'GERENTE_SUCURSAL' || actor.role === 'CAJERO') {
+      if (!actor.branchId) {
+        throw new ForbiddenException({
+          code: 'AUTH.PERMISSION_DENIED',
+          message: 'el usuario no tiene branch',
+        });
+      }
+      const rows = await this.relationsRepo.listPendingByBranch(actor.branchId);
+      return rows.map((r) => this.toDto(r));
+    }
+    throw new ForbiddenException({
+      code: RELATION_ERROR_CODES.NOT_A_DISTRIBUTOR,
+      message:
+        'este endpoint solo aplica a roles con branch, Distribuidor o Gerentes',
+    });
+  }
+
+  /**
    * Detalle de una relacion. Scope:
    *  - DISTRIBUIDOR: solo las suyas.
    *  - GERENTE_SUCURSAL: solo de su branch.

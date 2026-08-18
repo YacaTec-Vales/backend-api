@@ -8,7 +8,7 @@ import {
   reconciliations,
   relations,
 } from '../../database/schema';
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql, isNull, desc } from 'drizzle-orm';
 
 @Injectable()
 export class ConciliacionService {
@@ -223,5 +223,26 @@ export class ConciliacionService {
         `Conciliación manual ejecutada. Movimiento: ${bankMovementId}, Relación: ${relationId}`,
       );
     });
+  }
+
+  /**
+   * Obtiene el historial de cargas (lotes de conciliación).
+   */
+  async getBatches() {
+    return this.db
+      .select()
+      .from(reconciliationBatches)
+      .orderBy(desc(reconciliationBatches.uploadedAt));
+  }
+
+  /**
+   * Obtiene los movimientos bancarios huérfanos (sin conciliación).
+   */
+  async getUnmatchedBankMovements() {
+    return this.db
+      .select()
+      .from(bankMovements)
+      .where(isNull(bankMovements.reconciliationId))
+      .orderBy(desc(bankMovements.createdAt));
   }
 }
