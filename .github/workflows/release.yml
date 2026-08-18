@@ -18,6 +18,8 @@ jobs:
   build-and-release:
     runs-on: ubuntu-latest
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    outputs:
+      tag: ${{ steps.resolve-tag.outputs.tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -41,12 +43,15 @@ jobs:
         run: npm ci --omit=dev
 
       - name: Obtener version de la release generada por semantic-release
+        id: resolve-tag
         run: |
           TAG="$(git describe --tags --abbrev=0 2>/dev/null || true)"
           if [[ -z "${TAG}" ]]; then
             TAG="${WORKFLOW_BRANCH#release/}"
           fi
           echo "tag=${TAG}" >> "$GITHUB_ENV"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}"
         env:
           WORKFLOW_BRANCH: ${{ github.event.workflow_run.head_branch }}
 
@@ -62,3 +67,52 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload "${tag}" "/tmp/release/${asset}" --clobber
+
+  update-infra-version:
+    name: Actualizar version en infrastructure
+    runs-on: ubuntu-latest
+    needs: build-and-release
+    if: ${{ always() && needs.build-and-release.result == 'success' }}
+    steps:
+      - name: Checkout infrastructure (develop)
+        uses: actions/checkout@v4
+        with:
+          repository: YacaTec-Vales/infrastructure
+          ref: develop
+          token: ${{ secrets.GH_TOKEN }}
+
+      - name: Actualizar versions/staging.yaml
+        id: update-version
+        env:
+          TAG: ${{ needs.build-and-release.outputs.tag }}
+        run: |
+          if [[ -z "${TAG}" ]]; then
+            echo "::error::No se pudo resolver el tag de la release"
+            exit 1
+          fi
+          sed -i -E "s|^backend-api:[[:space:]]+.*|backend-api:      \"${TAG}\"|" versions/staging.yaml
+          echo "Actualizada version de backend-api a ${TAG}"
+          grep '^backend-api:' versions/staging.yaml
+
+      - name: Crear PR a infrastructure con la version
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          TAG: ${{ needs.build-and-release.outputs.tag }}
+        run: |
+          if git diff --quiet -- versions/staging.yaml; then
+            echo "versions/staging.yaml ya tiene la version ${TAG}; no se crea PR"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          BRANCH="chore/backend-api-${TAG#v}"
+          git switch -c "${BRANCH}"
+          git add versions/staging.yaml
+          git commit -m "chore(release): fijar version de backend-api a ${TAG} en staging"
+          git push -u origin "${BRANCH}"
+          gh pr create \
+            --repo YacaTec-Vales/infrastructure \
+            --base develop \
+            --head "${BRANCH}" \
+            --title "chore(release): backend-api ${TAG}" \
+            --body "Version RC generada por \`backend-api\` (release/v*). Actualiza \`versions/staging.yaml\`."
