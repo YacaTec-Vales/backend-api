@@ -64,7 +64,7 @@ import type { RequestUser } from '../shared/guards/auth.guards';
 @Controller('autorizaciones')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class AutorizacionesController {
-  constructor(private readonly service: AutorizacionesService) {}
+  constructor(private readonly service: AutorizacionesService) { }
 
   // =========================================================================
   // Lectura
@@ -151,7 +151,7 @@ export class AutorizacionesController {
    */
   @Post(':id/aceptar-destino')
   @HttpCode(HttpStatus.OK)
-  @RequirePermissions('autorizacion.approve')
+  @RequirePermissions('autorization.approve')
   @ApiOperation({
     summary: 'Distribuidora destino acepta la transferencia',
     description:
