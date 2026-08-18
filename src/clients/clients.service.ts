@@ -38,6 +38,7 @@ import {
 } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { ClientRepository } from '../database/repositories/client.repository';
+import { VoucherRepository } from '../database/repositories/voucher.repository';
 import { DRIZZLE_READ, type DrizzleRead } from '../database/drizzle.provider';
 import { distributors, branches } from '../database/schema';
 import type { RequestUser } from '../shared/guards/auth.guards';
@@ -45,7 +46,7 @@ import type { CreateClientDto } from './dto/create-client.dto';
 import type { ClientResponseDto } from './dto/client-response.dto';
 import type { PaginatedClientsResponseDto } from './dto/client-response.dto';
 import type { ListClientsQueryDto } from './dto/list-clients-query.dto';
-import { toClientResponseDto } from '../shared/mappers';
+import { toClientResponseDto, toVoucherResponseDto } from '../shared/mappers';
 /**
  * Servicio principal del modulo clients.
  *
@@ -59,6 +60,7 @@ export class ClientsService {
 
   constructor(
     private readonly clientRepo: ClientRepository,
+    private readonly voucherRepo: VoucherRepository,
     @Inject(DRIZZLE_READ) private readonly readDb: DrizzleRead,
   ) {}
 
@@ -311,49 +313,52 @@ export class ClientsService {
       });
     }
 
-    if (actor.role === 'GERENTE_GENERAL' || actor.role === 'ADMINISTRADOR') {
-      return toClientResponseDto(client);
-    }
-
-    if (!client.currentDistributorId) {
-      throw new ForbiddenException({
-        code: 'AUTH.PERMISSION_DENIED',
-        message: 'El cliente no tiene una distribuidora asignada.',
-      });
-    }
-
-    const [distributorRow] = await this.readDb
-      .select({
-        userId: distributors.userId,
-        branchId: distributors.branchId,
-      })
-      .from(distributors)
-      .where(eq(distributors.id, client.currentDistributorId))
-      .limit(1);
-
-    if (!distributorRow) {
-      throw new ForbiddenException({
-        code: 'AUTH.PERMISSION_DENIED',
-        message: 'No se pudo validar el scope (distribuidora no encontrada).',
-      });
-    }
-
-    if (actor.role === 'DISTRIBUIDOR') {
-      if (distributorRow.userId !== actor.id) {
+    // Validación de scope
+    if (actor.role !== 'GERENTE_GENERAL' && actor.role !== 'ADMINISTRADOR') {
+      if (!client.currentDistributorId) {
         throw new ForbiddenException({
           code: 'AUTH.PERMISSION_DENIED',
-          message: 'Solo puedes consultar clientes de tu distribuidora.',
+          message: 'El cliente no tiene una distribuidora asignada.',
         });
       }
-    } else {
-      if (!actor.branchId || distributorRow.branchId !== actor.branchId) {
+
+      const [distributorRow] = await this.readDb
+        .select({
+          userId: distributors.userId,
+          branchId: distributors.branchId,
+        })
+        .from(distributors)
+        .where(eq(distributors.id, client.currentDistributorId))
+        .limit(1);
+
+      if (!distributorRow) {
         throw new ForbiddenException({
           code: 'AUTH.PERMISSION_DENIED',
-          message: 'El cliente pertenece a otra sucursal.',
+          message: 'No se pudo validar el scope (distribuidora no encontrada).',
         });
+      }
+
+      if (actor.role === 'DISTRIBUIDOR') {
+        if (distributorRow.userId !== actor.id) {
+          throw new ForbiddenException({
+            code: 'AUTH.PERMISSION_DENIED',
+            message: 'Solo puedes consultar clientes de tu distribuidora.',
+          });
+        }
+      } else {
+        if (!actor.branchId || distributorRow.branchId !== actor.branchId) {
+          throw new ForbiddenException({
+            code: 'AUTH.PERMISSION_DENIED',
+            message: 'El cliente pertenece a otra sucursal.',
+          });
+        }
       }
     }
 
-    return toClientResponseDto(client);
+    const response = toClientResponseDto(client);
+    const vouchers = await this.voucherRepo.list({ clientId: id });
+    response.vouchers = vouchers.map(toVoucherResponseDto);
+
+    return response;
   }
 }

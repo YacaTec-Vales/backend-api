@@ -18,6 +18,7 @@
  */
 
 import { ApiProperty, ApiPropertyOptional, ApiSchema } from '@nestjs/swagger';
+import { VoucherResponseDto } from '../../vouchers/dto/voucher-response.dto';
 
 @ApiSchema({ name: 'ClientResponse' })
 export class ClientResponseDto {
@@ -124,6 +125,12 @@ export class ClientResponseDto {
     example: '2026-08-03T18:30:00.000Z',
   })
   updatedAt!: string;
+
+  @ApiPropertyOptional({
+    description: 'Historial de vales del cliente.',
+    type: [VoucherResponseDto],
+  })
+  vouchers?: VoucherResponseDto[];
 }
 
 /**
