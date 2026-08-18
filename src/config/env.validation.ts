@@ -124,6 +124,9 @@ export const envValidationSchema = Joi.object({
   STORAGE_SECRET_ACCESS_KEY: Joi.string().required(),
   STORAGE_FORCE_PATH_STYLE: Joi.boolean().default(true),
   STORAGE_PUBLIC_BASE_URL: Joi.string().uri().required(),
+  // Endpoint que el navegador si puede alcanzar (MinIO dev en localhost,
+  // Spaces prod). Se usa solo para firmar URLs; si falta cae a STORAGE_ENDPOINT.
+  STORAGE_PUBLIC_ENDPOINT: Joi.string().uri().optional(),
   // Limite de tamano para uploads del cajero (en bytes). 10 MB default.
   STORAGE_MAX_UPLOAD_BYTES: Joi.number().integer().positive().default(10485760),
   // Mime types permitidos (separados por coma). Default: imagenes y PDF.

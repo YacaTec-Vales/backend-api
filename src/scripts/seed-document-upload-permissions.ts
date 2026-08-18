@@ -13,6 +13,7 @@
  *  - `document.upload` -> GERENTE_GENERAL, GERENTE_SUCURSAL,
  *    COORDINADOR, VERIFICADOR, DISTRIBUIDOR y CAJERO (los roles
  *    que suben archivos al storage en sus flujos).
+ *  - `document.read` -> los mismos roles (consulta GET /uploads/:id).
  *
  * Uso:
  *   $ npm run seed:document-upload-permissions
@@ -56,6 +57,22 @@ const SEED_PERMISSIONS: PermissionSeed[] = [
     name: 'Subir documento al storage',
     description:
       'Subir archivos (INE, comprobante de domicilio, fotos de verificacion) via POST /uploads.',
+    roles: [
+      'GERENTE_GENERAL',
+      'GERENTE_SUCURSAL',
+      'COORDINADOR',
+      'VERIFICADOR',
+      'DISTRIBUIDOR',
+      'CAJERO',
+    ],
+  },
+  {
+    code: 'document.read',
+    module: 'document',
+    action: 'read',
+    name: 'Leer documento del storage',
+    description:
+      'Consultar metadata y URL firmada de un documento via GET /uploads/:id.',
     roles: [
       'GERENTE_GENERAL',
       'GERENTE_SUCURSAL',

@@ -18,6 +18,9 @@
  *  - STORAGE_SECRET_ACCESS_KEY
  *  - STORAGE_FORCE_PATH_STYLE (default true para MinIO, false para DO Spaces)
  *  - STORAGE_PUBLIC_BASE_URL (uri base para construir URL publica)
+ *  - STORAGE_PUBLIC_ENDPOINT (uri que firma las URLs de descarga; si falta
+ *    cae a STORAGE_ENDPOINT). En dev apunta a MinIO vía localhost (host que
+ *    el navegador si resuelve); en prod al endpoint publico de Spaces.
  *  - STORAGE_MAX_UPLOAD_BYTES (default 10MB)
  *  - STORAGE_ALLOWED_MIME_TYPES (csv, default image/jpeg,image/png,image/webp,application/pdf)
  *
@@ -32,8 +35,14 @@ import {
   PutObjectCommand,
   GetObjectCommand,
 } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 export const STORAGE_CLIENT = Symbol('STORAGE_CLIENT');
+
+/**
+ * Duracion por defecto de las URLs firmadas (en segundos).
+ */
+export const DEFAULT_SIGNED_URL_TTL = 900;
 
 @Injectable()
 export class StorageService {
@@ -42,6 +51,7 @@ export class StorageService {
   private readonly publicBaseUrl: string;
   private readonly maxUploadBytes: number;
   private readonly allowedMimeTypes: Set<string>;
+  private readonly presigner: S3Client;
 
   constructor(
     @Inject(STORAGE_CLIENT) private readonly s3: S3Client,
@@ -60,6 +70,10 @@ export class StorageService {
         .map((x: string) => x.trim())
         .filter(Boolean),
     );
+    const publicEndpoint =
+      config.get<string>('STORAGE_PUBLIC_ENDPOINT') ??
+      config.get<string>('STORAGE_ENDPOINT');
+    this.presigner = buildS3Client(config, publicEndpoint);
   }
 
   async upload(
@@ -89,7 +103,7 @@ export class StorageService {
       Metadata: opts.metadata,
     });
     await this.s3.send(command);
-    const publicUrl = this.publicUrlFor(opts.key);
+    const publicUrl = await this.getSignedUrl(opts.key);
     this.logger.log(
       `upload OK: bucket=${this.bucket} key=${opts.key} size=${buffer.length}`,
     );
@@ -99,6 +113,24 @@ export class StorageService {
   publicUrlFor(key: string): string {
     const base = this.publicBaseUrl.replace(/\/$/, '');
     return `${base}/${key}`;
+  }
+
+  /**
+   * Genera una URL firmada (SigV4) para descargar el objeto `key`.
+   *
+   * La firma se calcula contra `STORAGE_PUBLIC_ENDPOINT` (o `STORAGE_ENDPOINT`
+   * como fallback), de forma que el host de la URL sea alcanzable desde el
+   * navegador: MinIO dev via `localhost`/IP LAN, y DO Spaces prod via su
+   * endpoint publico. Es computo local, no se hace ninguna peticion de red.
+   */
+  async getSignedUrl(
+    key: string,
+    expiresInSeconds = DEFAULT_SIGNED_URL_TTL,
+  ): Promise<string> {
+    const command = new GetObjectCommand({ Bucket: this.bucket, Key: key });
+    return getSignedUrl(this.presigner, command, {
+      expiresIn: expiresInSeconds,
+    });
   }
 
   async exists(key: string): Promise<boolean> {
@@ -121,9 +153,16 @@ export class StorageService {
 
 /**
  * Factory que construye un S3Client a partir de la config.
+ *
+ * `endpointOverride` permite firmar contra un endpoint distinto del que usa el
+ * backend para operar (p. ej. MinIO vía `localhost` para que el navegador lo
+ * alcance). Si no se pasa, usa `STORAGE_ENDPOINT`.
  */
-export const buildS3Client = (config: ConfigService): S3Client => {
-  const endpoint = config.get<string>('STORAGE_ENDPOINT');
+export const buildS3Client = (
+  config: ConfigService,
+  endpointOverride?: string,
+): S3Client => {
+  const endpoint = endpointOverride ?? config.get<string>('STORAGE_ENDPOINT');
   const region = config.get<string>('STORAGE_REGION') ?? 'us-east-1';
   const accessKeyId = config.get<string>('STORAGE_ACCESS_KEY_ID');
   const secretAccessKey = config.get<string>('STORAGE_SECRET_ACCESS_KEY');
