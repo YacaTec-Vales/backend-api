@@ -117,7 +117,9 @@ export class AuthorizationRepository {
    * @param distributorId - UUID de la distribuidora
    * @returns Arreglo de autorizaciones (todos los estados).
    */
-  async listByDistributor(distributorId: string): Promise<AuthorizationEntity[]> {
+  async listByDistributor(
+    distributorId: string,
+  ): Promise<AuthorizationEntity[]> {
     return this.readDb
       .select()
       .from(authorizations)
@@ -126,8 +128,8 @@ export class AuthorizationRepository {
           isNull(authorizations.deletedAt),
           sql`(${authorizations.affectedEntity}->>'fromDistributorId' = ${distributorId} 
              OR ${authorizations.affectedEntity}->>'toDistributorId' = ${distributorId} 
-             OR ${authorizations.affectedEntity}->>'distributorId' = ${distributorId})`
-        )
+             OR ${authorizations.affectedEntity}->>'distributorId' = ${distributorId})`,
+        ),
       )
       .orderBy(sql`${authorizations.createdAt} DESC`);
   }

@@ -149,7 +149,8 @@ export class AutorizacionesService {
       } else {
         throw new ForbiddenException({
           code: 'AUTH.ROLE_NOT_ALLOWED',
-          message: 'rol no autorizado para ver autorizaciones de distribuidoras',
+          message:
+            'rol no autorizado para ver autorizaciones de distribuidoras',
         });
       }
     }
