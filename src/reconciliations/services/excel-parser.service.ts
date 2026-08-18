@@ -26,7 +26,6 @@ export class ExcelParserService {
     // cellDates: true permite que xlsx convierta números seriales de fecha a objetos Date automáticamente
     const workbook = xlsx.read(fileBuffer, { type: 'buffer', cellDates: true });
 
-
     const sheetName = 'Hoja1';
     const sheet = workbook.Sheets[sheetName];
 
@@ -94,7 +93,6 @@ export class ExcelParserService {
    */
   private normalizeDate(val: unknown): string {
     if (!val) return '';
-
 
     if (val instanceof Date) {
       // Formatear el JS Date a YYYY-MM-DD
