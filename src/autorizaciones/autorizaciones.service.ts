@@ -86,7 +86,7 @@ export class AutorizacionesService {
     private readonly distributorRepo: DistributorRepository,
     private readonly userRepo: UserRepository,
     @Inject(DRIZZLE_WRITE) private readonly writeDb: DrizzleWrite,
-  ) { }
+  ) {}
 
   /**
    * Lista autorizaciones pendientes visibles para el actor.
@@ -336,8 +336,8 @@ export class AutorizacionesService {
 
     this.logger.log(
       `transfer approved: auth=${auth.id} client=${entity.clientId} ` +
-      `from=${entity.fromDistributorId} to=${entity.toDistributorId} ` +
-      `actor=${actor.id}`,
+        `from=${entity.fromDistributorId} to=${entity.toDistributorId} ` +
+        `actor=${actor.id}`,
     );
 
     // Leer el registro actualizado.
@@ -426,7 +426,8 @@ export class AutorizacionesService {
   private async toResponseDtoAsync(
     auth: AuthorizationEntity,
   ): Promise<AuthorizationResponseDto> {
-    const affectedEntity = (auth.affectedEntity as Record<string, unknown>) ?? {};
+    const affectedEntity =
+      (auth.affectedEntity as Record<string, unknown>) ?? {};
     const resolvedNames: Record<string, string> = {};
 
     if (auth.authorizationType === 'TRANSFERENCIA_DISTRIBUIDOR') {
@@ -435,26 +436,33 @@ export class AutorizacionesService {
       if (entity.clientId) {
         const client = await this.clientRepo.findById(entity.clientId);
         if (client) {
-          resolvedNames.clientName = `${client.firstName} ${client.lastNamePaternal} ${client.lastNameMaternal}`.trim();
+          resolvedNames.clientName =
+            `${client.firstName} ${client.lastNamePaternal} ${client.lastNameMaternal}`.trim();
         }
       }
 
       if (entity.fromDistributorId) {
-        const fromDist = await this.distributorRepo.findById(entity.fromDistributorId);
+        const fromDist = await this.distributorRepo.findById(
+          entity.fromDistributorId,
+        );
         if (fromDist) {
           const user = await this.userRepo.findById(fromDist.userId);
           if (user) {
-            resolvedNames.fromDistributorName = `${user.firstName} ${user.lastNamePaternal} ${user.lastNameMaternal}`.trim();
+            resolvedNames.fromDistributorName =
+              `${user.firstName} ${user.lastNamePaternal} ${user.lastNameMaternal}`.trim();
           }
         }
       }
 
       if (entity.toDistributorId) {
-        const toDist = await this.distributorRepo.findById(entity.toDistributorId);
+        const toDist = await this.distributorRepo.findById(
+          entity.toDistributorId,
+        );
         if (toDist) {
           const user = await this.userRepo.findById(toDist.userId);
           if (user) {
-            resolvedNames.toDistributorName = `${user.firstName} ${user.lastNamePaternal} ${user.lastNameMaternal}`.trim();
+            resolvedNames.toDistributorName =
+              `${user.firstName} ${user.lastNamePaternal} ${user.lastNameMaternal}`.trim();
           }
         }
       }
@@ -466,7 +474,8 @@ export class AutorizacionesService {
       requesterId: auth.requesterId,
       authorizerId: auth.authorizerId ?? null,
       affectedEntity,
-      resolvedNames: Object.keys(resolvedNames).length > 0 ? resolvedNames : undefined,
+      resolvedNames:
+        Object.keys(resolvedNames).length > 0 ? resolvedNames : undefined,
       justification: auth.justification,
       status: auth.status,
       decisionNotes: auth.decisionNotes ?? null,
