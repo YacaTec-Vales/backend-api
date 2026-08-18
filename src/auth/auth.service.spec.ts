@@ -205,9 +205,15 @@ describe('AuthService', () => {
         baseContext,
       );
 
-      expect((result as { accessToken: string }).accessToken).toBe('access.jwt');
-      expect((result as { refreshToken: string }).refreshToken).toBe('refresh-token');
-      expect((result as { user: { email: string } }).user.email).toBe('ana@yacatec.demo');
+      expect((result as { accessToken: string }).accessToken).toBe(
+        'access.jwt',
+      );
+      expect((result as { refreshToken: string }).refreshToken).toBe(
+        'refresh-token',
+      );
+      expect((result as { user: { email: string } }).user.email).toBe(
+        'ana@yacatec.demo',
+      );
       expect(userRepo.recordSuccessfulLogin).toHaveBeenCalledWith('user-1');
       expect(tokenService.signAccessToken).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -283,7 +289,9 @@ describe('AuthService', () => {
         false,
         pochContext,
       );
-      expect((result as { accessToken: string }).accessToken).toBe('access.jwt');
+      expect((result as { accessToken: string }).accessToken).toBe(
+        'access.jwt',
+      );
       expect(tokenService.signAccessToken).toHaveBeenCalledWith(
         expect.objectContaining({ role: 'DISTRIBUIDOR' }),
       );
@@ -328,7 +336,9 @@ describe('AuthService', () => {
         false,
         calipxContext,
       );
-      expect((result as { accessToken: string }).accessToken).toBe('access.jwt');
+      expect((result as { accessToken: string }).accessToken).toBe(
+        'access.jwt',
+      );
     });
   });
 

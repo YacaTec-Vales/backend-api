@@ -40,7 +40,11 @@ const mfaConfigProvider: Provider = {
  * `AuthService` pueda requerirlo para el flujo de login MFA.
  */
 @Module({
-  imports: [DatabaseModule, forwardRef(() => AuthModule), ConfigModule.forFeature(mfaConfig)],
+  imports: [
+    DatabaseModule,
+    forwardRef(() => AuthModule),
+    ConfigModule.forFeature(mfaConfig),
+  ],
   controllers: [MfaController],
   providers: [mfaConfigProvider, MfaService],
   exports: [MfaService, MFA_CONFIG],

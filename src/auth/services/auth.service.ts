@@ -65,7 +65,9 @@ export class AuthService {
     private readonly sessionService: SessionService,
     private readonly permissionCache: PermissionCacheService,
     private readonly configService: ConfigService,
-    @Optional() @Inject(MfaService) private readonly mfaService: MfaService | null,
+    @Optional()
+    @Inject(MfaService)
+    private readonly mfaService: MfaService | null,
   ) {}
 
   /**

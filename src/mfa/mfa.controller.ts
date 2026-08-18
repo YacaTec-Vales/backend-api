@@ -140,7 +140,9 @@ export class MfaController {
   ): Promise<void> {
     const result = await this.mfaService.verify(user.id, dto.code);
     if (!result.valid) {
-      this.logger.warn(`MFA disable rechazado para usuario ${user.id}: codigo invalido`);
+      this.logger.warn(
+        `MFA disable rechazado para usuario ${user.id}: codigo invalido`,
+      );
       throw new UnauthorizedException({
         code: 'AUTH.MFA_INVALID_CODE',
         message: 'el código MFA proporcionado es inválido',
@@ -165,7 +167,9 @@ export class MfaController {
     format: 'uuid',
     description: 'UUID del usuario al que se le desactivara MFA.',
   })
-  @ApiNoContentResponse({ description: 'MFA desactivado correctamente para el usuario' })
+  @ApiNoContentResponse({
+    description: 'MFA desactivado correctamente para el usuario',
+  })
   @ApiForbiddenResponse({
     description: 'AUTH.PERMISSION_DENIED — no tiene permiso mfa.admin_disable.',
     type: ErrorResponseDto,
@@ -179,6 +183,8 @@ export class MfaController {
       `Admin ${admin.id} desactivando MFA para usuario ${userId}`,
     );
     await this.mfaService.disable(userId);
-    this.logger.log(`MFA desactivado por admin ${admin.id} para usuario ${userId}`);
+    this.logger.log(
+      `MFA desactivado por admin ${admin.id} para usuario ${userId}`,
+    );
   }
 }

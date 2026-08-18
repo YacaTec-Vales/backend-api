@@ -20,7 +20,8 @@ export class MfaSetupResponseDto {
   /** URI `otpauth://totp/...` lista para generar un QR. */
   @ApiProperty({
     description: 'URI otpauth:// para generar un codigo QR.',
-    example: 'otpauth://totp/vales-yacatec:user-uuid?secret=ABCD&issuer=vales-yacatec',
+    example:
+      'otpauth://totp/vales-yacatec:user-uuid?secret=ABCD&issuer=vales-yacatec',
   })
   otpauthUrl: string;
 

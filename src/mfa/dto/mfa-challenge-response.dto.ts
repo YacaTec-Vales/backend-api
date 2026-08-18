@@ -20,14 +20,16 @@ import { ApiProperty } from '@nestjs/swagger';
 export class MfaChallengeResponseDto {
   /** Siempre `true`. Permite al frontend distinguir del `TokenResponseDto`. */
   @ApiProperty({
-    description: 'Indica que se requiere verificacion MFA para completar el login.',
+    description:
+      'Indica que se requiere verificacion MFA para completar el login.',
     example: true,
   })
   mfaRequired: true;
 
   /** JWT parcial con claim `mfaPending: true`. TTL corto (5 min). */
   @ApiProperty({
-    description: 'JWT parcial con claim mfaPending. Usar en POST /auth/mfa-verify.',
+    description:
+      'JWT parcial con claim mfaPending. Usar en POST /auth/mfa-verify.',
     example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
   })
   mfaToken: string;

@@ -44,7 +44,6 @@ import { LogoutDto } from './dto/logout.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { MfaVerifyDto } from '../mfa/dto/mfa-verify.dto';
 import { AuthUserResponseDto, TokenResponseDto } from './dto/auth-response.dto';
-import { MfaChallengeResponseDto } from '../mfa/dto/mfa-challenge-response.dto';
 import { ApiEnvelopeOkResponse } from '../shared/decorators/api-envelope-response.decorator';
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import { Public } from '../shared/decorators/public.decorator';
