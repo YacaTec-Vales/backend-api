@@ -316,6 +316,7 @@ export class UserRepository {
     id: string;
     tokenVersion: number;
     mustChangePassword: boolean;
+    mfaEnabled: boolean;
     isActive: boolean;
     userStatus: UserStatus;
     deletedAt: Date | null;
@@ -325,6 +326,7 @@ export class UserRepository {
         id: users.id,
         tokenVersion: users.tokenVersion,
         mustChangePassword: users.mustChangePassword,
+        mfaEnabled: users.mfaEnabled,
         isActive: users.isActive,
         userStatus: users.userStatus,
         deletedAt: users.deletedAt,

@@ -62,6 +62,8 @@ import { ReconciliationsModule } from './reconciliations/reconciliations.module'
 import { JwtAuthGuard, RolesGuard } from './shared/guards/auth.guards';
 import { PermissionsGuard } from './shared/guards/permissions.guard';
 import { MustChangePasswordGuard } from './shared/guards/must-change-password.guard';
+import { MfaPendingGuard } from './shared/guards/mfa-pending.guard';
+import { RequireMfaGuard } from './shared/guards/require-mfa.guard';
 
 /**
  * Modulo raiz. Importa config, modulos funcionales y registra
@@ -132,6 +134,8 @@ import { MustChangePasswordGuard } from './shared/guards/must-change-password.gu
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
     { provide: APP_GUARD, useClass: MustChangePasswordGuard },
+    { provide: APP_GUARD, useClass: MfaPendingGuard },
+    { provide: APP_GUARD, useClass: RequireMfaGuard },
   ],
 })
 export class AppModule {}

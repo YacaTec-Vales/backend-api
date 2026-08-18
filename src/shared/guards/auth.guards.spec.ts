@@ -60,6 +60,7 @@ const BASE_AUTH_STATE = {
   deletedAt: null,
   userStatus: 'ACTIVO' as const,
   mustChangePassword: false,
+  mfaEnabled: false,
 };
 
 describe('JwtAuthGuard', () => {

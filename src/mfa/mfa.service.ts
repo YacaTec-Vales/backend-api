@@ -24,7 +24,6 @@ import {
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { authenticator } from 'otplib';
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 import { eq } from 'drizzle-orm';
@@ -35,7 +34,6 @@ import {
   type DrizzleRead,
 } from '../database/drizzle.provider';
 import { mfaCredentials, users } from '../database/schema';
-import { nanoid } from 'nanoid';
 import { PasswordService } from '../auth/services/password.service';
 import { MFA_CONFIG } from '../database/tokens';
 import type { MfaConfig } from '../config/mfa.config';
@@ -73,7 +71,6 @@ export class MfaService {
     @Inject(DRIZZLE_READ) private readonly readDb: DrizzleRead,
     @Inject(MFA_CONFIG) private readonly mfaConfig: MfaConfig,
     private readonly passwordService: PasswordService,
-    private readonly configService: ConfigService,
   ) {
     this.encryptionKey = this.deriveKey();
   }
@@ -241,14 +238,25 @@ export class MfaService {
   }
 
   /**
-   * Genera N backup codes de un solo uso. Usa `nanoid(10)` y
-   * reemplaza guiones/guiones bajos para evitar caracteres
-   * ambiguos.
+   * Genera N backup codes de un solo uso. Cada codigo tiene 10
+   * caracteres del alfabeto `A-Z0-9` (sin guiones ni caracteres
+   * ambiguos), derivado de `randomBytes` (el repo compila a CJS y
+   * `nanoid@5` es ESM-only, lo que rompia Jest).
    * @param count - Cantidad a generar.
    */
   private generateBackupCodes(count: number): string[] {
-    return Array.from({ length: count }, () =>
-      nanoid(10).replace(/[-_]/g, 'x').toUpperCase(),
+    return Array.from({ length: count }, () => this.randomBackupCode());
+  }
+
+  /**
+   * Genera un codigo de 10 caracteres `A-Z0-9` a partir de bytes
+   * criptograficamente aleatorios.
+   */
+  private randomBackupCode(): string {
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    const bytes = randomBytes(10);
+    return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join(
+      '',
     );
   }
 
@@ -288,12 +296,12 @@ export class MfaService {
 
   /**
    * Deriva la clave AES de 32 bytes a partir de `MFA_SECRET_KEY`.
-   * Si el valor es corto, hace padding con espacios. Si esta
+   * Si el valor es corto, hace padding con ceros. Si esta
    * vacio, devuelve un buffer lleno de ceros (modo inseguro;
-   * ver `env.validation.ts` para el minimo).
+   * ver `env.validation.ts` para el minimo de 32 chars).
    */
   private deriveKey(): Buffer {
-    const raw = this.configService.get<string>('mfa.encryptionKey') ?? '';
+    const raw = this.mfaConfig.encryptionKey ?? '';
     if (raw.length >= 32)
       return Buffer.from(raw.padEnd(KEY_LEN).slice(0, KEY_LEN));
     return Buffer.concat([

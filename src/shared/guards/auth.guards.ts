@@ -60,6 +60,8 @@ export interface RequestUser {
   tokenVersion: number;
   sessionId: string;
   mustChangePassword?: boolean;
+  /** Si `true`, el usuario aun no completa la verificacion MFA. */
+  mfaPending?: boolean;
   iat?: number;
   exp?: number;
 }
@@ -160,14 +162,19 @@ export class JwtAuthGuard implements CanActivate {
     // logout, un reuso detectado o un revoke administrativo
     // invalida el access token de inmediato, sin esperar la
     // expiracion natural del JWT (15 min).
-    const sessionActive = await this.refreshTokenRepository.isSessionActive(
-      payload.sessionId,
-    );
-    if (!sessionActive) {
-      throw new UnauthorizedException({
-        code: 'AUTH.SESSION_REVOKED',
-        message: 'La sesion fue revocada.',
-      });
+    // Se omite para tokens MFA parciales (`mfaPending = true`)
+    // porque no tienen sesion real; la sesion se crea al completar
+    // el challenge MFA en `POST /auth/mfa-verify`.
+    if (!payload.mfaPending) {
+      const sessionActive = await this.refreshTokenRepository.isSessionActive(
+        payload.sessionId,
+      );
+      if (!sessionActive) {
+        throw new UnauthorizedException({
+          code: 'AUTH.SESSION_REVOKED',
+          message: 'La sesion fue revocada.',
+        });
+      }
     }
 
     if (
@@ -189,6 +196,7 @@ export class JwtAuthGuard implements CanActivate {
       tokenVersion: payload.tokenVersion,
       sessionId: payload.sessionId,
       mustChangePassword: state.mustChangePassword,
+      mfaPending: payload.mfaPending ?? false,
       iat: payload.iat,
       exp: payload.exp,
     };

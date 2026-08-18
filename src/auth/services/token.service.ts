@@ -93,4 +93,26 @@ export class TokenService {
       ? this.authConfig.jwt.refreshRememberTtlSeconds
       : this.authConfig.jwt.refreshTtlSeconds;
   }
+
+  /**
+   * Firma un JWT de challenge MFA con TTL personalizado.
+   *
+   * A diferencia de `signAccessToken`, este metodo permite un TTL
+   * corto (tipicamente 300s / 5 min) para el token parcial que
+   * contiene `mfaPending: true`. El payload debe incluir ese claim.
+   *
+   * @param payload - Claims a firmar (debe incluir `mfaPending: true`).
+   * @param ttlSeconds - Tiempo de vida en segundos.
+   * @returns JWT firmado.
+   */
+  async signMfaChallengeToken(
+    payload: Omit<JwtPayload, 'iat' | 'exp'>,
+    ttlSeconds: number,
+  ): Promise<string> {
+    return this.jwtService.signAsync(payload, {
+      issuer: this.authConfig.jwt.issuer,
+      audience: this.authConfig.jwt.audience,
+      expiresIn: ttlSeconds,
+    });
+  }
 }

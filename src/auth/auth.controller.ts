@@ -42,12 +42,15 @@ import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { LogoutDto } from './dto/logout.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { MfaVerifyDto } from '../mfa/dto/mfa-verify.dto';
 import { AuthUserResponseDto, TokenResponseDto } from './dto/auth-response.dto';
 import { ApiEnvelopeOkResponse } from '../shared/decorators/api-envelope-response.decorator';
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import { Public } from '../shared/decorators/public.decorator';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
 import { JwtAuthGuard, type RequestUser } from '../shared/guards/auth.guards';
+import { AllowMfaPending } from '../shared/decorators/allow-mfa-pending.decorator';
+import { AllowBeforePasswordChange } from '../shared/decorators/allow-before-password-change.decorator';
 import type { LoginContext, Device } from '../shared/types/auth.types';
 
 /**
@@ -110,6 +113,45 @@ export class AuthController {
       dto.usernameOrEmail,
       dto.password,
       dto.rememberMe ?? false,
+      this.contextFromRequest(req),
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @AllowMfaPending()
+  @AllowBeforePasswordChange()
+  @Post('mfa-verify')
+  @ApiOperation({
+    summary: 'Completar challenge MFA',
+    description:
+      'Completa el segundo factor de autenticacion. Requiere el JWT parcial ' +
+      '(con `mfaPending: true`) emitido por `POST /auth/login` cuando el ' +
+      'usuario tiene MFA habilitado, mas un codigo TOTP de 6 digitos o un ' +
+      'backup code. Devuelve los tokens completos (access + refresh).',
+  })
+  @ApiHeader({
+    name: 'x-client-app',
+    required: false,
+    description: 'Identificador del frontend (`Tecu|Calipx|Poch`).',
+  })
+  @ApiEnvelopeOkResponse({
+    message: 'Verificacion MFA completada correctamente',
+    type: TokenResponseDto,
+  })
+  @ApiUnauthorizedResponse({
+    description: 'AUTH.MFA_INVALID_CODE o AUTH.USER_NOT_FOUND.',
+    type: ErrorResponseDto,
+  })
+  @HttpCode(HttpStatus.OK)
+  verifyMfa(
+    @CurrentUser() user: RequestUser,
+    @Body() dto: MfaVerifyDto,
+    @Req() req: Request,
+  ) {
+    return this.authService.verifyMfaAndLogin(
+      user.id,
+      dto.code,
+      false,
       this.contextFromRequest(req),
     );
   }
