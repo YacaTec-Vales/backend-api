@@ -30,6 +30,7 @@ import {
   ForbiddenException,
   HttpException,
   HttpStatus,
+  Optional,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { UserRepository } from '../../database/repositories/user.repository';
@@ -38,6 +39,7 @@ import { PasswordService, WeakPasswordError } from './password.service';
 import { TokenService } from './token.service';
 import { SessionService } from './session.service';
 import { PermissionCacheService } from './permission-cache.service';
+import { MfaService } from '../../mfa/mfa.service';
 import { AUTH_CONFIG } from '../../database/tokens';
 import type { AuthConfig } from '../../config/auth.config';
 import type { LoginContext, UserType } from '../../shared/types/auth.types';
@@ -45,6 +47,7 @@ import type {
   AuthUserResponseDto,
   TokenResponseDto,
 } from '../dto/auth-response.dto';
+import type { MfaChallengeResponseDto } from '../../mfa/dto/mfa-challenge-response.dto';
 
 /**
  * Servicio principal de autenticacion. Inyectado en `AuthController`.
@@ -62,6 +65,9 @@ export class AuthService {
     private readonly sessionService: SessionService,
     private readonly permissionCache: PermissionCacheService,
     private readonly configService: ConfigService,
+    @Optional()
+    @Inject(MfaService)
+    private readonly mfaService: MfaService | null,
   ) {}
 
   /**
@@ -93,7 +99,7 @@ export class AuthService {
     password: string,
     rememberMe: boolean,
     context: LoginContext,
-  ): Promise<TokenResponseDto> {
+  ): Promise<TokenResponseDto | MfaChallengeResponseDto> {
     const user = await this.userRepo.findByUsernameOrEmail(usernameOrEmail);
     if (!user) {
       throw new UnauthorizedException({
@@ -147,6 +153,32 @@ export class AuthService {
     }
 
     await this.userRepo.recordSuccessfulLogin(user.id);
+
+    // Si el usuario tiene MFA habilitado, emitir un JWT parcial de
+    // corta vida (5 min) con `mfaPending: true`. El frontend debe
+    // llamar `POST /auth/mfa-verify` con este token + el codigo TOTP
+    // para obtener los tokens completos.
+    if (user.mfaEnabled) {
+      const MFA_CHALLENGE_TTL = 300; // 5 minutos
+      const mfaToken = await this.tokenService.signMfaChallengeToken(
+        {
+          sub: user.id,
+          username: user.username ?? user.email,
+          role: user.roleCode,
+          branchId: user.branchId,
+          tokenVersion: user.tokenVersion,
+          sessionId: '',
+          mfaPending: true,
+        },
+        MFA_CHALLENGE_TTL,
+      );
+      this.logger.log(`MFA challenge emitido para usuario ${user.id}`);
+      return {
+        mfaRequired: true as const,
+        mfaToken,
+        mfaTokenExpiresIn: MFA_CHALLENGE_TTL,
+      };
+    }
 
     const permissions = await this.permissionCache.getEffectivePermissions(
       user.id,
@@ -413,6 +445,95 @@ export class AuthService {
       expiresIn: this.tokenService.accessTtlSeconds(),
       tokenType: 'Bearer',
       user: this.toAuthUserResponse(updated, permissions),
+    };
+  }
+
+  /**
+   * Completa el challenge MFA y emite los tokens completos.
+   *
+   * Pasos:
+   *  1. Carga el usuario desde la BD.
+   *  2. Verifica el codigo TOTP o backup code via `MfaService`.
+   *  3. Crea la sesion real (con TTL normal).
+   *  4. Firma el access JWT completo (sin `mfaPending`).
+   *  5. Carga permisos efectivos.
+   *
+   * @param userId - UUID del usuario (extraido del JWT parcial).
+   * @param code - Codigo TOTP de 6 digitos o backup code.
+   * @param rememberMe - Si true, TTL del refresh = 30 dias.
+   * @param context - IP, user-agent, device.
+   * @returns Par de tokens y datos del usuario.
+   * @throws {UnauthorizedException} `AUTH.MFA_INVALID_CODE`, `AUTH.USER_NOT_FOUND`.
+   */
+  async verifyMfaAndLogin(
+    userId: string,
+    code: string,
+    rememberMe: boolean,
+    context: LoginContext,
+  ): Promise<TokenResponseDto> {
+    if (!this.mfaService) {
+      throw new UnauthorizedException({
+        code: 'AUTH.MFA_NOT_CONFIGURED',
+        message: 'el módulo MFA no está disponible',
+      });
+    }
+
+    const user = await this.userRepo.findById(userId);
+    if (!user) {
+      throw new UnauthorizedException({
+        code: 'AUTH.USER_NOT_FOUND',
+        message: 'usuario no encontrado',
+      });
+    }
+
+    const result = await this.mfaService.verify(userId, code);
+    if (!result.valid) {
+      this.logger.warn(`MFA challenge fallido para usuario ${userId}`);
+      throw new UnauthorizedException({
+        code: 'AUTH.MFA_INVALID_CODE',
+        message: 'el código MFA proporcionado es inválido',
+      });
+    }
+
+    if (result.consumedBackupCode) {
+      this.logger.warn(
+        `Usuario ${userId} uso un backup code MFA. Quedan menos codigos de respaldo.`,
+      );
+    }
+
+    const permissions = await this.permissionCache.getEffectivePermissions(
+      user.id,
+      user.tokenVersion,
+    );
+
+    const session = await this.sessionService.createSession(
+      {
+        userId: user.id,
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+        device: context.device,
+      },
+      rememberMe,
+    );
+
+    const accessToken = await this.tokenService.signAccessToken({
+      sub: user.id,
+      username: user.username ?? user.email,
+      role: user.roleCode,
+      branchId: user.branchId,
+      tokenVersion: user.tokenVersion,
+      sessionId: session.sessionId,
+      mustChangePassword: user.mustChangePassword,
+    });
+
+    this.logger.log(`MFA challenge completado para usuario ${userId}`);
+
+    return {
+      accessToken,
+      refreshToken: session.refreshToken,
+      expiresIn: this.tokenService.accessTtlSeconds(),
+      tokenType: 'Bearer',
+      user: this.toAuthUserResponse(user, permissions),
     };
   }
 

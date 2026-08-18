@@ -127,6 +127,8 @@ export interface JwtPayload {
   tokenVersion: number;
   sessionId: string;
   mustChangePassword?: boolean;
+  /** Si `true`, el usuario aun no completa la verificacion MFA. */
+  mfaPending?: boolean;
   iat?: number;
   exp?: number;
 }
