@@ -16,7 +16,7 @@
  * @since 1.0.0
  */
 
-import { Module, Provider } from '@nestjs/common';
+import { Module, Provider, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { authConfig, type AuthConfig } from '../config/auth.config';
@@ -33,6 +33,7 @@ import { RefreshTokenRepository } from '../database/repositories/refresh-token.r
 import { PermissionRepository } from '../database/repositories/permission.repository';
 import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 import { BranchRepository } from '../database/repositories/branch.repository';
+import { MfaModule } from '../mfa/mfa.module';
 
 /**
  * Provider que expone `AuthConfig` bajo el token `AUTH_CONFIG`.
@@ -71,6 +72,7 @@ const authConfigProvider: Provider = {
         },
       }),
     }),
+    forwardRef(() => MfaModule),
   ],
   controllers: [AuthController],
   providers: [

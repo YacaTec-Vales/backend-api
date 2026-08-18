@@ -24,7 +24,6 @@ import {
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { authenticator } from 'otplib';
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 import { eq } from 'drizzle-orm';
@@ -73,7 +72,6 @@ export class MfaService {
     @Inject(DRIZZLE_READ) private readonly readDb: DrizzleRead,
     @Inject(MFA_CONFIG) private readonly mfaConfig: MfaConfig,
     private readonly passwordService: PasswordService,
-    private readonly configService: ConfigService,
   ) {
     this.encryptionKey = this.deriveKey();
   }
@@ -288,12 +286,12 @@ export class MfaService {
 
   /**
    * Deriva la clave AES de 32 bytes a partir de `MFA_SECRET_KEY`.
-   * Si el valor es corto, hace padding con espacios. Si esta
+   * Si el valor es corto, hace padding con ceros. Si esta
    * vacio, devuelve un buffer lleno de ceros (modo inseguro;
-   * ver `env.validation.ts` para el minimo).
+   * ver `env.validation.ts` para el minimo de 32 chars).
    */
   private deriveKey(): Buffer {
-    const raw = this.configService.get<string>('mfa.encryptionKey') ?? '';
+    const raw = this.mfaConfig.encryptionKey ?? '';
     if (raw.length >= 32)
       return Buffer.from(raw.padEnd(KEY_LEN).slice(0, KEY_LEN));
     return Buffer.concat([
