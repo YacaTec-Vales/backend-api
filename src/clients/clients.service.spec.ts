@@ -17,25 +17,32 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import { ForbiddenException } from '@nestjs/common';
 import { ClientsService } from './clients.service';
 import { ClientRepository } from '../database/repositories/client.repository';
+import { VoucherRepository } from '../database/repositories/voucher.repository';
 import { DRIZZLE_READ } from '../database/drizzle.provider';
 import { requestUserFactory } from '../../test/factories/auth.factory';
-import { createClientRepositoryMock } from '../../test/mocks/repositories.mock';
+import {
+  createClientRepositoryMock,
+  createVoucherRepositoryMock,
+} from '../../test/mocks/repositories.mock';
 import { createOneRowDrizzleStub } from '../../test/mocks/drizzle.mock';
 
 describe('ClientsService', () => {
   let service: ClientsService;
   let clientRepo: jest.Mocked<ClientRepository>;
+  let voucherRepo: jest.Mocked<VoucherRepository>;
   let readDb: ReturnType<
     typeof createOneRowDrizzleStub<Record<string, unknown>>
   >;
 
   beforeEach(async () => {
     clientRepo = createClientRepositoryMock();
+    voucherRepo = createVoucherRepositoryMock();
     readDb = createOneRowDrizzleStub<Record<string, unknown>>([]);
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ClientsService,
         { provide: ClientRepository, useValue: clientRepo },
+        { provide: VoucherRepository, useValue: voucherRepo },
         { provide: DRIZZLE_READ, useValue: readDb },
       ],
     }).compile();
@@ -100,6 +107,7 @@ describe('ClientsService', () => {
       providers: [
         ClientsService,
         { provide: ClientRepository, useValue: clientRepo },
+        { provide: VoucherRepository, useValue: voucherRepo },
         { provide: DRIZZLE_READ, useValue: stub },
       ],
     }).compile();
@@ -156,6 +164,7 @@ describe('ClientsService', () => {
       providers: [
         ClientsService,
         { provide: ClientRepository, useValue: clientRepo },
+        { provide: VoucherRepository, useValue: voucherRepo },
         { provide: DRIZZLE_READ, useValue: stub },
       ],
     }).compile();
@@ -192,6 +201,7 @@ describe('ClientsService', () => {
       providers: [
         ClientsService,
         { provide: ClientRepository, useValue: clientRepo },
+        { provide: VoucherRepository, useValue: voucherRepo },
         { provide: DRIZZLE_READ, useValue: stub },
       ],
     }).compile();
