@@ -41,10 +41,10 @@ export class ReconciliationBatchResponseDto {
 
   @ApiProperty({
     description: 'Estatus del procesamiento',
-    enum: ['EN_PROCESO', 'COMPLETADO', 'CON_ERRORES'],
+    enum: ['PROCESANDO', 'COMPLETADO', 'CON_ERRORES'],
   })
   @IsString()
-  status: 'EN_PROCESO' | 'COMPLETADO' | 'CON_ERRORES';
+  status: 'PROCESANDO' | 'COMPLETADO' | 'CON_ERRORES';
 
   @ApiProperty({ description: 'Fecha de subida' })
   @IsDate()
