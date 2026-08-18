@@ -109,12 +109,20 @@ async function main(): Promise<void> {
     let matriz = await branchesRepo.findMatriz();
     if (!matriz) {
       logger.log('No existe MATRIZ: creando...');
+      const folioPrefix = branchName
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z]/g, '')
+        .toUpperCase()
+        .slice(0, 3)
+        .padEnd(3, 'X');
       matriz = await branchesRepo.insert({
         name: branchName,
         branchType: 'MATRIZ',
         esMatriz: true,
         address: null,
         managerUserId: null,
+        folioPrefix,
       });
       logger.log(`MATRIZ creada: branchId=${matriz.id}`);
     } else {

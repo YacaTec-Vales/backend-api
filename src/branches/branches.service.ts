@@ -193,6 +193,11 @@ export class BranchesService {
       managerUserId = await this.validateManager(dto.managerUserId);
     }
 
+    const folioPrefix = await this.resolveFolioPrefix(
+      dto.name,
+      dto.folioPrefix,
+    );
+
     const auditCtx: AuditWriteContext = {
       actorUserId: actor.id,
       action: 'USER.CREATE', // reusamos USER.CREATE; el trigger registra la tabla branch.
@@ -204,6 +209,7 @@ export class BranchesService {
         name: dto.name,
         branchType: dto.branchType,
         esMatriz: dto.esMatriz ?? false,
+        folioPrefix,
       },
     };
 
@@ -214,6 +220,7 @@ export class BranchesService {
         esMatriz: dto.esMatriz ?? dto.branchType === 'MATRIZ',
         address: dto.address ?? null,
         managerUserId,
+        folioPrefix,
         cutoffDay: dto.cutoffDay ?? null,
         paymentDay: dto.paymentDay ?? null,
         earlyPaymentDays: dto.earlyPaymentDays ?? null,
@@ -465,6 +472,62 @@ export class BranchesService {
       code: 'BRANCH.WRITE_FORBIDDEN',
       message: 'solo el gerente general puede modificar sucursales',
     });
+  }
+
+  /**
+   * Resuelve el `folio_prefix` de la sucursal a crear.
+   *
+   * - Si el DTO trae `folioPrefix` (ya validado a `^[A-Z]{3}$`),
+   *   se usa tal cual.
+   * - Si no, se genera automaticamente a partir del nombre: primeras
+   *   3 letras del primer token alfabetico (sin tildes, mayusculas),
+   *   rellenando con 'X' si el nombre es muy corto.
+   *
+   * En ambos casos valida que no exista ya otra sucursal con ese
+   * prefijo (`BRANCH.FOLIO_PREFIX_EXISTS`), ya que la columna es
+   * UNIQUE y alimenta los folios de vouchers.
+   *
+   * @param name - Nombre de la sucursal.
+   * @param provided - Prefijo opcional enviado por el cliente.
+   * @returns Prefijo de 3 letras en mayusculas.
+   */
+  private async resolveFolioPrefix(
+    name: string,
+    provided?: string,
+  ): Promise<string> {
+    const prefix = provided
+      ? provided.toUpperCase()
+      : BranchesService.createFolioPrefix(name);
+    const existing = await this.branchesRepo.findByFolioPrefix(prefix);
+    if (existing) {
+      throw new ConflictException({
+        code: 'BRANCH.FOLIO_PREFIX_EXISTS',
+        message: `el folio_prefix ${prefix} ya esta en uso`,
+      });
+    }
+    return prefix;
+  }
+
+  /**
+   * Genera un `folio_prefix` de 3 letras mayusculas a partir del
+   * nombre de la sucursal.
+   *
+   * Regla: se toman las primeras 3 letras del nombre sin acentos ni
+   * caracteres especiales. Si el nombre aporta menos de 3 letras, se
+   * rellena con 'X'. Ejemplos: "Lerdo" -> LER, "Torreon Oriente"
+   * -> TOR, "Sucursal Norte" -> SUC.
+   *
+   * @param name - Nombre de la sucursal.
+   * @returns Prefijo de 3 letras en mayusculas.
+   */
+  private static createFolioPrefix(name: string): string {
+    const letters = name
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z]/g, '')
+      .toUpperCase();
+    const prefix = letters.slice(0, 3);
+    return prefix.padEnd(3, 'X');
   }
 
   /**
