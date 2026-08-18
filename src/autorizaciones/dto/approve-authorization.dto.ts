@@ -10,7 +10,7 @@
  */
 
 import { ApiPropertyOptional, ApiSchema } from '@nestjs/swagger';
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsOptional, IsString, MaxLength, IsUUID } from 'class-validator';
 
 @ApiSchema({ name: 'ApproveAuthorizationDto' })
 export class ApproveAuthorizationDto {
@@ -24,4 +24,15 @@ export class ApproveAuthorizationDto {
   @IsString()
   @MaxLength(1000)
   notes?: string;
+
+  /** UUID de la nueva distribuidora (requerido para TRANSFERENCIA_DISTRIBUIDOR). */
+  @ApiPropertyOptional({
+    description:
+      'UUID de la nueva distribuidora. Requerido unicamente cuando el ' +
+      'tipo de autorizacion es TRANSFERENCIA_DISTRIBUIDOR.',
+    format: 'uuid',
+  })
+  @IsOptional()
+  @IsUUID('4', { message: 'newDistributorId invalido' })
+  newDistributorId?: string;
 }

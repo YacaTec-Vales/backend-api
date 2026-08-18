@@ -27,13 +27,6 @@ export class TransferClientDto {
   clientId!: string;
 
   @ApiProperty({
-    description: 'UUID de la distribuidora destino.',
-    format: 'uuid',
-  })
-  @IsUUID('4', { message: 'newDistributorId invalido' })
-  newDistributorId!: string;
-
-  @ApiProperty({
     description: 'Motivo de la transferencia.',
     example: 'cliente se mudo a otra sucursal',
     minLength: 3,

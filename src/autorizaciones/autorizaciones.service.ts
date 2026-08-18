@@ -11,12 +11,10 @@
  * Los demas tipos (`MODIFICACION_CLIENTE`, `INCREMENTO_CREDITO`,
  * `CONCILIACION_MANUAL`) se implementaran en futuros commits.
  *
- * Flujo de transferencia de clientes (3 pasos):
- *  1. DISTRIBUIDOR solicita → crea authorization PENDIENTE
- *     (affected_entity.destinationAccepted = false).
- *  2. DISTRIBUIDOR destino acepta → actualiza
- *     affected_entity.destinationAccepted = true.
- *  3. COORDINADOR de la distribuidora origen aprueba → ejecuta.
+ *
+ * Flujo de transferencia de clientes (2 pasos):
+ *  1. DISTRIBUIDOR solicita → crea authorization PENDIENTE.
+ *  2. COORDINADOR asigna nueva distribuidora y aprueba → ejecuta.
  *
  * @module autorizaciones
  * @author Equipo de desarrollo Mis Vales
@@ -48,8 +46,7 @@ import { AuthorizationResponseDto } from './dto/authorization-response.dto';
 interface TransferAffectedEntity {
   clientId: string;
   fromDistributorId: string;
-  toDistributorId: string;
-  destinationAccepted: boolean;
+  toDistributorId?: string;
 }
 
 /**
@@ -60,16 +57,17 @@ const ERROR_CODES = {
   NOT_PENDING: 'AUTHORIZATION.NOT_PENDING',
   TYPE_NOT_IMPLEMENTED: 'AUTHORIZATION.TYPE_NOT_IMPLEMENTED',
   NOT_AUTHORIZED_TO_APPROVE: 'AUTHORIZATION.NOT_AUTHORIZED_TO_APPROVE',
-  DESTINATION_NOT_ACCEPTED: 'AUTHORIZATION.DESTINATION_NOT_ACCEPTED',
-  ALREADY_ACCEPTED: 'AUTHORIZATION.ALREADY_ACCEPTED',
-  NOT_DESTINATION_DISTRIBUTOR: 'AUTHORIZATION.NOT_DESTINATION_DISTRIBUTOR',
+  MISSING_NEW_DISTRIBUTOR: 'AUTHORIZATION.MISSING_NEW_DISTRIBUTOR',
+  TARGET_DISTRIBUTOR_NOT_FOUND: 'AUTHORIZATION.TARGET_DISTRIBUTOR_NOT_FOUND',
+  TARGET_DISTRIBUTOR_INACTIVE: 'AUTHORIZATION.TARGET_DISTRIBUTOR_INACTIVE',
+  SAME_DISTRIBUTOR: 'AUTHORIZATION.SAME_DISTRIBUTOR',
 } as const;
 
 /**
  * Servicio principal del modulo autorizaciones.
  *
  * @classdesc Gestiona el ciclo de vida de las autorizaciones:
- * lectura, aceptacion por destino, aprobacion y rechazo.
+ * lectura, aprobacion y rechazo.
  *
  * @see AutorizacionesController
  * @author Equipo de desarrollo Mis Vales
@@ -182,70 +180,6 @@ export class AutorizacionesService {
   }
 
   /**
-   * La distribuidora destino acepta la previa transferencia.
-   *
-   * Paso 2 del flujo de transferencia de cliente:
-   *  1. Validar que la autorizacion existe y esta PENDIENTE.
-   *  2. Validar que es tipo TRANSFERENCIA_DISTRIBUIDOR.
-   *  3. Validar que el actor es el DISTRIBUIDOR destino.
-   *  4. Marcar `destinationAccepted = true` en el JSONB.
-   *
-   * @param actor - Usuario autenticado (DISTRIBUIDOR destino).
-   * @param id - UUID de la autorizacion.
-   * @returns DTO actualizado.
-   */
-  async acceptDestination(
-    actor: RequestUser,
-    id: string,
-  ): Promise<AuthorizationResponseDto> {
-    const auth = await this.assertPending(id);
-
-    if (auth.authorizationType !== 'TRANSFERENCIA_DISTRIBUIDOR') {
-      throw new BadRequestException({
-        code: ERROR_CODES.TYPE_NOT_IMPLEMENTED,
-        message:
-          'solo las transferencias de distribuidor soportan aceptacion destino',
-      });
-    }
-
-    const entity = auth.affectedEntity as TransferAffectedEntity;
-
-    if (entity.destinationAccepted) {
-      throw new ConflictException({
-        code: ERROR_CODES.ALREADY_ACCEPTED,
-        message: 'la distribuidora destino ya acepto esta transferencia',
-      });
-    }
-
-    // Validar que el actor es el DISTRIBUIDOR de la distribuidora destino.
-    const destDistributor = await this.distributorRepo.findById(
-      entity.toDistributorId,
-    );
-    if (!destDistributor || destDistributor.userId !== actor.id) {
-      throw new ForbiddenException({
-        code: ERROR_CODES.NOT_DESTINATION_DISTRIBUTOR,
-        message: 'solo la distribuidora destino puede aceptar la transferencia',
-      });
-    }
-
-    const updatedEntity: TransferAffectedEntity = {
-      ...entity,
-      destinationAccepted: true,
-    };
-
-    const updated = await this.authRepo.updateAffectedEntity(
-      id,
-      updatedEntity as unknown as Record<string, unknown>,
-    );
-
-    this.logger.log(
-      `transfer accepted by destination: auth=${id} dest=${actor.id}`,
-    );
-
-    return this.toResponseDtoAsync(updated);
-  }
-
-  /**
    * Aprueba una autorizacion pendiente.
    *
    * Segun el tipo, ejecuta la accion correspondiente:
@@ -260,13 +194,13 @@ export class AutorizacionesService {
   async approve(
     actor: RequestUser,
     id: string,
-    notes?: string,
+    dto: { notes?: string; newDistributorId?: string },
   ): Promise<AuthorizationResponseDto> {
     const auth = await this.assertPending(id);
 
     switch (auth.authorizationType) {
       case 'TRANSFERENCIA_DISTRIBUIDOR':
-        return this.approveTransfer(actor, auth, notes);
+        return this.approveTransfer(actor, auth, dto);
       default:
         throw new BadRequestException({
           code: ERROR_CODES.TYPE_NOT_IMPLEMENTED,
@@ -304,31 +238,54 @@ export class AutorizacionesService {
    * Aprueba una transferencia de cliente (tipo TRANSFERENCIA_DISTRIBUIDOR).
    *
    * Reglas:
-   *  1. La distribuidora destino debe haber aceptado
-   *     (affected_entity.destinationAccepted = true).
-   *  2. El actor debe ser el Coordinador de la distribuidora que
-   *     PIERDE al cliente, o un Gerente (GS de la misma branch, GG).
-   *  3. TX: UPDATE client + INSERT history + UPDATE authorization.
+   *  1. El DTO debe contener `newDistributorId`.
+   *  2. Validar que la distribuidora destino existe, esta activa y no es la misma.
+   *  3. El actor debe ser el Coordinador de la distribuidora origen.
+   *  4. TX: UPDATE client + INSERT history + UPDATE authorization.
    */
   private async approveTransfer(
     actor: RequestUser,
     auth: AuthorizationEntity,
-    notes?: string,
+    dto: { notes?: string; newDistributorId?: string },
   ): Promise<AuthorizationResponseDto> {
     const entity = auth.affectedEntity as TransferAffectedEntity;
 
-    // 1. Validar que destino acepto.
-    if (!entity.destinationAccepted) {
+    // 1. Validar newDistributorId
+    if (!dto.newDistributorId) {
       throw new BadRequestException({
-        code: ERROR_CODES.DESTINATION_NOT_ACCEPTED,
-        message: 'la distribuidora destino aun no acepta la transferencia',
+        code: ERROR_CODES.MISSING_NEW_DISTRIBUTOR,
+        message:
+          'el ID de la nueva distribuidora es obligatorio para aprobar esta transferencia',
       });
     }
 
-    // 2. Validar que el actor tiene autoridad.
+    // 2. Validar que la distribuidora destino es valida
+    const newDistributor = await this.distributorRepo.findById(
+      dto.newDistributorId,
+    );
+    if (!newDistributor) {
+      throw new NotFoundException({
+        code: ERROR_CODES.TARGET_DISTRIBUTOR_NOT_FOUND,
+        message: 'la distribuidora destino no existe',
+      });
+    }
+    if (!newDistributor.isActive) {
+      throw new BadRequestException({
+        code: ERROR_CODES.TARGET_DISTRIBUTOR_INACTIVE,
+        message: 'la distribuidora destino no esta activa',
+      });
+    }
+    if (entity.fromDistributorId === dto.newDistributorId) {
+      throw new BadRequestException({
+        code: ERROR_CODES.SAME_DISTRIBUTOR,
+        message: 'el cliente ya pertenece a esta distribuidora',
+      });
+    }
+
+    // 3. Validar que el actor tiene autoridad.
     await this.assertCanApproveTransfer(actor, entity.fromDistributorId);
 
-    // 3. TX: ejecutar transferencia + aprobar autorizacion.
+    // 4. TX: ejecutar transferencia + aprobar autorizacion.
     const pool = (
       this.writeDb as unknown as {
         $client: {
@@ -342,17 +299,17 @@ export class AutorizacionesService {
 
     await pool.query('BEGIN', []);
     try {
-      // 3.1 UPDATE client.
+      // 4.1 UPDATE client.
       await pool.query(
         `UPDATE app.client
             SET current_distributor_id = $1,
                 first_voucher_with_current_distributor_id = NULL,
                 updated_at = NOW()
           WHERE id = $2`,
-        [entity.toDistributorId, entity.clientId],
+        [dto.newDistributorId, entity.clientId],
       );
 
-      // 3.2 INSERT history.
+      // 4.2 INSERT history.
       await pool.query(
         `INSERT INTO app.client_distributor_history
            (client_id, from_distributor_id, to_distributor_id,
@@ -361,23 +318,30 @@ export class AutorizacionesService {
         [
           entity.clientId,
           entity.fromDistributorId,
-          entity.toDistributorId,
+          dto.newDistributorId,
           actor.id,
           auth.id,
           auth.justification,
         ],
       );
 
-      // 3.3 UPDATE authorization → APROBADA.
+      // Actualizar entity con la nueva distribuidora para que quede guardado en el JSON
+      const updatedEntity = {
+        ...entity,
+        toDistributorId: dto.newDistributorId,
+      };
+
+      // 4.3 UPDATE authorization → APROBADA + updated entity.
       await pool.query(
         `UPDATE app.authorization
             SET status = 'APROBADA',
-                authorizer_id = $1,
-                decision_notes = $2,
+                affected_entity = $1,
+                authorizer_id = $2,
+                decision_notes = $3,
                 decided_at = NOW(),
                 updated_at = NOW()
-          WHERE id = $3`,
-        [actor.id, notes ?? null, auth.id],
+          WHERE id = $4`,
+        [JSON.stringify(updatedEntity), actor.id, dto.notes ?? null, auth.id],
       );
 
       await pool.query('COMMIT', []);
@@ -388,7 +352,7 @@ export class AutorizacionesService {
 
     this.logger.log(
       `transfer approved: auth=${auth.id} client=${entity.clientId} ` +
-        `from=${entity.fromDistributorId} to=${entity.toDistributorId} ` +
+        `from=${entity.fromDistributorId} to=${dto.newDistributorId} ` +
         `actor=${actor.id}`,
     );
 

@@ -181,9 +181,8 @@ export class ClientsController {
    *
    * @apiDescription Crea una solicitud de transferencia de cliente
    * entre distribuidoras. El registro queda en estado PENDIENTE en
-   * la tabla `app.authorization`. La distribuidora destino debe
-   * aceptar (POST /autorizaciones/:id/aceptar-destino) y luego el
-   * Coordinador de la distribuidora origen aprueba
+   * la tabla `app.authorization`. El Coordinador
+   * asigna la nueva distribuidora y aprueba o rechaza la solicitud
    * (POST /autorizaciones/:id/aprobar).
    */
   @Post('transfer-distributor')
@@ -193,9 +192,9 @@ export class ClientsController {
     summary: 'Solicitar transferencia de cliente a otra distribuidora',
     description:
       'Crea solicitud de transferencia (PENDIENTE) en app.authorization. ' +
-      'Flujo: 1) Distribuidor solicita, 2) distribuidora destino acepta, ' +
-      '3) Coordinador de la distribuidora origen aprueba y se ejecuta ' +
-      'la transferencia. El cliente debe estar 100% limpio (sin vales activos).',
+      'Flujo: 1) Distribuidor solicita, 2) Coordinador asigna la nueva distribuidora ' +
+      'y aprueba o rechaza la solicitud. ' +
+      'El cliente debe estar 100% limpio (sin vales activos).',
   })
   @ApiEnvelopeOkResponse({
     message: 'Solicitud de transferencia creada correctamente',
