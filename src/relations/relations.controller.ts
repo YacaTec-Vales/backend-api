@@ -100,6 +100,36 @@ export class RelationsController {
   }
 
   /**
+   * `GET /relations/pending` — Relaciones pendientes de pago.
+   *
+   * Usado principalmente por Cajeras para asociar un movimiento bancario
+   * huérfano (conciliación manual) a una relación con saldo pendiente.
+   */
+  @Get('pending')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions('relation.read')
+  @ApiOperation({
+    summary: 'Relaciones pendientes de pago',
+    description:
+      'Devuelve las relaciones con status PENDIENTE o PARCIAL visibles para el actor (útil para conciliación manual).',
+  })
+  @ApiEnvelopeOkResponse({
+    message: 'Relaciones pendientes consultadas correctamente',
+    type: RelationResponseDto,
+    isArray: true,
+  })
+  @ApiUnauthorizedResponse({ description: 'AUTH.*', type: ErrorResponseDto })
+  @ApiForbiddenResponse({
+    description: 'AUTH.PERMISSION_DENIED | RELATION.NOT_A_DISTRIBUTOR.',
+    type: ErrorResponseDto,
+  })
+  listPending(
+    @CurrentUser() actor: RequestUser,
+  ): Promise<RelationResponseDto[]> {
+    return this.service.listPendingRelations(actor);
+  }
+
+  /**
    * `GET /relations/:id` — Detalle de una relacion.
    */
   @Get(':id')
