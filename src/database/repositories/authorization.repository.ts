@@ -111,6 +111,30 @@ export class AuthorizationRepository {
   }
 
   /**
+   * Lista autorizaciones relacionadas a una distribuidora.
+   * Filtra por fromDistributorId, toDistributorId o distributorId en affectedEntity.
+   *
+   * @param distributorId - UUID de la distribuidora
+   * @returns Arreglo de autorizaciones (todos los estados).
+   */
+  async listByDistributor(
+    distributorId: string,
+  ): Promise<AuthorizationEntity[]> {
+    return this.readDb
+      .select()
+      .from(authorizations)
+      .where(
+        and(
+          isNull(authorizations.deletedAt),
+          sql`(${authorizations.affectedEntity}->>'fromDistributorId' = ${distributorId} 
+             OR ${authorizations.affectedEntity}->>'toDistributorId' = ${distributorId} 
+             OR ${authorizations.affectedEntity}->>'distributorId' = ${distributorId})`,
+        ),
+      )
+      .orderBy(sql`${authorizations.createdAt} DESC`);
+  }
+
+  /**
    * Aprueba una autorizacion pendiente.
    *
    * @param id - UUID de la autorizacion.

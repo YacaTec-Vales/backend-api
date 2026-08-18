@@ -19,12 +19,13 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { DatabaseModule } from '../database/database.module';
+import { AutorizacionesModule } from '../autorizaciones/autorizaciones.module';
 import { DistribuidoresController } from './distribuidores.controller';
 import { DistribuidoresService } from './distribuidores.service';
 import { DistributorRepository } from '../database/repositories/distributor.repository';
 
 @Module({
-  imports: [AuthModule, DatabaseModule],
+  imports: [AuthModule, DatabaseModule, AutorizacionesModule],
   controllers: [DistribuidoresController],
   providers: [DistribuidoresService, DistributorRepository],
 })
