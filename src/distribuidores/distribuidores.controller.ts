@@ -46,6 +46,8 @@ import { DistribuidorStatusDto } from './dto/distribuidor-status.dto';
 import { ChangeBranchDto } from './dto/change-branch.dto';
 import { ListDistribuidoresQueryDto } from './dto/list-distribuidores-query.dto';
 import { PaginatedDistribuidoresResponseDto } from './dto/paginated-distribuidores-response.dto';
+import { AutorizacionesService } from '../autorizaciones/autorizaciones.service';
+import { AuthorizationResponseDto } from '../autorizaciones/dto/authorization-response.dto';
 import { ApiEnvelopeOkResponse } from '../shared/decorators/api-envelope-response.decorator';
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import { JwtAuthGuard } from '../shared/guards/auth.guards';
@@ -139,7 +141,10 @@ class ChangeCoordinatorDto {
 @Controller('distribuidores')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class DistribuidoresController {
-  constructor(private readonly service: DistribuidoresService) {}
+  constructor(
+    private readonly service: DistribuidoresService,
+    private readonly autorizacionesService: AutorizacionesService,
+  ) {}
 
   /**
    * `GET /distribuidores` — Lista distribuidoras por sucursal.
@@ -265,6 +270,48 @@ export class DistribuidoresController {
     @Param('id') id: string,
   ): Promise<DistribuidorResponseDto> {
     return this.service.findOne(actor, id);
+  }
+
+  /**
+   * `GET /distribuidores/:id/autorizaciones` — Lista autorizaciones de la distribuidora.
+   *
+   * @api {get} /distribuidores/:id/autorizaciones Listar autorizaciones de la distribuidora
+   * @apiName ListAutorizacionesByDistribuidor
+   * @apiGroup Distribuidores
+   * @apiVersion 1.0.0
+   * @apiPermission autorizacion.read
+   */
+  @Get(':id/autorizaciones')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions('autorizacion.read')
+  @ApiOperation({
+    summary: 'Listar autorizaciones de una distribuidora',
+    description:
+      'Devuelve la lista de autorizaciones relacionadas a una distribuidora especifica. ' +
+      'Aplica scope por rol.',
+  })
+  @ApiEnvelopeOkResponse({
+    message: 'Autorizaciones consultadas correctamente',
+    type: AuthorizationResponseDto,
+    isArray: true,
+  })
+  @ApiUnauthorizedResponse({
+    description: 'AUTH.* — token invalido o expirado.',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description: 'AUTH.PERMISSION_DENIED o AUTH.ROLE_NOT_ALLOWED.',
+    type: ErrorResponseDto,
+  })
+  @ApiNotFoundResponse({
+    description: 'DISTRIBUTOR.NOT_FOUND.',
+    type: ErrorResponseDto,
+  })
+  listAutorizaciones(
+    @CurrentUser() actor: RequestUser,
+    @Param('id') id: string,
+  ): Promise<AuthorizationResponseDto[]> {
+    return this.autorizacionesService.listByDistributor(actor, id);
   }
 
   /**
