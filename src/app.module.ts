@@ -21,6 +21,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
 
 import { appConfig } from './config/app.config';
 import { authConfig } from './config/auth.config';
@@ -74,6 +75,7 @@ import { MustChangePasswordGuard } from './shared/guards/must-change-password.gu
       validationSchema: envValidationSchema,
       validationOptions: { abortEarly: true, allowUnknown: true },
     }),
+    ScheduleModule.forRoot(),
     ThrottlerModule.forRootAsync({
       inject: [ConfigService],
       // eslint-disable-next-line @typescript-eslint/no-unused-vars

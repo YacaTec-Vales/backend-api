@@ -22,10 +22,17 @@ import { CutsController } from './cuts.controller';
 import { CutService } from './cuts.service';
 import { CutRepository } from '../database/repositories/cut.repository';
 import { RelationsRepository } from '../database/repositories/relations.repository';
+import { DistribuidoresModule } from '../distribuidores/distribuidores.module';
+import { CutsCronService } from './cuts-cron.service';
 
 @Module({
-  imports: [AuthModule, DatabaseModule, BusinessConfigModule],
+  imports: [
+    AuthModule,
+    DatabaseModule,
+    BusinessConfigModule,
+    DistribuidoresModule,
+  ],
   controllers: [CutsController],
-  providers: [CutService, CutRepository, RelationsRepository],
+  providers: [CutService, CutRepository, RelationsRepository, CutsCronService],
 })
 export class CutsModule {}

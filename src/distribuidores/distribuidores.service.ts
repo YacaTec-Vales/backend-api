@@ -43,8 +43,10 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  ConflictException,
 } from '@nestjs/common';
 import { BranchRepository } from '../database/repositories/branch.repository';
+import { BranchCutoffRepository } from '../database/repositories/branch-cutoff.repository';
 import {
   DRIZZLE_WRITE,
   DRIZZLE_READ,
@@ -58,7 +60,14 @@ import { DistribuidorStatusDto } from './dto/distribuidor-status.dto';
 import { PaginatedDistribuidoresResponseDto } from './dto/paginated-distribuidores-response.dto';
 import type { ListDistribuidoresQueryDto } from './dto/list-distribuidores-query.dto';
 import { toDistribuidorResponseDtoFromEntity } from '../shared/mappers/distribuidor.mapper';
-import type { DistributorEntity } from '../database/schema';
+import {
+  DistributorEntity,
+  distributors,
+  vouchers,
+  relations,
+} from '../database/schema';
+import { generatePaymentReference } from '../shared/utils/reference-generator.util';
+import { eq, and, isNull } from 'drizzle-orm';
 
 /**
  * Parametros para `incrementCredit`. El monto es en centavos.
@@ -112,6 +121,7 @@ export class DistribuidoresService {
   constructor(
     private readonly distributorRepo: DistributorRepository,
     private readonly branchRepo: BranchRepository,
+    private readonly branchCutoffRepo: BranchCutoffRepository,
     @Inject(DRIZZLE_WRITE) private readonly writeDb: DrizzleWrite,
     @Inject(DRIZZLE_READ) private readonly readDb: DrizzleRead,
   ) {}
@@ -726,5 +736,184 @@ export class DistribuidoresService {
       `UPDATE app.distributor SET ${sets.join(', ')} WHERE id = $${paramIdx}`,
       values,
     );
+  }
+
+  /**
+   * Consulta las configuraciones globales necesarias para la generación
+   * de una Relación (Corte).
+   *
+   * @param branchId - UUID de la Sucursal para obtener sus fechas de corte específicas.
+   * @returns Un objeto con la configuración (fechas de límite, días de pago anticipado y cuentas destino).
+   */
+  async getRelationGenerationConfig(branchId: string): Promise<{
+    cutoffs: Array<{
+      position: number;
+      cutoffDay: number;
+      paymentDay: number;
+      earlyPaymentDays: number;
+    }>;
+    destinationAccounts: string[];
+  }> {
+    // 1. Obtener configuración de fechas por sucursal
+    const branchCutoffs = await this.branchCutoffRepo.listByBranch(branchId);
+
+    if (!branchCutoffs || branchCutoffs.length === 0) {
+      throw new NotFoundException({
+        code: 'BRANCH_CUTOFF.NOT_FOUND',
+        message: 'no se encontró configuración de cortes para esta sucursal',
+      });
+    }
+
+    const cutoffs = branchCutoffs.map((c) => ({
+      position: c.position,
+      cutoffDay: c.cutoffDay,
+      paymentDay: c.paymentDay,
+      earlyPaymentDays: c.earlyPaymentDays,
+    }));
+
+    // 2. Obtener cuentas destino de BBVA/Banorte
+    // TODO: (Opción C) - Stub documentado. En un paso posterior, se modificará
+    // la tabla business_config para soportar valores de texto/JSON y así
+    // obtener estas cuentas desde BusinessConfigService dinámicamente.
+    const destinationAccountsStub = [
+      'BBVA - 0123456789 (STUB)',
+      'Banorte - 9876543210 (STUB)',
+    ];
+
+    return {
+      cutoffs,
+      destinationAccounts: destinationAccountsStub,
+    };
+  }
+
+  /**
+   * Genera una nueva Relación (Corte) para el distribuidor especificado,
+   * calculando sus totales e insertando en BD atómicamente.
+   *
+   * @param distributorId UUID del distribuidor
+   */
+  async generarRelacionCorte(distributorId: string): Promise<void> {
+    await this.writeDb.transaction(async (tx) => {
+      // 1. Obtener la distribuidora
+      const [distributor] = await tx
+        .select()
+        .from(distributors)
+        .where(
+          and(
+            eq(distributors.id, distributorId),
+            isNull(distributors.deletedAt),
+          ),
+        )
+        .limit(1);
+
+      if (!distributor) {
+        throw new NotFoundException({
+          code: 'DISTRIBUTOR.NOT_FOUND',
+          message: 'el distribuidor no existe',
+        });
+      }
+
+      // 2. Obtener configuraciones globales (fechas y cuentas destino)
+      const config = await this.getRelationGenerationConfig(
+        distributor.branchId,
+      );
+      const cutoffInfo = config.cutoffs[0]; // Usamos la primera por defecto para este caso
+
+      // Construir la fecha de corte aproximada basada en el día de corte
+      const now = new Date();
+      const year = now.getUTCFullYear();
+      const month = now.getUTCMonth();
+
+      const cutDateValue = new Date(
+        Date.UTC(year, month, cutoffInfo.cutoffDay),
+      );
+      const paymentDateValue = new Date(
+        Date.UTC(year, month, cutoffInfo.paymentDay),
+      );
+      const cutDateIso = cutDateValue.toISOString().slice(0, 10);
+      const paymentDeadlineIso = paymentDateValue.toISOString().slice(0, 10);
+
+      // 3. Validar que no exista ya un corte para esta fecha
+      const [existingRelation] = await tx
+        .select()
+        .from(relations)
+        .where(
+          and(
+            eq(relations.distributorId, distributorId),
+            eq(relations.cutDate, cutDateIso),
+          ),
+        )
+        .limit(1);
+
+      if (existingRelation) {
+        throw new ConflictException({
+          code: 'RELATION.ALREADY_EXISTS',
+          message:
+            'ya existe una relación para esta distribuidora en esta fecha de corte',
+        });
+      }
+
+      // 4. Calcular totales a partir de los vales activos de la distribuidora
+      const activeVouchers = await tx
+        .select()
+        .from(vouchers)
+        .where(
+          and(
+            eq(vouchers.distributorId, distributorId),
+            eq(vouchers.status, 'ACTIVO'),
+            isNull(vouchers.deletedAt),
+          ),
+        );
+
+      let totalPaymentCents = 0;
+      let totalCommissionCents = 0;
+
+      for (const voucher of activeVouchers) {
+        const amount = Number(voucher.amountCents);
+        totalPaymentCents += amount;
+
+        // Simulación básica de comisión calculada en base a bps si los tiene
+        // O si ya fue guardada en el voucher (usamos categoryCommissionBps)
+        if (voucher.categoryCommissionBps !== null) {
+          const commission = Math.floor(
+            (amount * voucher.categoryCommissionBps) / 10000,
+          );
+          totalCommissionCents += commission;
+        }
+      }
+
+      // 5. Crear la Relación con todos los datos
+      // Usamos Opción A: los datos de límite y disponibles ya están en centavos.
+      const totalToPayCents = totalPaymentCents + totalCommissionCents;
+      const relationId = generatePaymentReference(
+        distributor.distributorNumber,
+      );
+
+      await tx.insert(relations).values({
+        referencePayment: relationId,
+        distributorId: distributor.id,
+        cutDate: cutDateIso,
+        paymentDeadlineDate: paymentDeadlineIso,
+        earlyPaymentDates: [], // Configurable basado en early_payment_days
+        totalCommissionCents: totalCommissionCents,
+        totalPaymentCents: totalPaymentCents,
+        totalPenaltiesCents: 0,
+        totalToPayCents: totalToPayCents,
+        totalPaidCents: 0,
+        creditLimitAtCutCents: distributor.creditLimitCents,
+        creditAvailableAtCutCents: distributor.creditAvailableCents,
+        pointsAtCut: distributor.pointsBalance,
+        reconciliationStatus: 'PENDIENTE',
+        destinationAccounts: config.destinationAccounts,
+        declaredDelinquentAt: null,
+        forgivenAt: null,
+        isActive: true,
+        deletedAt: null,
+      });
+
+      this.logger.log(
+        `Relación generada exitosamente para distribuidor ${distributorId}`,
+      );
+    });
   }
 }

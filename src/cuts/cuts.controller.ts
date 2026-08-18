@@ -20,6 +20,7 @@ import {
   HttpStatus,
   Post,
   UseGuards,
+  ForbiddenException,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -31,8 +32,10 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import { CutService } from './cuts.service';
+import { CutsCronService } from './cuts-cron.service';
 import { RunCutDto } from './dto/run-cut.dto';
 import { CutResultDto } from './dto/cut-result.dto';
+import { TriggerCutResponseDto } from './dto/trigger-cut-response.dto';
 import { ApiEnvelopeOkResponse } from '../shared/decorators/api-envelope-response.decorator';
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import { JwtAuthGuard } from '../shared/guards/auth.guards';
@@ -46,7 +49,10 @@ import type { RequestUser } from '../shared/guards/auth.guards';
 @Controller('cuts')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class CutsController {
-  constructor(private readonly service: CutService) {}
+  constructor(
+    private readonly service: CutService,
+    private readonly cronService: CutsCronService,
+  ) {}
 
   /**
    * `POST /cuts/run` — Ejecuta el corte de quincena.
@@ -83,5 +89,38 @@ export class CutsController {
     @Body() dto: RunCutDto,
   ): Promise<CutResultDto> {
     return this.service.runCut(actor, dto.branchId, dto.cutDate);
+  }
+
+  /**
+   * `POST /cuts/trigger-cut` — Dispara el proceso de generación automática manualmente.
+   *
+   * Auth: solo GERENTE_GENERAL.
+   */
+  @Post('trigger-cut')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Disparador manual de cortes automatizados',
+    description:
+      'Fuerza la ejecución del cron job diario para generar las relaciones de corte (solo GERENTE_GENERAL)',
+  })
+  @ApiEnvelopeOkResponse({
+    message: 'Proceso automatizado disparado correctamente',
+    type: TriggerCutResponseDto,
+  })
+  @ApiUnauthorizedResponse({ description: 'AUTH.*', type: ErrorResponseDto })
+  @ApiForbiddenResponse({
+    description: 'AUTH.PERMISSION_DENIED',
+    type: ErrorResponseDto,
+  })
+  async triggerCut(
+    @CurrentUser() actor: RequestUser,
+  ): Promise<TriggerCutResponseDto> {
+    if (actor.role !== 'GERENTE_GENERAL') {
+      throw new ForbiddenException({
+        code: 'AUTH.PERMISSION_DENIED',
+        message: 'solo el GERENTE_GENERAL puede forzar la generación de cortes',
+      });
+    }
+    return this.cronService.triggerManualCut();
   }
 }
