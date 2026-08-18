@@ -18,6 +18,7 @@
     "typecheck": "tsc --noEmit",
     "seed:admin": "ts-node -r tsconfig-paths/register src/scripts/seed-admin.ts",
     "seed:gerente-general": "ts-node -r tsconfig-paths/register src/scripts/seed-gerente-general.ts",
+    "seed:branch-permissions": "ts-node -r tsconfig-paths/register src/scripts/seed-branch-permissions.ts",
     "test": "npm run test:unit",
     "test:unit": "jest --config test/jest-unit.json",
     "test:unit:watch": "jest --config test/jest-unit.json --watch",
