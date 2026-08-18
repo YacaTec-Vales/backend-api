@@ -1175,7 +1175,7 @@ export type NewAuthorizationEntity = typeof authorizations.$inferInsert;
  * Valores válidos del enum `reconciliation_batch_status`.
  */
 export const reconciliationBatchStatusValues = [
-  'EN_PROCESO',
+  'PROCESANDO',
   'COMPLETADO',
   'CON_ERRORES',
 ] as const;
@@ -1206,7 +1206,7 @@ export const reconciliationBatches = appSchema.table('reconciliation_batch', {
   status: text('status')
     .$type<ReconciliationBatchStatus>()
     .notNull()
-    .default('EN_PROCESO'),
+    .default('PROCESANDO'),
   errorLog: jsonb('error_log')
     .notNull()
     .default(sql`'[]'::jsonb`),

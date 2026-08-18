@@ -47,7 +47,7 @@ export class ConciliacionService {
           originalFileName,
           storagePath,
           sheetName: 'Hoja1',
-          status: 'EN_PROCESO',
+          status: 'PROCESANDO',
         })
         .returning();
 
