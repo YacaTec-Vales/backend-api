@@ -142,7 +142,7 @@ export class AutorizacionesController {
    * @apiName AcceptDestination
    * @apiGroup Autorizaciones
    * @apiVersion 1.0.0
-   * @apiPermission autorizacion.approve
+   * @apiPermission authorization.approve
    *
    * @apiDescription Paso 2 del flujo de transferencia de cliente.
    * La distribuidora DESTINO acepta la previa transferencia. Despues
@@ -151,7 +151,7 @@ export class AutorizacionesController {
    */
   @Post(':id/aceptar-destino')
   @HttpCode(HttpStatus.OK)
-  @RequirePermissions('autorization.approve')
+  @RequirePermissions('authorization.approve')
   @ApiOperation({
     summary: 'Distribuidora destino acepta la transferencia',
     description:
@@ -201,7 +201,7 @@ export class AutorizacionesController {
    * @apiName ApproveAutorizacion
    * @apiGroup Autorizaciones
    * @apiVersion 1.0.0
-   * @apiPermission autorizacion.approve
+   * @apiPermission authorization.approve
    *
    * @apiDescription Aprueba una autorizacion pendiente. Para
    * TRANSFERENCIA_DISTRIBUIDOR, ejecuta la transferencia de cliente
@@ -214,7 +214,7 @@ export class AutorizacionesController {
    */
   @Post(':id/aprobar')
   @HttpCode(HttpStatus.OK)
-  @RequirePermissions('autorizacion.approve')
+  @RequirePermissions('authorization.approve')
   @ApiOperation({
     summary: 'Aprobar autorizacion pendiente',
     description:
