@@ -52,7 +52,9 @@ import { ApiEnvelopeOkResponse } from '../shared/decorators/api-envelope-respons
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import { JwtAuthGuard } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
+import { VpnOriginGuard } from '../shared/guards/vpn-origin.guard';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';
+import { RequireVpnOrigin } from '../shared/decorators/require-vpn-origin.decorator';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
 import type { RequestUser } from '../shared/guards/auth.guards';
 import {
@@ -139,7 +141,7 @@ class ChangeCoordinatorDto {
 @ApiTags('Distribuidores')
 @ApiBearerAuth('bearer')
 @Controller('distribuidores')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, VpnOriginGuard)
 export class DistribuidoresController {
   constructor(
     private readonly service: DistribuidoresService,
@@ -322,6 +324,7 @@ export class DistribuidoresController {
    */
   @Post(':id/credit/increment')
   @HttpCode(HttpStatus.OK)
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('distribuidor.credit.increment')
   @ApiOperation({
     summary: 'Incrementar linea de credito',
@@ -366,6 +369,7 @@ export class DistribuidoresController {
    */
   @Post(':id/category')
   @HttpCode(HttpStatus.OK)
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('distribuidor.category.change')
   @ApiOperation({
     summary: 'Cambiar categoria del Distribuidor',
@@ -404,6 +408,7 @@ export class DistribuidoresController {
    */
   @Post(':id/coord-change')
   @HttpCode(HttpStatus.OK)
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('distribuidor.coordinator.change')
   @ApiOperation({
     summary: 'Cambiar Coordinador asignado',
@@ -443,6 +448,7 @@ export class DistribuidoresController {
    */
   @Post(':id/branch-change')
   @HttpCode(HttpStatus.OK)
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('distribuidor.branch.change')
   @ApiOperation({
     summary: 'Cambiar Sucursal asignada',

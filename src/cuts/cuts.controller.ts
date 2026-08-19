@@ -40,14 +40,16 @@ import { ApiEnvelopeOkResponse } from '../shared/decorators/api-envelope-respons
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import { JwtAuthGuard } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
+import { VpnOriginGuard } from '../shared/guards/vpn-origin.guard';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';
+import { RequireVpnOrigin } from '../shared/decorators/require-vpn-origin.decorator';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
 import type { RequestUser } from '../shared/guards/auth.guards';
 
 @ApiTags('Cuts')
 @ApiBearerAuth('bearer')
 @Controller('cuts')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, VpnOriginGuard)
 export class CutsController {
   constructor(
     private readonly service: CutService,
@@ -61,6 +63,7 @@ export class CutsController {
    */
   @Post('run')
   @HttpCode(HttpStatus.OK)
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('cut.execute')
   @ApiOperation({
     summary:
@@ -98,6 +101,7 @@ export class CutsController {
    */
   @Post('trigger-cut')
   @HttpCode(HttpStatus.OK)
+  @RequireVpnOrigin('Tecu')
   @ApiOperation({
     summary: 'Disparador manual de cortes automatizados',
     description:

@@ -64,21 +64,25 @@ import {
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import { JwtAuthGuard } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
+import { VpnOriginGuard } from '../shared/guards/vpn-origin.guard';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';
+import { RequireVpnOrigin } from '../shared/decorators/require-vpn-origin.decorator';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
 import type { RequestUser } from '../shared/guards/auth.guards';
 
 /**
  * Controlador del flujo de solicitudes de Distribuidora.
  *
- * Gateado por `JwtAuthGuard` + `PermissionsGuard`. Cada handler
- * declara su `@RequirePermissions(...)` con el codigo canonico
- * (`distribuidor.solicitud.*`).
+ * Gateado por `JwtAuthGuard` + `PermissionsGuard` + `VpnOriginGuard`.
+ * Las operaciones de AUTORIZACION/RECHAZO requieren VPN+Tecu
+ * (ver `@RequireVpnOrigin('Tecu')`). Las demas (crear, editar,
+ * tomar, verificar, listar, detalle) funcionan desde cualquier
+ * frontend.
  */
 @ApiTags('Solicitudes')
 @ApiBearerAuth('bearer')
 @Controller('solicitudes')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, VpnOriginGuard)
 export class SolicitationsController {
   constructor(
     private readonly solicitationsService: SolicitationsService,
@@ -308,6 +312,7 @@ export class SolicitationsController {
    */
   @Post(':id/autorizar')
   @HttpCode(HttpStatus.OK)
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('distribuidor.solicitud.authorize')
   @ApiOperation({
     summary: 'Autorizar solicitud (Gerente)',
@@ -367,6 +372,7 @@ export class SolicitationsController {
    */
   @Post(':id/rechazar')
   @HttpCode(HttpStatus.OK)
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('distribuidor.solicitud.reject')
   @ApiOperation({
     summary: 'Rechazar solicitud (Gerente)',

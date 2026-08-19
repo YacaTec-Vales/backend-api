@@ -13,6 +13,7 @@
 
 import { ConfigService } from '@nestjs/config';
 import { Test, type TestingModule } from '@nestjs/testing';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { MailerService } from '@nestjs-modules/mailer';
 import type { INestApplication } from '@nestjs/common';
 import type { Server } from 'node:http';
@@ -88,7 +89,8 @@ export async function createTestApp(
   }
 
   const moduleRef: TestingModule = await moduleBuilder.compile();
-  const app: INestApplication = moduleRef.createNestApplication();
+  const app: NestExpressApplication =
+    moduleRef.createNestApplication<NestExpressApplication>();
   const configService = moduleRef.get(ConfigService);
   const configuredApp = configService.getOrThrow<AppConfig>('app');
 
@@ -106,7 +108,7 @@ export async function createTestApp(
 
   return {
     app,
-    httpServer: app.getHttpServer() as Server,
+    httpServer: app.getHttpServer(),
     moduleRef,
     mailer,
     close: async () => {

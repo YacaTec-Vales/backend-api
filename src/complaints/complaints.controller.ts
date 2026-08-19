@@ -36,7 +36,9 @@ import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import { ApiEnvelopeOkResponse } from '../shared/decorators/api-envelope-response.decorator';
 import { JwtAuthGuard } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
+import { VpnOriginGuard } from '../shared/guards/vpn-origin.guard';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';
+import { RequireVpnOrigin } from '../shared/decorators/require-vpn-origin.decorator';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
 import type { RequestUser } from '../shared/guards/auth.guards';
 
@@ -46,7 +48,7 @@ import type { RequestUser } from '../shared/guards/auth.guards';
 @ApiTags('Complaints')
 @ApiBearerAuth('bearer')
 @Controller('complaints')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, VpnOriginGuard)
 export class ComplaintsController {
   constructor(private readonly complaintsService: ComplaintsService) {}
 
@@ -55,6 +57,7 @@ export class ComplaintsController {
    */
   @Post(':id/resolve')
   @HttpCode(200)
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('complaint.resolve')
   @ApiOperation({
     summary: 'Resolver una queja',

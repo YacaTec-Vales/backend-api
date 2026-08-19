@@ -45,7 +45,9 @@ import { ApiEnvelopeOkResponse } from '../shared/decorators/api-envelope-respons
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import { JwtAuthGuard } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
+import { VpnOriginGuard } from '../shared/guards/vpn-origin.guard';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';
+import { RequireVpnOrigin } from '../shared/decorators/require-vpn-origin.decorator';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
 import type { RequestUser } from '../shared/guards/auth.guards';
 
@@ -55,6 +57,10 @@ import type { RequestUser } from '../shared/guards/auth.guards';
  * @classdesc Gestiona la bandeja, detalle, aceptacion por destino,
  * aprobacion y rechazo de autorizaciones.
  *
+ * Los endpoints de escritura (aprobar, rechazar) requieren VPN+Tecu
+ * (ver `@RequireVpnOrigin('Tecu')`). Los GET (bandeja, detalle)
+ * siguen funcionando desde cualquier frontend.
+ *
  * @see AutorizacionesService
  * @author Equipo de desarrollo Mis Vales
  * @since 2.5.0
@@ -62,7 +68,7 @@ import type { RequestUser } from '../shared/guards/auth.guards';
 @ApiTags('Autorizaciones')
 @ApiBearerAuth('bearer')
 @Controller('autorizaciones')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, VpnOriginGuard)
 export class AutorizacionesController {
   constructor(private readonly service: AutorizacionesService) {}
 
@@ -155,6 +161,7 @@ export class AutorizacionesController {
    */
   @Post(':id/aprobar')
   @HttpCode(HttpStatus.OK)
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('authorization.approve')
   @ApiOperation({
     summary: 'Aprobar autorizacion pendiente',
@@ -208,6 +215,7 @@ export class AutorizacionesController {
    */
   @Post(':id/rechazar')
   @HttpCode(HttpStatus.OK)
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('authorization.approve')
   @ApiOperation({
     summary: 'Rechazar autorizacion pendiente',

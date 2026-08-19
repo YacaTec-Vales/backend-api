@@ -14,6 +14,7 @@
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { Logger } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { configureApplication } from './app.configure';
 import type { AppConfig } from './config/app.config';
@@ -24,7 +25,9 @@ import type { AppConfig } from './config/app.config';
  */
 async function bootstrap(): Promise<void> {
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create(AppModule, {
+  // NestExpressApplication (no INestApplication) habilita app.set('trust proxy', 1)
+  // y otras APIs especificas de Express necesarias en app.configure.ts.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bufferLogs: false,
   });
 
@@ -40,5 +43,4 @@ async function bootstrap(): Promise<void> {
       ` | Spec JSON en :${appCfg.port}/${appCfg.apiPrefix}/docs-json`,
   );
 }
-
 void bootstrap();
