@@ -208,7 +208,7 @@ export class AutorizacionesController {
    */
   @Post(':id/rechazar')
   @HttpCode(HttpStatus.OK)
-  @RequirePermissions('autorizacion.reject')
+  @RequirePermissions('authorization.approve')
   @ApiOperation({
     summary: 'Rechazar autorizacion pendiente',
     description:
