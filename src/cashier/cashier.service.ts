@@ -237,6 +237,12 @@ export class CashierService {
           message: 'El vale cambio de estado, no se puede confirmar.',
         });
       }
+
+      await this.distributorRepo.decrementCredit(
+        distributor.id,
+        voucher.amountCents,
+      );
+
       this.logger.log(
         `cashier.confirmVoucher folio=${folio} dataConfirmed=true actor=${actor.id}`,
       );
