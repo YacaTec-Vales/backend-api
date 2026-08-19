@@ -68,8 +68,12 @@ export class VpnOriginGuard implements CanActivate {
 
     // 3. Endpoints CON @RequireVpnOrigin: validar origen y frontend
     const req = ctx.switchToHttp().getRequest<Request>();
-    const origin = (req.headers['x-origin'] as string | undefined)?.toLowerCase();
-    const device = (req.headers['x-client-app'] as string | undefined)?.toLowerCase();
+    const origin = (
+      req.headers['x-origin'] as string | undefined
+    )?.toLowerCase();
+    const device = (
+      req.headers['x-client-app'] as string | undefined
+    )?.toLowerCase();
     const expectedDevice = required.toLowerCase();
 
     if (origin !== 'vpn') {
