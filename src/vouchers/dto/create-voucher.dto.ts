@@ -10,8 +10,8 @@
  * @since 1.0.0
  */
 
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsOptional, IsUUID, Min } from 'class-validator';
+import { ApiProperty } from '@nestjs/swagger';
+import { IsUUID } from 'class-validator';
 
 export class CreateVoucherDto {
   @ApiProperty({
@@ -27,17 +27,4 @@ export class CreateVoucherDto {
   })
   @IsUUID('4', { message: 'el producto debe ser un UUID valido' })
   productId!: string;
-
-  @ApiPropertyOptional({
-    description:
-      'Monto del vale en centavos. Regla R5: multiplo de 10000. ' +
-      'Si se omite, usa product.costCents. Regla R15 (PREVALE): ' +
-      'debe ser <= 50% del credito disponible de la distribuidora.',
-    example: 500000,
-    multipleOf: 10000,
-  })
-  @IsOptional()
-  @IsInt({ message: 'el monto debe ser un entero (centavos)' })
-  @Min(10000, { message: 'el monto minimo es $100 MXN (10000 centavos)' })
-  amountCents?: number;
 }
