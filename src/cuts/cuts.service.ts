@@ -10,30 +10,38 @@
  *     ventana `[cutDate_inicio, cutDate_fin]` y cuya Distribuidora
  *     pertenece a la Sucursal.
  *  3. Agrupa los vales por Distribuidora.
- *  4. Para cada Distribuidora, calcula:
- *      - Total a pagar (suma del desglose por vale).
- *      - Comision acumulada.
- *      - Castigos por morosidad (solo si el pago esta vencido).
- *      - Puntos (si pago en ventana anticipada; con descuento si
- *        pago fuera de tiempo).
- *  5. Crea una `app.relation` por Distribuidora.
- *  6. Crea las filas `app.relation_detail` (1 por vale).
+ *  4. Para cada vale calcula (en orden estricto):
+ *      a. Intereses Totales = (Cantidad Vale * Interes por Qna) * Numero de Qnas
+ *      b. Monto Comision = Cantidad Vale * Comision (%)
+ *      c. Deuda Total = Cantidad Vale + Monto Comision + Seguro + Intereses
+ *      d. Pago Quincenal = Deuda Total / Numero de Qnas
+ *      e. Ganancia Distribuidora Quincenal = (Cantidad Vale * Categoria %) / Qnas
+ *      f. Pago Puntual = Pago Quincenal - Ganancia Quincenal
+ *      g. Pago Moroso = Pago Quincenal + Multa
+ *      h. Abono a Capital = Cantidad Vale / Numero de Qnas
+ *  5. Crea una `app.relation` por Distribuidora con totales quincenales.
+ *  6. Crea las filas `app.relation_detail` (1 por vale) con
+ *     desglose completo para trazabilidad.
  *  7. Genera `reference_payment` unica para conciliacion.
  *
  * Reglas (fuente PDF `Analisis-calculo-relacion.pdf`, regla 2.0
  * §6.1.3):
- *  - opening_commission_cents = amount_cents * category.commission_bps / 10000
- *  - interest_period_cents    = amount_cents * business_config.interest_per_period_bps / 10000
- *  - insurance_cents          = business_config.insurance_cents
+ *  - opening_commission_cents = amount_cents * openingCommissionBps / 10000
+ *  - interest_total_cents     = (amount_cents * interestBps / 10000) * totalPeriods
+ *  - insurance_cents          = snapshot del vale o business_config.insurance_cents
  *  - penalty_cents            = business_config.late_penalty_cents (solo si pago esta vencido)
- *  - total_cents              = amount + opening + interest + insurance + penalty
+ *  - total_debt_cents         = amount + opening + interest_total + insurance
+ *  - fortnightly_payment      = total_debt / totalPeriods
+ *  - distributor_gain         = (amount * categoryCommissionBps / 10000) / totalPeriods
+ *  - punctual_payment         = fortnightly_payment - distributor_gain
+ *  - late_payment             = fortnightly_payment + penalty
+ *  - capital_payment          = amount / totalPeriods
  *  - points (anticipado)      = floor(sum(amount) / points_divisor) * points_multiplier
  *  - points (fuera de tiempo) = points * (1 - points_late_penalty)
  *
  * Convenciones:
  *  - La operacion es atomica: si algo falla, ninguna fila se crea.
- *  - El calculo se hace en SQL crudo para mantener consistencia con
- *    el resto del proyecto (regla 11).
+ *  - El calculo usa Math.floor para truncar (no redondear).
  *  - `now` es parametro del service para permitir tests
  *    deterministicos.
  *
@@ -200,62 +208,104 @@ export class CutService {
       }
 
       let distributorAmount = 0;
-      let distributorCommission = 0;
-      let distributorInterest = 0;
-      let distributorInsurance = 0;
+      let distributorGainTotal = 0;
       let distributorPenalty = 0;
+      let distributorToPay = 0;
       const relationDetailRows: Array<{
         voucherId: string;
         clientId: string;
         productCode: string;
         productVariant: string;
         paidPeriodsLabel: string;
-        commissionCents: number;
-        paymentCents: number;
+        baseAmountCents: number;
+        openingCommissionCents: number;
+        interestCents: number;
+        insuranceCents: number;
+        totalDebtCents: number;
+        fortnightlyPaymentCents: number;
+        distributorGainCents: number;
+        punctualPaymentCents: number;
         penaltiesCents: number;
         totalCents: number;
       }> = [];
 
       for (const v of list) {
         const amount = Number(v.amountCents);
-        // Snapshot de la categoria: si el vale lo tiene, lo usamos;
-        // si no (vales muy viejos sin snapshot), caemos al 0 y el vale
-        // se reporta como warning en otra capa.
-        const opening = Math.floor(
-          (amount * (v.categoryCommissionBps as number)) / 10000,
-        );
-        // Snapshot de interes: preferimos `v.interest_per_period_bps`.
-        // Si el vale no lo tiene (anterior al sprint 5), caemos al
-        // global de `business_config` para mantener compatibilidad.
+        const periods = v.totalPeriods;
+
+        // --- Paso 1: Intereses Totales ---
+        // Intereses = (Cantidad Vale * Interes por Quincena) * Numero de Quincenas
         const interestBps =
           v.interestPerPeriodBps !== null
             ? v.interestPerPeriodBps
             : interestPerPeriodBps;
-        const interest = Math.floor((amount * interestBps) / 10000);
-        // Snapshot de seguro: preferimos `v.insurance_cents` (que es
-        // una columna de BD escrita al emitir el vale). Si el vale
-        // no la tiene (anterior al sprint 5), caemos al global.
+        const interestPerPeriod = Math.floor((amount * interestBps) / 10000);
+        const interestTotal = interestPerPeriod * periods;
+
+        // --- Paso 2: Monto Comision ---
+        // Monto Comision = Cantidad Vale * Comision (%)
+        // Usa openingCommissionBps (comision de apertura del producto),
+        // NO categoryCommissionBps (que es ganancia de distribuidora).
+        const openingBps = v.openingCommissionBps ?? 0;
+        const openingCommission = Math.floor((amount * openingBps) / 10000);
+
+        // --- Seguro ---
         const insurance =
           v.insuranceCents !== null ? Number(v.insuranceCents) : insuranceCents;
-        // La multa por mora SIEMPRE viene del global (es un evento
-        // operativo del momento del corte, no del momento de emision).
+
+        // --- Paso 3: Deuda Total ---
+        // Deuda Total = Cantidad Vale + Monto Comision + Seguro + Intereses Totales
+        const totalDebt =
+          amount + openingCommission + insurance + interestTotal;
+
+        // --- Paso 4: Pago Quincenal (Cuota Base del Cliente) ---
+        // Pago Quincenal = Deuda Total / Numero de Quincenas
+        const fortnightlyPayment = Math.floor(totalDebt / periods);
+
+        // --- Paso 5: Ganancia de la Distribuidora por Quincena ---
+        // Ganancia Quincenal = (Cantidad Vale * Categoria %) / Numero de Quincenas
+        const categoryBps = v.categoryCommissionBps as number;
+        const distributorGain = Math.floor(
+          Math.floor((amount * categoryBps) / 10000) / periods,
+        );
+
+        // --- Paso 6: Pago Puntual de la Distribuidora ---
+        // Pago Puntual = Pago Quincenal - Ganancia Quincenal
+        const punctualPayment = fortnightlyPayment - distributorGain;
+
+        // --- Paso 7: Pago Moroso (Multa) ---
+        // La multa SIEMPRE viene del global (evento operativo del momento
+        // del corte, no del momento de emision).
         const penalty = isLate ? latePenaltyCents : 0;
-        const total = amount + opening + interest + insurance + penalty;
+
+        // Total que la distribuidora paga por este vale en este corte:
+        // Si es moroso: Pago Quincenal + Multa
+        // Si es puntual: Pago Puntual (Pago Quincenal - Ganancia)
+        const valeTotal = isLate
+          ? fortnightlyPayment + penalty
+          : punctualPayment;
+
         distributorAmount += amount;
-        distributorCommission += opening;
-        distributorInterest += interest;
-        distributorInsurance += insurance;
+        distributorGainTotal += distributorGain;
         distributorPenalty += penalty;
+        distributorToPay += valeTotal;
+
         relationDetailRows.push({
           voucherId: v.id,
           clientId: v.clientId,
           productCode: v.productCode,
           productVariant: v.productVariant,
-          paidPeriodsLabel: `0/${v.totalPeriods}`,
-          commissionCents: opening,
-          paymentCents: amount,
+          paidPeriodsLabel: `0/${periods}`,
+          baseAmountCents: amount,
+          openingCommissionCents: openingCommission,
+          interestCents: interestTotal,
+          insuranceCents: insurance,
+          totalDebtCents: totalDebt,
+          fortnightlyPaymentCents: fortnightlyPayment,
+          distributorGainCents: distributorGain,
+          punctualPaymentCents: punctualPayment,
           penaltiesCents: penalty,
-          totalCents: total,
+          totalCents: valeTotal,
         });
       }
 
@@ -275,19 +325,14 @@ export class CutService {
       // 8. Crear relacion (1 por Distribuidor).
       const referencePayment =
         await this.cutRepo.nextRelationReference(branchId);
-      const distributorToPay =
-        distributorAmount +
-        distributorCommission +
-        distributorInterest +
-        distributorInsurance +
-        distributorPenalty;
       const relationInput: Partial<RelationEntity> = {
         referencePayment,
         distributorId,
         cutDate: cutDate,
         paymentDeadlineDate: paymentDeadlineDate,
         earlyPaymentDates: [],
-        totalCommissionCents: distributorCommission,
+        // totalCommissionCents = Ganancia Quincenal acumulada del Distribuidor.
+        totalCommissionCents: distributorGainTotal,
         totalPaymentCents: distributorAmount,
         totalPenaltiesCents: distributorPenalty,
         totalToPayCents: distributorToPay,
@@ -317,7 +362,7 @@ export class CutService {
         pointsAwarded,
       });
       totalToPayCents += distributorToPay;
-      totalCommissionCents += distributorCommission;
+      totalCommissionCents += distributorGainTotal;
       totalPenaltiesCents += distributorPenalty;
       totalPointsAwarded += pointsAwarded;
     }

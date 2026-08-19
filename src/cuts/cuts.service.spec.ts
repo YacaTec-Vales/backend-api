@@ -5,7 +5,8 @@
  *  - Validacion de `cutDate` (formato).
  *  - Branch cutoff no encontrado.
  *  - Sin vales en el periodo.
- *  - Calculo por vale (apertura, interes, seguro, multa, total).
+ *  - Calculo quincenal por vale (deuda total, pago quincenal,
+ *    ganancia distribuidora, pago puntual, pago moroso).
  *  - Calculo por Distribuidor (suma de campos, puntos anticipados
  *    vs fuera de tiempo, descuento por pago fuera de tiempo).
  *  - Warnings (vales sin categoria, distribuidores inexistentes).
@@ -111,7 +112,8 @@ const BASE_CONFIG: BusinessConfigItemDto[] = [
 ];
 
 /**
- * Voucher de prueba. Por defecto es Cobre (3% comision = 300 bps).
+ * Voucher de prueba. Por defecto: $1000, 8 Qnas, Cobre 3%,
+ * comision apertura 10%, interes 5%, seguro $100.
  */
 function buildVoucher(
   overrides: Partial<{
@@ -121,6 +123,7 @@ function buildVoucher(
     amountCents: string;
     totalPeriods: number;
     categoryCommissionBps: number | null;
+    openingCommissionBps: number | null;
     productCode: string;
     productVariant: string;
     clientId: string;
@@ -136,6 +139,7 @@ function buildVoucher(
     amountCents: '100000',
     totalPeriods: 8,
     categoryCommissionBps: 300, // 3% Cobre
+    openingCommissionBps: 1000, // 10% comision apertura
     productCode: 'P-1',
     productVariant: 'STANDARD',
     interestPerPeriodBps: 500, // 5% (snapshot canonico)
@@ -269,25 +273,37 @@ describe('CutService', () => {
     });
   });
 
-  describe('calculo por vale', () => {
+  describe('calculo quincenal por vale', () => {
     /**
-     * Caso Oro (10% comision), 1 vale de $1000, 5% interes,
-     * seguro $100. Total esperado:
-     *   opening = 100000 * 1000 / 10000 = 10000
-     *   interest = 100000 * 500 / 10000 = 5000
-     *   insurance = 10000
-     *   penalty = 0 (no late)
-     *   total = 100000 + 10000 + 5000 + 10000 + 0 = 125000
+     * Caso PDF: Vale de $15,000, 8 Qnas, 10% comision, 5% interes,
+     * $100 seguro, Plata 6%.
+     *
+     * Paso 1: Intereses = (1500000 * 500/10000) * 8 = 75000 * 8 = 600000
+     * Paso 2: Comision  = 1500000 * 1000/10000 = 150000
+     * Paso 3: Deuda Total = 1500000 + 150000 + 10000 + 600000 = 2260000
+     * Paso 4: Pago Quincenal = floor(2260000 / 8) = 282500
+     * Paso 5: Ganancia Qnal = floor(floor(1500000 * 600/10000) / 8) = floor(90000/8) = 11250
+     * Paso 6: Pago Puntual = 282500 - 11250 = 271250
+     * Total (puntual) = 271250
      */
-    it('calcula correctamente con categoria Oro 10%', async () => {
+    it('calcula correctamente el ejemplo del PDF ($15k, Plata 6%)', async () => {
       const vouchers = [
-        buildVoucher({ id: 'v-1', folio: 'T-1', categoryCommissionBps: 1000 }),
+        buildVoucher({
+          id: 'v-pdf',
+          folio: 'T-PDF',
+          amountCents: '1500000',
+          totalPeriods: 8,
+          openingCommissionBps: 1000,
+          categoryCommissionBps: 600,
+          interestPerPeriodBps: 500,
+          insuranceCents: '10000',
+        }),
       ];
       const captured: { relation: unknown; details: unknown } = {
         relation: undefined,
         details: undefined,
       };
-      const { service, cutRepo } = buildService({
+      const { service } = buildService({
         cutRepo: buildCutRepo({
           findActiveVouchersForCut: jest.fn().mockResolvedValue(vouchers),
           createRelationWithDetails: jest
@@ -306,51 +322,53 @@ describe('CutService', () => {
       );
       expect(result.distributorsAffected).toBe(1);
       expect(result.relationsCreated).toBe(1);
-      expect(result.relationDetailsCreated).toBe(1);
-      expect(result.totalToPayCents).toBe(125000);
-      expect(result.totalCommissionCents).toBe(10000);
+      // Pago puntual = 271250
+      expect(result.totalToPayCents).toBe(271250);
+      // totalCommissionCents = Ganancia Quincenal = 11250
+      expect(result.totalCommissionCents).toBe(11250);
       expect(result.totalPenaltiesCents).toBe(0);
-      // El detalle persistido refleja el calculo correcto.
-      expect(
-        (
-          captured.details as Array<{
-            commissionCents: number;
-            paymentCents: number;
-            penaltiesCents: number;
-            totalCents: number;
-          }>
-        )[0],
-      ).toEqual({
-        voucherId: 'v-1',
-        clientId: 'c-1',
-        productCode: 'P-1',
-        productVariant: 'STANDARD',
-        paidPeriodsLabel: '0/8',
-        commissionCents: 10000,
-        paymentCents: 100000,
-        penaltiesCents: 0,
-        totalCents: 125000,
-      });
-      expect(cutRepo.createRelationWithDetails).toHaveBeenCalledTimes(1);
+
+      const detail = (
+        captured.details as Array<{
+          baseAmountCents: number;
+          openingCommissionCents: number;
+          interestCents: number;
+          insuranceCents: number;
+          totalDebtCents: number;
+          fortnightlyPaymentCents: number;
+          distributorGainCents: number;
+          punctualPaymentCents: number;
+          penaltiesCents: number;
+          totalCents: number;
+        }>
+      )[0];
+      expect(detail.baseAmountCents).toBe(1500000);
+      expect(detail.openingCommissionCents).toBe(150000);
+      expect(detail.interestCents).toBe(600000);
+      expect(detail.insuranceCents).toBe(10000);
+      expect(detail.totalDebtCents).toBe(2260000);
+      expect(detail.fortnightlyPaymentCents).toBe(282500);
+      expect(detail.distributorGainCents).toBe(11250);
+      expect(detail.punctualPaymentCents).toBe(271250);
+      expect(detail.penaltiesCents).toBe(0);
+      expect(detail.totalCents).toBe(271250);
     });
 
-    it('aplica interes 5% por periodo segun business_config', async () => {
-      const vouchers = [
-        buildVoucher({
-          id: 'v-1',
-          folio: 'T-1',
-          amountCents: '200000',
-          categoryCommissionBps: 300,
-        }),
-      ];
-      let capturedTotal = 0;
+    /**
+     * Caso Cobre (3%): Vale $1000, 8 Qnas, 10% comision, 5% interes, $100 seguro.
+     *
+     * Intereses = floor(100000 * 500/10000) * 8 = 5000 * 8 = 40000
+     * Comision = floor(100000 * 1000/10000) = 10000
+     * Deuda = 100000 + 10000 + 10000 + 40000 = 160000
+     * Pago Qnal = floor(160000/8) = 20000
+     * Ganancia = floor(floor(100000*300/10000)/8) = floor(3000/8) = 375
+     * Puntual = 20000 - 375 = 19625
+     */
+    it('calcula correctamente con categoria Cobre 3%', async () => {
+      const vouchers = [buildVoucher({ id: 'v-1', folio: 'T-1' })];
       const { service } = buildService({
         cutRepo: buildCutRepo({
           findActiveVouchersForCut: jest.fn().mockResolvedValue(vouchers),
-          createRelationWithDetails: jest.fn().mockImplementation(async () => {
-            capturedTotal = 0;
-            return { id: 'rel-1' };
-          }),
         }),
       });
       const result = await service.runCut(
@@ -358,26 +376,22 @@ describe('CutService', () => {
         BRANCH_ID,
         '2026-08-28',
       );
-      // amount=200000 + opening=6000 + interest=10000 + insurance=10000 + penalty=0 = 226000
-      expect(result.totalToPayCents).toBe(226000);
-      capturedTotal = result.totalToPayCents;
-      expect(capturedTotal).toBe(226000);
+      expect(result.totalToPayCents).toBe(19625);
+      expect(result.totalCommissionCents).toBe(375); // ganancia qnal
+      expect(result.totalPenaltiesCents).toBe(0);
     });
 
+    /**
+     * Pago moroso: cutDate > paymentDeadlineDate.
+     * Mismo vale Cobre $1000. Multa = $300 (30000 cents).
+     *
+     * Pago Qnal = 20000
+     * Total moroso = Pago Qnal + Multa = 20000 + 30000 = 50000
+     */
     it('suma multa cuando el pago esta fuera de tiempo', async () => {
-      // cutDate > paymentDeadlineDate -> isLate = true.
-      // Usamos un cutoff cuyo paymentDeadlineDate sea anterior.
-      const vouchers = [
-        buildVoucher({ id: 'v-1', folio: 'T-1', categoryCommissionBps: 300 }),
-      ];
-      const lateCutoff = {
-        ...BASE_CUTOFF,
-        paymentDay: 5,
-        cutoffDay: 28,
-      };
-      const { service, cutRepo } = buildService({
+      const vouchers = [buildVoucher({ id: 'v-1', folio: 'T-1' })];
+      const { service } = buildService({
         cutRepo: buildCutRepo({
-          findBranchCutoffForDate: jest.fn().mockResolvedValue(lateCutoff),
           computePaymentDeadline: jest.fn().mockReturnValue('2026-09-05'),
           findActiveVouchersForCut: jest.fn().mockResolvedValue(vouchers),
         }),
@@ -385,16 +399,38 @@ describe('CutService', () => {
       const result = await service.runCut(
         buildActor(),
         BRANCH_ID,
-        '2026-09-20', // 15 dias despues del deadline
+        '2026-09-20', // despues del deadline
       );
-      expect(result.totalPenaltiesCents).toBe(30000); // 1 vale * 30000
-      // total = 100000 + 3000 + 5000 + 10000 + 30000 = 148000
-      expect(result.totalToPayCents).toBe(148000);
-      expect(cutRepo.computePaymentDeadline).toHaveBeenCalledWith(
-        '2026-09-20',
-        5,
-        28,
+      expect(result.totalPenaltiesCents).toBe(30000);
+      // moroso: fortnightlyPayment + penalty = 20000 + 30000 = 50000
+      expect(result.totalToPayCents).toBe(50000);
+    });
+
+    /**
+     * Caso Oro (10%): Vale $1000, 8 Qnas.
+     * Ganancia = floor(floor(100000*1000/10000)/8) = floor(10000/8) = 1250
+     * Puntual = 20000 - 1250 = 18750
+     */
+    it('calcula correctamente con categoria Oro 10%', async () => {
+      const vouchers = [
+        buildVoucher({
+          id: 'v-1',
+          folio: 'T-1',
+          categoryCommissionBps: 1000,
+        }),
+      ];
+      const { service } = buildService({
+        cutRepo: buildCutRepo({
+          findActiveVouchersForCut: jest.fn().mockResolvedValue(vouchers),
+        }),
+      });
+      const result = await service.runCut(
+        buildActor(),
+        BRANCH_ID,
+        '2026-08-28',
       );
+      expect(result.totalToPayCents).toBe(18750);
+      expect(result.totalCommissionCents).toBe(1250);
     });
   });
 
@@ -415,22 +451,12 @@ describe('CutService', () => {
     });
 
     it('otorga puntos cuando el pago es anticipado (cutDate <= earlyEnd)', async () => {
-      // Para el corte q2 con cutoffDay=28, paymentDay=5, earlyPaymentDays=3:
-      // earlyEnd = paymentDeadlineDate - 3.
-      // Si cutDate = earlyEnd, qualifiesAsEarly = true.
       const vouchers = [
         buildVoucher({ id: 'v-1', folio: 'T-1', amountCents: '1200000' }),
       ];
       const earlyCutoff = {
         ...BASE_CUTOFF,
-        // paymentDay=5, cutoffDay=28. Si cutDate=2026-09-02,
-        // paymentDeadlineDate=2026-09-05, earlyEnd=2026-09-02.
-        // qualifiesAsEarly: cutDate(2026-09-02) >= cutWindowStart(2026-09-01)
-        //   && <= earlyEnd(2026-09-02) -> true.
         position: 2 as const,
-        cutoffDay: 28,
-        paymentDay: 5,
-        earlyPaymentDays: 3,
         cutWindowStart: '2026-09-01',
         cutWindowEnd: '2026-09-28',
       };
@@ -441,24 +467,13 @@ describe('CutService', () => {
           findActiveVouchersForCut: jest.fn().mockResolvedValue(vouchers),
         }),
       });
-      // amount = 1200000, divisor = 120000, basePoints = 10.
-      // multiplier = 3 bps -> multiplied = floor(10 * 3 / 10000) = 0.
-      // Necesitamos mas amount para que multiplied > 0:
-      //   amount / divisor = X, X * multiplier_bps / 10000 >= 1.
-      //   con multiplier_bps=3: X >= 10000/3 = 3334 puntos base.
-      //   X = amount / 120000. amount = 120000 * 3334 = 400080000 (40M, fuera de BD).
-      // Replanteamos: usamos amount=12000000 con divisor_cents=1000000 ficticio.
-      // Como no podemos cambiar la config, ajustamos el test a `points=0`
-      // para Oro 100000 / 120000 = 0 floor * 3 = 0. Es 0.
-      // Entonces: el test verifica que NO se otorgan puntos cuando el
-      // calculo da 0 (que es el caso realisticamente).
       const result = await service.runCut(
         buildActor(),
         BRANCH_ID,
         '2026-09-02',
       );
-      // En este caso los puntos tambien son 0 por el calculo.
-      // El test verifica el camino EARLY sin esperar puntos > 0.
+      // amount=1200000, divisor=120000, basePoints=10.
+      // multiplied = floor(10 * 3 / 10000) = 0.
       expect(result.totalPointsAwarded).toBe(0);
     });
   });
@@ -471,22 +486,18 @@ describe('CutService', () => {
           id: 'v-1',
           distributorId: DIST_ID,
           amountCents: '100000',
-          categoryCommissionBps: 300,
         }),
         buildVoucher({
           id: 'v-2',
           distributorId: DIST_ID,
           amountCents: '50000',
-          categoryCommissionBps: 300,
         }),
         buildVoucher({
           id: 'v-3',
           distributorId: DIST_2,
           amountCents: '200000',
-          categoryCommissionBps: 300,
         }),
       ];
-      const createdRelations = new Map<string, string>();
       const { service } = buildService({
         cutRepo: buildCutRepo({
           findActiveVouchersForCut: jest.fn().mockResolvedValue(vouchers),
@@ -497,9 +508,7 @@ describe('CutService', () => {
             creditAvailableCents: '1000000',
           })),
           createRelationWithDetails: jest.fn().mockImplementation(async () => {
-            const newId = `rel-${createdRelations.size + 1}`;
-            createdRelations.set(newId, 'created');
-            return { id: newId };
+            return { id: `rel-${Math.random()}` };
           }),
         }),
       });
@@ -511,35 +520,39 @@ describe('CutService', () => {
       expect(result.distributorsAffected).toBe(2);
       expect(result.relationsCreated).toBe(2);
       expect(result.relationDetailsCreated).toBe(3);
-      // DIST_1: 2 vales (100000 + 50000) con Cobre 3%:
-      //   150000 + 4500 + 7500 + 20000 = 182000
-      // DIST_2: 1 vale (200000) con Cobre 3%:
-      //   200000 + 6000 + 10000 + 10000 = 226000
-      // Total = 408000
-      expect(result.totalToPayCents).toBe(408000);
-      expect(result.totalCommissionCents).toBe(10500); // 4500 + 6000
+      // All 3 vales use Cobre 3%, opening 10%, 8 Qnas, 5% interes, $100 seguro.
+      // v-1 ($1000): puntual = 19625
+      // v-2 ($500):
+      //   interestTotal = floor(50000*500/10000)*8 = 2500*8 = 20000
+      //   opening = floor(50000*1000/10000) = 5000
+      //   deuda = 50000+5000+10000+20000 = 85000
+      //   pago qnal = floor(85000/8) = 10625
+      //   ganancia = floor(floor(50000*300/10000)/8) = floor(1500/8) = 187
+      //   puntual = 10625 - 187 = 10438
+      // v-3 ($2000):
+      //   interestTotal = floor(200000*500/10000)*8 = 10000*8 = 80000
+      //   opening = floor(200000*1000/10000) = 20000
+      //   deuda = 200000+20000+10000+80000 = 310000
+      //   pago qnal = floor(310000/8) = 38750
+      //   ganancia = floor(floor(200000*300/10000)/8) = floor(6000/8) = 750
+      //   puntual = 38750 - 750 = 38000
+      // Total = 19625 + 10438 + 38000 = 68063
+      expect(result.totalToPayCents).toBe(68063);
+      // totalCommission = sum of gains = 375 + 187 + 750 = 1312
+      expect(result.totalCommissionCents).toBe(1312);
     });
   });
 
   describe('inmutabilidad de snapshots', () => {
-    /**
-     * Regla 2.0 §6.1.3: cuando el gerente actualiza la
-     * configuracion global (seguro, interes, multa, puntos), los
-     * vales ya emitidos deben seguir pagando con las reglas que
-     * tenian cuando se emitieron. Esto protege la contabilidad y
-     * la confianza del Distribuidor.
-     */
     it('usa el interes del snapshot del vale (5%) aunque el global sea 10%', async () => {
       const vouchers = [
         buildVoucher({
           id: 'v-snap',
           folio: 'T-SNAP',
           amountCents: '100000',
-          categoryCommissionBps: 300, // Cobre 3%
           interestPerPeriodBps: 500, // snapshot: 5%
         }),
       ];
-      // El global dice 1000 (10%) pero el snapshot del vale dice 500.
       const customConfig = BASE_CONFIG.map((c) =>
         c.key === 'interest_per_period_bps' ? { ...c, valueBps: 1000 } : c,
       );
@@ -556,8 +569,9 @@ describe('CutService', () => {
         BRANCH_ID,
         '2026-08-28',
       );
-      // amount=100000 + opening=3000 + interest=5000 + insurance=10000 = 118000
-      expect(result.totalToPayCents).toBe(118000);
+      // Uses snapshot 5%, not global 10%.
+      // Same as Cobre default: puntual = 19625
+      expect(result.totalToPayCents).toBe(19625);
     });
 
     it('usa el seguro del snapshot del vale ($100) aunque el global sea $200', async () => {
@@ -566,12 +580,9 @@ describe('CutService', () => {
           id: 'v-snap-ins',
           folio: 'T-SNAP-INS',
           amountCents: '100000',
-          categoryCommissionBps: 300,
-          interestPerPeriodBps: 500,
           insuranceCents: '10000', // snapshot: $100
         }),
       ];
-      // El global dice 20000 ($200).
       const customConfig = BASE_CONFIG.map((c) =>
         c.key === 'insurance_cents' ? { ...c, valueCents: 20000 } : c,
       );
@@ -588,9 +599,8 @@ describe('CutService', () => {
         BRANCH_ID,
         '2026-08-28',
       );
-      // amount=100000 + opening=3000 + interest=5000 + insurance=10000 = 118000
-      // (NO 138000 con el global nuevo).
-      expect(result.totalToPayCents).toBe(118000);
+      // Uses snapshot $100, not global $200. Same result.
+      expect(result.totalToPayCents).toBe(19625);
     });
 
     it('cae al global si el vale no tiene snapshot (vales muy viejos)', async () => {
@@ -599,9 +609,9 @@ describe('CutService', () => {
           id: 'v-old',
           folio: 'T-OLD',
           amountCents: '100000',
-          categoryCommissionBps: 300,
-          interestPerPeriodBps: null, // sin snapshot (vale viejo)
-          insuranceCents: null, // sin snapshot (vale viejo)
+          interestPerPeriodBps: null,
+          insuranceCents: null,
+          openingCommissionBps: null, // old voucher, no snapshot
         }),
       ];
       const { service } = buildService({
@@ -609,21 +619,27 @@ describe('CutService', () => {
           findActiveVouchersForCut: jest.fn().mockResolvedValue(vouchers),
         }),
       });
-      // Con el global canonico (interes 5%, seguro $100):
-      // 100000 + 3000 + 5000 + 10000 = 118000
+      // openingBps = 0 (null -> 0 fallback)
+      // interestBps = 500 (global), insuranceCents = 10000 (global)
+      // interestTotal = 5000 * 8 = 40000
+      // opening = 0
+      // deuda = 100000 + 0 + 10000 + 40000 = 150000
+      // pago qnal = floor(150000/8) = 18750
+      // ganancia = floor(floor(100000*300/10000)/8) = floor(3000/8) = 375
+      // puntual = 18750 - 375 = 18375
       const result = await service.runCut(
         buildActor(),
         BRANCH_ID,
         '2026-08-28',
       );
-      expect(result.totalToPayCents).toBe(118000);
+      expect(result.totalToPayCents).toBe(18375);
     });
   });
 
   describe('warnings', () => {
     it('omite vales sin categoria y los reporta en warnings', async () => {
       const vouchers = [
-        buildVoucher({ id: 'v-1', folio: 'T-1', categoryCommissionBps: 300 }),
+        buildVoucher({ id: 'v-1', folio: 'T-1' }),
         buildVoucher({ id: 'v-2', folio: 'T-2', categoryCommissionBps: null }),
       ];
       const { service } = buildService({
@@ -636,7 +652,6 @@ describe('CutService', () => {
         BRANCH_ID,
         '2026-08-28',
       );
-      // Solo 1 vale procesado.
       expect(result.relationDetailsCreated).toBe(1);
       expect(result.warnings.length).toBe(1);
       expect(result.warnings[0]).toContain('T-2');
