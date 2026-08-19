@@ -211,4 +211,26 @@ export class DistributorRepository {
 
     return { items, total: Number(total) };
   }
+
+  /**
+   * Decrementa el credito disponible de una distribuidora.
+   *
+   * @param id - UUID del distribuidor.
+   * @param amountCents - Cantidad a restar.
+   * @returns Entidad actualizada o `null` si no se pudo actualizar.
+   */
+  async decrementCredit(
+    id: string,
+    amountCents: number,
+  ): Promise<DistributorEntity | null> {
+    const [row] = await this.writeDb
+      .update(distributors)
+      .set({
+        creditAvailableCents: sql`${distributors.creditAvailableCents} - ${amountCents}`,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(distributors.id, id), isNull(distributors.deletedAt)))
+      .returning();
+    return row ?? null;
+  }
 }
