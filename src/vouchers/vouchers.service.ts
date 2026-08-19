@@ -161,7 +161,7 @@ export class VouchersService {
     }
 
     // 4. Resolver monto.
-    const amountCents = dto.amountCents ?? product.costCents;
+    const amountCents = product.costCents;
     if (amountCents < 10000) {
       throw new BadRequestException({
         code: VOUCHER_ERROR_CODES.AMOUNT_TOO_LOW,
