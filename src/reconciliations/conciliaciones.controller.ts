@@ -27,17 +27,20 @@ import { CurrentUser } from '../shared/decorators/current-user.decorator';
 import type { RequestUser } from '../shared/guards/auth.guards';
 import { JwtAuthGuard, RolesGuard } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
+import { VpnOriginGuard } from '../shared/guards/vpn-origin.guard';
+import { RequireVpnOrigin } from '../shared/decorators/require-vpn-origin.decorator';
 import { ApiEnvelopeOkResponse } from '../shared/decorators/api-envelope-response.decorator';
 
 @ApiTags('Reconciliations')
 @ApiBearerAuth('bearer')
-@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard, VpnOriginGuard)
 @Controller('reconciliations')
 export class ConciliacionesController {
   constructor(private readonly conciliacionService: ConciliacionService) {}
 
   @Post('upload')
   @HttpCode(200)
+  @RequireVpnOrigin('Tecu')
   @Roles('CAJERO') // Protegido estrictamente para el rol CAJERA
   @ApiOperation({
     summary: 'Subir archivo Excel del banco',
@@ -79,6 +82,7 @@ export class ConciliacionesController {
 
   @Post('manual')
   @HttpCode(200)
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('conciliacion.manual')
   @ApiOperation({
     summary: 'Conciliación manual de movimientos',

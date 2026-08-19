@@ -96,6 +96,25 @@ export type UserStatus = 'ACTIVO' | 'INACTIVO' | 'SUSPENDIDO';
 export type Device = 'Tecu' | 'Calipx' | 'Poch' | 'unknown';
 
 /**
+ * Origen de la peticion segun el header `x-origin` inyectado por nginx.
+ *
+ * - `vpn`: la peticion entra por el hub WireGuard (vpn-01) y llega a
+ *   nginx lb-01 desde 192.168.27.1. Unica forma de origin privado.
+ * - `public`: la peticion llega desde Cloudflare (rangos CF IPv4)
+ *   a lb-01. Es la opcion por defecto para todos los subdominios
+ *   publicos (calpix, poch, api, taquizaschavez).
+ * - `unknown`: el header no viene o tiene un valor inesperado. El
+ *   `VpnOriginGuard` rechaza con AUTH.NOT_VPN_ORIGIN.
+ *
+ * El header `X-Origin` es SOBRESCRITO por nginx con `proxy_set_header
+ * X-Origin $x_origin;` (no falsificable por el cliente).
+ *
+ * @see shared/guards/vpn-origin.guard.ts
+ * @see shared/utils/request-context.util.ts
+ */
+export type Origin = 'vpn' | 'public' | 'unknown';
+
+/**
  * Payload firmado en el JWT de acceso.
  *
  * Claims requeridos por el sistema. Los claims `iat` y `exp` son
@@ -189,4 +208,28 @@ export interface LoginContext {
   ipAddress: string;
   userAgent: string;
   device: Device;
+}
+
+/**
+ * Contexto extendido de la peticion para auditoria y `VpnOriginGuard`.
+ *
+ * Campos adicionales al `LoginContext`:
+ *  - `origin`: vpn | public | unknown (del header `X-Origin`).
+ *  - `realIp`: IP real del peer (post-SNAT-removal) del header
+ *    `X-Real-IP`. En produccion es la IP del peer VPN (.134-.139).
+ *  - `forwardedFor`: cadena de proxies del header `X-Forwarded-For`.
+ *
+ * Construido por `contextFromRequest` en `shared/utils/request-context.util.ts`.
+ *
+ * @see contextFromRequest
+ * @see RequestLoggingInterceptor
+ * @see VpnOriginGuard
+ */
+export interface RequestContext {
+  ipAddress: string;
+  userAgent: string;
+  device: Device;
+  origin: Origin;
+  realIp: string | null;
+  forwardedFor: string | null;
 }

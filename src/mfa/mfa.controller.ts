@@ -45,7 +45,9 @@ import { ApiEnvelopeOkResponse } from '../shared/decorators/api-envelope-respons
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
 import { JwtAuthGuard, type RequestUser } from '../shared/guards/auth.guards';
+import { VpnOriginGuard } from '../shared/guards/vpn-origin.guard';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';
+import { RequireVpnOrigin } from '../shared/decorators/require-vpn-origin.decorator';
 
 /**
  * Controlador MFA. Ruta base: `/mfa` (prefija `api/v1`).
@@ -59,7 +61,8 @@ export class MfaController {
 
   constructor(private readonly mfaService: MfaService) {}
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, VpnOriginGuard)
+  @RequireVpnOrigin('Tecu')
   @Post('setup')
   @ApiOperation({
     summary: 'Iniciar configuracion MFA',
@@ -67,7 +70,8 @@ export class MfaController {
       'Genera un secret TOTP y N backup codes para el usuario autenticado. ' +
       'Devuelve una URI `otpauth://` para generar el QR y los backup codes ' +
       'en claro (visibles una sola vez). El MFA queda activado inmediatamente. ' +
-      'Si el usuario ya tenia MFA, se regenera todo (idempotente).',
+      'Si el usuario ya tenia MFA, se regenera todo (idempotente). ' +
+      'Requiere VPN+Tecu (header `X-Origin: vpn` + `X-Client-App: Tecu`).',
   })
   @ApiEnvelopeOkResponse({
     message: 'MFA configurado correctamente',
@@ -87,14 +91,16 @@ export class MfaController {
     };
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, VpnOriginGuard)
+  @RequireVpnOrigin('Tecu')
   @Post('verify-setup')
   @ApiOperation({
     summary: 'Verificar configuracion MFA',
     description:
       'Confirma que el usuario puede generar codigos TOTP correctamente. ' +
       'Envia un codigo de 6 digitos generado por la app autenticadora. ' +
-      'Si el codigo es valido, el MFA queda confirmado.',
+      'Si el codigo es valido, el MFA queda confirmado. ' +
+      'Requiere VPN+Tecu (header `X-Origin: vpn` + `X-Client-App: Tecu`).',
   })
   @ApiEnvelopeOkResponse({
     message: 'Codigo MFA verificado correctamente',
@@ -120,13 +126,15 @@ export class MfaController {
     this.logger.log(`MFA verify-setup exitoso para usuario ${user.id}`);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, VpnOriginGuard)
+  @RequireVpnOrigin('Tecu')
   @Delete('disable')
   @ApiOperation({
     summary: 'Desactivar MFA propio',
     description:
       'Desactiva MFA del usuario autenticado. Requiere un codigo TOTP ' +
-      'o backup code valido para confirmar la identidad antes de desactivar.',
+      'o backup code valido para confirmar la identidad antes de desactivar. ' +
+      'Requiere VPN+Tecu (header `X-Origin: vpn` + `X-Client-App: Tecu`).',
   })
   @ApiNoContentResponse({ description: 'MFA desactivado correctamente' })
   @ApiUnauthorizedResponse({
@@ -152,7 +160,8 @@ export class MfaController {
     this.logger.log(`MFA desactivado para usuario ${user.id}`);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, VpnOriginGuard)
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('mfa.admin_disable')
   @Delete('admin-disable/:userId')
   @ApiOperation({
@@ -160,7 +169,8 @@ export class MfaController {
     description:
       'Permite a un administrador o gerente desactivar el MFA de otro ' +
       'usuario (ej. cuando el usuario perdio su telefono). Requiere el ' +
-      'permiso `mfa.admin_disable`.',
+      'permiso `mfa.admin_disable`. ' +
+      'Requiere VPN+Tecu (header `X-Origin: vpn` + `X-Client-App: Tecu`).',
   })
   @ApiParam({
     name: 'userId',
