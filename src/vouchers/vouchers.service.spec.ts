@@ -243,13 +243,16 @@ describe('VouchersService', () => {
   it('lanza 400 VOUCHER.PREVALE_EXCEEDS_50_PERCENT cuando monto > 50% del credito', async () => {
     distributorRepo.findByUserId.mockResolvedValue(distributor as never);
     clientRepo.findById.mockResolvedValue(client as never);
-    productRepo.findActiveById.mockResolvedValue(product as never);
     // creditAvailable = 1000000, halfCredit = 500000. monto 600000 > 500000.
+    productRepo.findActiveById.mockResolvedValue({
+      ...product,
+      costCents: 600000,
+    } as never);
+
     await expect(
       service.emit(actor, {
         clientId: 'c-1',
         productId: 'p-1',
-        amountCents: 600000,
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
@@ -257,12 +260,14 @@ describe('VouchersService', () => {
   it('lanza 400 VOUCHER.AMOUNT_BELOW_MIN cuando monto < 10000', async () => {
     distributorRepo.findByUserId.mockResolvedValue(distributor as never);
     clientRepo.findById.mockResolvedValue(client as never);
-    productRepo.findActiveById.mockResolvedValue(product as never);
+    productRepo.findActiveById.mockResolvedValue({
+      ...product,
+      costCents: 5000,
+    } as never);
     await expect(
       service.emit(actor, {
         clientId: 'c-1',
         productId: 'p-1',
-        amountCents: 5000,
       }),
     ).rejects.toMatchObject({
       response: { code: 'VOUCHER.AMOUNT_BELOW_MIN' },
@@ -282,16 +287,5 @@ describe('VouchersService', () => {
     ).rejects.toMatchObject({
       response: { code: 'VOUCHER.CLIENT_HAS_ACTIVE' },
     });
-  });
-
-  it('usa amountCents del DTO cuando viene (no el del producto)', async () => {
-    stubAllHappy();
-    await service.emit(actor, {
-      clientId: 'c-1',
-      productId: 'p-1',
-      amountCents: 200000,
-    });
-    const call = voucherRepo.create.mock.calls[0][0];
-    expect(call.amountCents).toBe(200000);
   });
 });
