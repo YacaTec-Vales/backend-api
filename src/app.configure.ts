@@ -18,6 +18,7 @@
 
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { apiReference } from '@scalar/nestjs-api-reference';
 import helmet from 'helmet';
@@ -47,7 +48,7 @@ export interface ConfigureApplicationOptions {
  * @param options - Switches de OpenAPI.
  */
 export function configureApplication(
-  app: INestApplication,
+  app: NestExpressApplication,
   appCfg: AppConfig,
   options: ConfigureApplicationOptions = {},
 ): void {
@@ -55,6 +56,10 @@ export function configureApplication(
 
   app.enableShutdownHooks();
   app.setGlobalPrefix(appCfg.apiPrefix);
+  // Single hop: solo lb-01 frente al backend. Habilita que req.ip tome
+  // X-Real-IP que pone nginx, necesario para que el RequestLoggingInterceptor
+  // y el VpnOriginGuard tengan la IP real del peer VPN (no 127.0.0.1).
+  app.set('trust proxy', 1);
 
   app.use(
     helmet({

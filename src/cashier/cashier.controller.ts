@@ -37,7 +37,9 @@ import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import { ApiEnvelopeOkResponse } from '../shared/decorators/api-envelope-response.decorator';
 import { JwtAuthGuard } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
+import { VpnOriginGuard } from '../shared/guards/vpn-origin.guard';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';
+import { RequireVpnOrigin } from '../shared/decorators/require-vpn-origin.decorator';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
 import type { RequestUser } from '../shared/guards/auth.guards';
 
@@ -46,7 +48,7 @@ import type { RequestUser } from '../shared/guards/auth.guards';
  *
  * Gestiona el flujo de caja: buscar un vale por folio y
  * confirmar el feriado. Gateado por `JwtAuthGuard` +
- * `PermissionsGuard`.
+ * `PermissionsGuard` + `VpnOriginGuard` (solo desde VPN+Tecu).
  *
  * @see CashierService
  * @author Equipo Mis Vales
@@ -55,7 +57,7 @@ import type { RequestUser } from '../shared/guards/auth.guards';
 @ApiTags('Cashier')
 @ApiBearerAuth('bearer')
 @Controller('cashier')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, VpnOriginGuard)
 export class CashierController {
   constructor(private readonly cashierService: CashierService) {}
 
@@ -68,6 +70,7 @@ export class CashierController {
    */
   @Post('vouchers/find/:folio')
   @HttpCode(200)
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('voucher.read')
   @ApiOperation({
     summary: 'Buscar vale por folio (cajera pre-carga datos)',
@@ -113,6 +116,7 @@ export class CashierController {
    */
   @Post('vouchers/confirm/:folio')
   @HttpCode(200)
+  @RequireVpnOrigin('Tecu')
   @ApiOperation({
     summary: 'Confirmar el feriado de un vale',
     description:
