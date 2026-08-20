@@ -120,9 +120,7 @@ export const envValidationSchema = Joi.object({
   // Default: activo solo en NODE_ENV=production. Override explicito:
   //   true  → fuerza activacion en cualquier entorno (incluido dev/testing)
   //   false → fuerza desactivacion (incluido production, rollback rapido)
-  VPN_ORIGIN_GUARD_ENABLED: Joi.string()
-    .valid('true', 'false')
-    .optional(),
+  VPN_ORIGIN_GUARD_ENABLED: Joi.string().valid('true', 'false').optional(),
 
   // Object storage (MinIO local o DigitalOcean Spaces en produccion)
   STORAGE_ENDPOINT: Joi.string().uri().required(),
