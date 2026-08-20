@@ -16,6 +16,9 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
+  ParseIntPipe,
+  DefaultValuePipe,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -140,5 +143,130 @@ export class DocumentsController {
     @Param('id', new ParseUUIDPipe({ version: '4' })) id: string,
   ): Promise<DocumentResponseDto> {
     return this.documentsService.findById(id);
+  }
+
+  @Get()
+  @RequirePermissions('document.read')
+  @ApiOperation({
+    summary: 'Listar todos los documentos',
+    description:
+      'Obtiene una lista paginada de todos los documentos del sistema.',
+  })
+  @ApiEnvelopeOkResponse({
+    message: 'Documentos listados correctamente',
+    type: DocumentResponseDto,
+    isArray: true,
+  })
+  async findAll(
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
+    @Query('offset', new DefaultValuePipe(0), ParseIntPipe) offset: number,
+  ): Promise<DocumentResponseDto[]> {
+    return this.documentsService.findAll(limit, offset);
+  }
+
+  @Get('client/:clientId')
+  @RequirePermissions('document.read')
+  @ApiOperation({
+    summary: 'Listar documentos de un cliente',
+    description: 'Devuelve todos los documentos vinculados a un cliente.',
+  })
+  @ApiEnvelopeOkResponse({
+    message: 'Documentos del cliente consultados correctamente',
+    type: DocumentResponseDto,
+    isArray: true,
+  })
+  async findByClient(
+    @Param('clientId', new ParseUUIDPipe({ version: '4' })) clientId: string,
+  ): Promise<DocumentResponseDto[]> {
+    return this.documentsService.findByClient(clientId);
+  }
+
+  @Get('verification/:solicitationId')
+  @RequirePermissions('document.read')
+  @ApiOperation({
+    summary: 'Listar documentos de una verificación',
+    description:
+      'Devuelve todos los documentos vinculados a una verificación específica.',
+  })
+  @ApiEnvelopeOkResponse({
+    message: 'Documentos de verificación consultados correctamente',
+    type: DocumentResponseDto,
+    isArray: true,
+  })
+  async findByVerification(
+    @Param('solicitationId', new ParseUUIDPipe({ version: '4' }))
+    solicitationId: string,
+  ): Promise<DocumentResponseDto[]> {
+    return this.documentsService.findByVerification(solicitationId);
+  }
+
+  @Get('type/:documentType')
+  @RequirePermissions('document.read')
+  @ApiOperation({
+    summary: 'Listar documentos por tipo',
+    description:
+      'Devuelve todos los documentos filtrados por un tipo específico.',
+  })
+  @ApiEnvelopeOkResponse({
+    message: 'Documentos consultados correctamente',
+    type: DocumentResponseDto,
+    isArray: true,
+  })
+  async findByType(
+    @Param('documentType') documentType: string,
+  ): Promise<DocumentResponseDto[]> {
+    return this.documentsService.findByType(documentType);
+  }
+
+  @Post('verification/:solicitationId')
+  @RequirePermissions('document.upload')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiOperation({
+    summary: 'Subir foto para una verificación',
+    description:
+      'Sube un archivo e inyecta automáticamente el solicitationId en la metadata.',
+  })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        file: { type: 'string', format: 'binary' },
+        documentType: {
+          type: 'string',
+          enum: ['ine', 'address_proof', 'voucher_evidence', 'other'],
+          default: 'other',
+        },
+        metadata: { type: 'string', description: 'JSON libre extra' },
+      },
+      required: ['file'],
+    },
+  })
+  @ApiEnvelopeCreatedResponse({
+    message: 'Foto de verificación subida correctamente',
+    type: DocumentResponseDto,
+  })
+  async uploadForVerification(
+    @CurrentUser() actor: RequestUser,
+    @Param('solicitationId', new ParseUUIDPipe({ version: '4' }))
+    solicitationId: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: UploadMetadataDto,
+  ): Promise<DocumentResponseDto> {
+    let parsedMetadata: Record<string, unknown> = {};
+    if (body.metadata) {
+      try {
+        parsedMetadata = JSON.parse(body.metadata) as Record<string, unknown>;
+      } catch {
+        // ignore
+      }
+    }
+    parsedMetadata.solicitationId = solicitationId;
+    return this.documentsService.upload(
+      actor,
+      file,
+      body.documentType ?? 'other',
+      JSON.stringify(parsedMetadata),
+    );
   }
 }

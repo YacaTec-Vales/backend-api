@@ -58,6 +58,7 @@ import { ComplaintsModule } from './complaints/complaints.module';
 import { DocumentsModule } from './documents/documents.module';
 import { AutorizacionesModule } from './autorizaciones/autorizaciones.module';
 import { ReconciliationsModule } from './reconciliations/reconciliations.module';
+import { AuditModule } from './audit/audit.module';
 
 import { JwtAuthGuard, RolesGuard } from './shared/guards/auth.guards';
 import { PermissionsGuard } from './shared/guards/permissions.guard';
@@ -125,6 +126,7 @@ import { RequireMfaGuard } from './shared/guards/require-mfa.guard';
     DocumentsModule,
     AutorizacionesModule,
     ReconciliationsModule,
+    AuditModule,
   ],
   controllers: [AppController],
   providers: [

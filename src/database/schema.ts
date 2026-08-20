@@ -1285,3 +1285,30 @@ export const reconciliations = appSchema.table('reconciliation', {
 
 export type ReconciliationEntity = typeof reconciliations.$inferSelect;
 export type NewReconciliationEntity = typeof reconciliations.$inferInsert;
+
+/**
+ * Tabla `app.log`.
+ * Bitácora de aplicación (eventos de sistema: LOGIN, LOGOUT, CONSULTA, etc.).
+ */
+export const systemLogs = appSchema.table('log', {
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  logType: text('log_type').notNull(),
+  userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+  action: text('action'),
+  metadata: jsonb('metadata')
+    .notNull()
+    .default(sql`'{}'::jsonb`),
+  ipAddress: inet('ip_address'),
+  userAgent: text('user_agent'),
+  device: text('device'),
+  durationMs: integer('duration_ms'),
+  message: text('message'),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export type SystemLogEntity = typeof systemLogs.$inferSelect;
+export type NewSystemLogEntity = typeof systemLogs.$inferInsert;

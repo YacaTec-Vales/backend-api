@@ -44,6 +44,14 @@ export interface CutVoucherRow {
   amountCents: string;
   totalPeriods: number;
   categoryCommissionBps: number | null;
+  /**
+   * Snapshot de la comision de apertura (bps) al emitir el vale.
+   * Usada para calcular el Monto de Comision segun la formula:
+   *   Monto Comision = Cantidad Vale * openingCommissionBps / 10000
+   * Nullable para vales muy viejos (anteriores al sprint 5); en
+   * ese caso el servicio cae al 0 bps.
+   */
+  openingCommissionBps: number | null;
   productCode: string;
   productVariant: string;
   /**
@@ -71,6 +79,10 @@ export interface CutDistributorSummary {
 
 /**
  * Detalle de la relacion (1 fila por vale del corte).
+ *
+ * Incluye el desglose completo para trazabilidad (regla:
+ * "mostrar siempre el paso a paso de Deuda Total antes de
+ * dar el Pago Quincenal").
  */
 export interface RelationDetailInput {
   voucherId: string;
@@ -78,9 +90,25 @@ export interface RelationDetailInput {
   productCode: string;
   productVariant: string;
   paidPeriodsLabel: string;
-  commissionCents: number;
-  paymentCents: number;
+  /** Cantidad Vale original (centavos). */
+  baseAmountCents: number;
+  /** Monto Comision = Cantidad Vale * comision (centavos). */
+  openingCommissionCents: number;
+  /** Intereses Totales = (Cantidad Vale * interes) * Qnas (centavos). */
+  interestCents: number;
+  /** Seguro total (centavos). */
+  insuranceCents: number;
+  /** Deuda Total = base + comision + seguro + intereses (centavos). */
+  totalDebtCents: number;
+  /** Pago Quincenal = Deuda Total / Qnas (centavos). */
+  fortnightlyPaymentCents: number;
+  /** Ganancia Distribuidora Quincenal (centavos). */
+  distributorGainCents: number;
+  /** Pago Puntual = Pago Quincenal - Ganancia (centavos). */
+  punctualPaymentCents: number;
+  /** Multa aplicada en este corte (centavos). 0 si puntual. */
   penaltiesCents: number;
+  /** Total que la distribuidora paga por este vale en este corte (centavos). */
   totalCents: number;
 }
 
@@ -225,6 +253,7 @@ export class CutRepository {
               v.amount_cents::text    AS amount_cents,
               v.total_periods::int    AS total_periods,
               v.category_commission_bps::int AS category_commission_bps,
+              v.opening_commission_bps::int  AS opening_commission_bps,
               v.interest_per_period_bps::int AS interest_per_period_bps,
               v.insurance_cents::text AS insurance_cents,
               p.code                  AS product_code,
@@ -251,6 +280,10 @@ export class CutRepository {
         r['category_commission_bps'] === null
           ? null
           : Number(r['category_commission_bps']),
+      openingCommissionBps:
+        r['opening_commission_bps'] === null
+          ? null
+          : Number(r['opening_commission_bps']),
       interestPerPeriodBps:
         r['interest_per_period_bps'] === null
           ? null
@@ -379,9 +412,13 @@ export class CutRepository {
         await this.writePool.query(
           `INSERT INTO app.relation_detail (
              relation_id, voucher_id, client_id, product_code,
-             product_variant, paid_periods_label, commission_cents,
-             payment_cents, penalties_cents, total_cents
-           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+             product_variant, paid_periods_label,
+             base_amount_cents, opening_commission_cents,
+             interest_cents, insurance_cents, total_debt_cents,
+             fortnightly_payment_cents, distributor_gain_cents,
+             punctual_payment_cents, penalties_cents, total_cents
+           ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+                     $11, $12, $13, $14, $15, $16)`,
           [
             relationId,
             d.voucherId,
@@ -389,8 +426,14 @@ export class CutRepository {
             d.productCode,
             d.productVariant,
             d.paidPeriodsLabel,
-            d.commissionCents,
-            d.paymentCents,
+            d.baseAmountCents,
+            d.openingCommissionCents,
+            d.interestCents,
+            d.insuranceCents,
+            d.totalDebtCents,
+            d.fortnightlyPaymentCents,
+            d.distributorGainCents,
+            d.punctualPaymentCents,
             d.penaltiesCents,
             d.totalCents,
           ],

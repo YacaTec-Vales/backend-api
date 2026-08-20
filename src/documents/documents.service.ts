@@ -121,6 +121,54 @@ export class DocumentsService {
     return this.toResult(row, publicUrl);
   }
 
+  async findAll(limit: number, offset: number): Promise<UploadResult[]> {
+    const rows = await this.documentRepo.findAll(limit, offset);
+    return Promise.all(
+      rows.map(async (row) => {
+        const publicUrl = await this.storageService.getSignedUrl(
+          row.storagePath,
+        );
+        return this.toResult(row, publicUrl);
+      }),
+    );
+  }
+
+  async findByClient(clientId: string): Promise<UploadResult[]> {
+    const rows = await this.documentRepo.findByClientId(clientId);
+    return Promise.all(
+      rows.map(async (row) => {
+        const publicUrl = await this.storageService.getSignedUrl(
+          row.storagePath,
+        );
+        return this.toResult(row, publicUrl);
+      }),
+    );
+  }
+
+  async findByVerification(solicitationId: string): Promise<UploadResult[]> {
+    const rows = await this.documentRepo.findByVerificationId(solicitationId);
+    return Promise.all(
+      rows.map(async (row) => {
+        const publicUrl = await this.storageService.getSignedUrl(
+          row.storagePath,
+        );
+        return this.toResult(row, publicUrl);
+      }),
+    );
+  }
+
+  async findByType(documentType: string): Promise<UploadResult[]> {
+    const rows = await this.documentRepo.findByType(documentType);
+    return Promise.all(
+      rows.map(async (row) => {
+        const publicUrl = await this.storageService.getSignedUrl(
+          row.storagePath,
+        );
+        return this.toResult(row, publicUrl);
+      }),
+    );
+  }
+
   private toResult(row: DocumentEntity, publicUrl: string): UploadResult {
     const createdAt = row.createdAt;
     return {
