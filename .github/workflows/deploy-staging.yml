@@ -88,7 +88,8 @@ jobs:
             tar -czf /tmp/release.tar.gz \
               dist package.json package-lock.json node_modules
           else
-            FRONTEND=$(echo "$REPO" | sed 's|YacaTec-Vales/frontend-||' | tr 'A-Z' 'a-z' | tr - _)
+            REPO_NAME=$(basename "$REPO")
+            FRONTEND=$(echo "$REPO_NAME" | tr '[:upper:]' '[:lower:]')
             tar -czf /tmp/release.tar.gz -C "dist/${FRONTEND}/browser" .
           fi
 
