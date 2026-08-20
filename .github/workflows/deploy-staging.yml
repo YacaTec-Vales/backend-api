@@ -89,9 +89,12 @@ jobs:
             tar -czf /tmp/release.tar.gz \
               dist package.json package-lock.json node_modules
           else
-            REPO_NAME=$(basename "$REPO")
-            FRONTEND=$(echo "$REPO_NAME" | tr '[:upper:]' '[:lower:]')
-            tar -czf /tmp/release.tar.gz -C "dist/${FRONTEND}/browser" .
+            DIST_PATH="${{ secrets.STAGING_DIST }}"
+            if [ -z "$DIST_PATH" ]; then
+              echo "::error::STAGING_DIST secret not set for $REPO"
+              exit 1
+            fi
+            tar -czf /tmp/release.tar.gz -C "$DIST_PATH" .
           fi
 
           ls -lh /tmp/release.tar.gz
@@ -161,18 +164,22 @@ jobs:
             # 4. Smoke test o restart
             if [ -n "$SERVICE" ]; then
               systemctl restart "$SERVICE"
-              sleep 4
-              if [ -n "$BACKEND_PORT" ]; then
-                HEALTH=$(curl -fsS -m 5 "http://127.0.0.1:${BACKEND_PORT}/api/v1/health/live" || echo "FAILED")
-                echo "    health/live: $HEALTH"
+              HEALTH=""
+              for i in 1 2 3 4 5 6 7 8 9 10; do
+                sleep 2
+                HEALTH=$(curl -fsS -m 3 "http://127.0.0.1:${BACKEND_PORT}/api/v1/health/live" 2>/dev/null || echo "")
                 if echo "$HEALTH" | grep -q '"status":"ok"'; then
-                  echo "=== Deploy OK (backend live) ==="
-                else
-                  echo "::error::Backend health check failed: $HEALTH"
-                  exit 1
+                  echo "    health/live OK on try $i: $HEALTH"
+                  break
                 fi
+                echo "    health/live try $i not ready: ${HEALTH:-<no response>}"
+              done
+              if echo "$HEALTH" | grep -q '"status":"ok"'; then
+                echo "=== Deploy OK (backend live) ==="
               else
-                echo "=== Deploy OK (service restarted, no health check) ==="
+                echo "::error::Backend health check failed after 20s"
+                journalctl -u "$SERVICE" --no-pager -n 20 2>&1 || true
+                exit 1
               fi
             else
               nginx -s reload
