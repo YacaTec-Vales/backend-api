@@ -32,6 +32,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || (github.event.inputs.ref || 'develop') }}
+          submodules: recursive
 
       - name: Setup Node
         uses: actions/setup-node@v4
