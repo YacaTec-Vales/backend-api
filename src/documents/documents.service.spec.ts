@@ -13,15 +13,26 @@ import { DocumentRepository } from '../database/repositories/document.repository
 
 function buildService(overrides: {
   findById?: () => Promise<unknown>;
+  findAll?: () => Promise<unknown[]>;
+  findByClientId?: () => Promise<unknown[]>;
+  findByVerificationId?: () => Promise<unknown[]>;
+  findByType?: () => Promise<unknown[]>;
   getSignedUrl?: () => Promise<string>;
 }): DocumentsService {
   return new DocumentsService(
     {
       upload: jest.fn(),
-      getSignedUrl: overrides.getSignedUrl ?? jest.fn(),
+      getSignedUrl:
+        overrides.getSignedUrl ?? jest.fn().mockResolvedValue('url'),
     } as unknown as StorageService,
     {
       findById: overrides.findById ?? jest.fn(),
+      findAll: overrides.findAll ?? jest.fn().mockResolvedValue([]),
+      findByClientId:
+        overrides.findByClientId ?? jest.fn().mockResolvedValue([]),
+      findByVerificationId:
+        overrides.findByVerificationId ?? jest.fn().mockResolvedValue([]),
+      findByType: overrides.findByType ?? jest.fn().mockResolvedValue([]),
       create: jest.fn(),
       findByStoragePath: jest.fn(),
     } as unknown as DocumentRepository,
@@ -79,5 +90,46 @@ describe('DocumentsService.findById', () => {
     await expect(service.findById('no-existe')).rejects.toBeInstanceOf(
       NotFoundException,
     );
+  });
+});
+
+describe('DocumentsService.findAll', () => {
+  it('devuelve todos los documentos', async () => {
+    const service = buildService({
+      findAll: async () => [baseRow],
+    });
+    const result = await service.findAll(10, 0);
+    expect(result).toHaveLength(1);
+    expect(result[0].publicUrl).toBe('url');
+  });
+});
+
+describe('DocumentsService.findByClient', () => {
+  it('devuelve los documentos del cliente', async () => {
+    const service = buildService({
+      findByClientId: async () => [baseRow],
+    });
+    const result = await service.findByClient('client-1');
+    expect(result).toHaveLength(1);
+  });
+});
+
+describe('DocumentsService.findByVerification', () => {
+  it('devuelve los documentos de la verificacion', async () => {
+    const service = buildService({
+      findByVerificationId: async () => [baseRow],
+    });
+    const result = await service.findByVerification('verif-1');
+    expect(result).toHaveLength(1);
+  });
+});
+
+describe('DocumentsService.findByType', () => {
+  it('devuelve los documentos por tipo', async () => {
+    const service = buildService({
+      findByType: async () => [baseRow],
+    });
+    const result = await service.findByType('ine');
+    expect(result).toHaveLength(1);
   });
 });
