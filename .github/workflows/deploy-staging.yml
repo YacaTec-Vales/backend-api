@@ -37,10 +37,12 @@ jobs:
       - name: Clone frontend-global-styles as sibling (Angular expects ../../frontend-global-styles/)
         if: github.repository != 'YacaTec-Vales/backend-api'
         run: |
-          if [ ! -d "$GITHUB_WORKSPACE/frontend-global-styles" ]; then
-            git clone --depth=1 https://github.com/YacaTec-Vales/frontend-global-styles.git "$GITHUB_WORKSPACE/frontend-global-styles"
+          TARGET="$(dirname "$GITHUB_WORKSPACE")/frontend-global-styles"
+          echo "Target dir: $TARGET"
+          if [ ! -d "$TARGET" ]; then
+            git clone --depth=1 https://github.com/YacaTec-Vales/frontend-global-styles.git "$TARGET"
           fi
-          ls -la "$GITHUB_WORKSPACE/frontend-global-styles/"
+          ls -la "$TARGET/"
 
       - name: Setup Node
         uses: actions/setup-node@v4
