@@ -150,6 +150,7 @@ export function configureApplication(
         'Flujo de aprobacion/rechazo de acciones sensibles (transferencias, conciliaciones, etc.)',
       )
       .addTag('MFA', 'Autenticacion multifactor (setup, verify, disable)')
+      .addTag('Audit', 'Consulta de bitácoras y registros de auditoría')
       .addTag('App', 'Smoke tests')
       .build();
 
