@@ -1,0 +1,171 @@
+name: Deploy Staging (auto on develop merge)
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [develop]
+  push:
+    branches:
+      - 'feature/auto-redeploy-staging'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Ref a desplegar (default: develop HEAD)"
+        required: false
+        default: ""
+
+jobs:
+  deploy:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    environment: staging
+    concurrency:
+      group: deploy-staging-${{ github.repository }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || (github.event.inputs.ref || 'develop') }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Install prod deps (backend only, incluye node_modules en tarball)
+        if: github.repository == 'YacaTec-Vales/backend-api'
+        run: npm ci --omit=dev --ignore-scripts
+
+      - name: Configure AWS (DO Spaces)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.DO_SPACES_KEY }}
+          aws-secret-access-key: ${{ secrets.DO_SPACES_SECRET }}
+          aws-region: us-east-1
+          endpoint-url: https://sfo3.digitaloceanspaces.com
+
+      - name: Package artifact
+        id: package
+        env:
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || github.sha }}
+        run: |
+          SHORT_SHA="${SHA:0:7}"
+          echo "SHORT_SHA=$SHORT_SHA" >> "$GITHUB_ENV"
+
+          cd "$GITHUB_WORKSPACE"
+
+          if [ "$REPO" = "YacaTec-Vales/backend-api" ]; then
+            tar -czf /tmp/release.tar.gz \
+              dist package.json package-lock.json node_modules
+          else
+            FRONTEND=$(echo "$REPO" | sed 's|YacaTec-Vales/frontend-||' | tr 'A-Z' 'a-z' | tr - _)
+            tar -czf /tmp/release.tar.gz -C "dist/${FRONTEND}/browser" .
+          fi
+
+          ls -lh /tmp/release.tar.gz
+
+      - name: Upload to DO Spaces
+        env:
+          REPO: ${{ github.repository }}
+          SHORT: ${{ env.SHORT_SHA }}
+        run: |
+          REPO_NAME=$(basename "$REPO")
+          aws s3 cp /tmp/release.tar.gz \
+            "s3://misvales-storage/staging-builds/${REPO_NAME}-${SHORT}.tar.gz" \
+            --endpoint-url https://sfo3.digitaloceanspaces.com \
+            --acl private
+
+      - name: Generate presigned URL (1h)
+        id: presign
+        env:
+          REPO: ${{ github.repository }}
+          SHORT: ${{ env.SHORT_SHA }}
+        run: |
+          REPO_NAME=$(basename "$REPO")
+          URL=$(aws s3 presign \
+            "s3://misvales-storage/staging-builds/${REPO_NAME}-${SHORT}.tar.gz" \
+            --expires-in 3600 \
+            --endpoint-url https://sfo3.digitaloceanspaces.com)
+          echo "ARTIFACT_URL=$URL" >> "$GITHUB_OUTPUT"
+          echo "Presigned URL generated (1h TTL)"
+
+      - name: Deploy to droplet via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.STAGING_HOST }}
+          username: ${{ secrets.STAGING_USER }}
+          port: ${{ secrets.STAGING_PORT }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          command_timeout: 10m
+          script: |
+            set -euo pipefail
+
+            ARTIFACT_URL="${{ steps.presign.outputs.ARTIFACT_URL }}"
+            DEST="${{ secrets.STAGING_DEST }}"
+            SERVICE="${{ secrets.STAGING_SERVICE }}"
+            BACKEND_PORT="${{ secrets.STAGING_BACKEND_PORT }}"
+
+            echo "=== Deploying ${{ github.repository }} ==="
+            echo "    dest=$DEST service=$SERVICE backend_port=$BACKEND_PORT"
+            echo "    url=${ARTIFACT_URL:0:80}..."
+
+            # 1. Download artifact (presigned URL, no auth required)
+            cd /tmp
+            rm -f release.tar.gz
+            curl -fsS -o release.tar.gz "$ARTIFACT_URL"
+            echo "    downloaded: $(ls -lh release.tar.gz | awk '{print $5}')"
+
+            # 2. Cleanup destination (sin rollback: cada deploy reemplaza)
+            if [ -n "$DEST" ] && [ -d "$DEST" ]; then
+              find "$DEST" -mindepth 1 -delete
+            else
+              mkdir -p "$DEST"
+            fi
+
+            # 3. Extract
+            tar -xzf release.tar.gz -C "$DEST"
+            rm -f release.tar.gz
+
+            # 4. Smoke test o restart
+            if [ -n "$SERVICE" ]; then
+              systemctl restart "$SERVICE"
+              sleep 4
+              if [ -n "$BACKEND_PORT" ]; then
+                HEALTH=$(curl -fsS -m 5 "http://127.0.0.1:${BACKEND_PORT}/api/v1/health/live" || echo "FAILED")
+                echo "    health/live: $HEALTH"
+                if echo "$HEALTH" | grep -q '"status":"ok"'; then
+                  echo "=== Deploy OK (backend live) ==="
+                else
+                  echo "::error::Backend health check failed: $HEALTH"
+                  exit 1
+                fi
+              else
+                echo "=== Deploy OK (service restarted, no health check) ==="
+              fi
+            else
+              nginx -s reload
+              echo "=== Deploy OK (nginx reloaded) ==="
+            fi
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Deploy Staging Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Repository**: ${{ github.repository }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Merge commit**: \`${{ github.event.pull_request.merge_commit_sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Short SHA**: \`${{ env.SHORT_SHA }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Result**: ${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Destino**: \`${{ secrets.STAGING_DEST }}\`" >> "$GITHUB_STEP_SUMMARY"
