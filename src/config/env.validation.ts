@@ -116,6 +116,12 @@ export const envValidationSchema = Joi.object({
   MFA_ISSUER: Joi.string().default('vales-yacatec'),
   MFA_BACKUP_CODES_COUNT: Joi.number().integer().positive().default(10),
 
+  // VPN Origin Guard (feature flag de activacion)
+  // Default: activo solo en NODE_ENV=production. Override explicito:
+  //   true  → fuerza activacion en cualquier entorno (incluido dev/testing)
+  //   false → fuerza desactivacion (incluido production, rollback rapido)
+  VPN_ORIGIN_GUARD_ENABLED: Joi.string().valid('true', 'false').optional(),
+
   // Object storage (MinIO local o DigitalOcean Spaces en produccion)
   STORAGE_ENDPOINT: Joi.string().uri().required(),
   STORAGE_REGION: Joi.string().default('us-east-1'),
