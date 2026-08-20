@@ -34,15 +34,18 @@ jobs:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || (github.event.inputs.ref || 'develop') }}
           submodules: recursive
 
-      - name: Clone frontend-global-styles as sibling (Angular expects ../../frontend-global-styles/)
+      - name: Clone frontend-global-styles as sibling + install deps
         if: github.repository != 'YacaTec-Vales/backend-api'
         run: |
           TARGET="$(dirname "$GITHUB_WORKSPACE")/frontend-global-styles"
           echo "Target dir: $TARGET"
           if [ ! -d "$TARGET" ]; then
             git clone --depth=1 https://github.com/YacaTec-Vales/frontend-global-styles.git "$TARGET"
+            cd "$TARGET"
+            npm install --no-audit --no-fund --prefer-offline
           fi
           ls -la "$TARGET/"
+          ls "$TARGET/node_modules/" 2>/dev/null | head -10
 
       - name: Setup Node
         uses: actions/setup-node@v4
