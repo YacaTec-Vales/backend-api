@@ -4,9 +4,6 @@ on:
   pull_request:
     types: [closed]
     branches: [develop]
-  push:
-    branches:
-      - 'feature/auto-redeploy-staging'
   workflow_dispatch:
     inputs:
       ref:
@@ -109,6 +106,34 @@ jobs:
             "s3://misvales-storage/staging-builds/${REPO_NAME}-${SHORT}.tar.gz" \
             --endpoint-url https://sfo3.digitaloceanspaces.com \
             --acl private
+          echo "Uploaded: s3://misvales-storage/staging-builds/${REPO_NAME}-${SHORT}.tar.gz"
+
+      - name: Cleanup old tarballs in DO Spaces (keep only current SHA)
+        env:
+          REPO: ${{ github.repository }}
+          SHORT: ${{ env.SHORT_SHA }}
+        run: |
+          REPO_NAME=$(basename "$REPO")
+          KEEP="staging-builds/${REPO_NAME}-${SHORT}.tar.gz"
+          echo "Keeping: $KEEP"
+          DELETED=$(aws s3api list-objects-v2 \
+            --bucket misvales-storage \
+            --prefix "staging-builds/${REPO_NAME}-" \
+            --endpoint-url https://sfo3.digitaloceanspaces.com \
+            --query "Contents[?Key!=\`${KEEP}\`].[Key]" --output text 2>/dev/null | tr '\t' '\n' | grep -v '^$' | wc -l)
+          if [ "$DELETED" -gt 0 ]; then
+            aws s3api list-objects-v2 \
+              --bucket misvales-storage \
+              --prefix "staging-builds/${REPO_NAME}-" \
+              --endpoint-url https://sfo3.digitaloceanspaces.com \
+              --query "Contents[?Key!=\`${KEEP}\`].Key" --output text 2>/dev/null \
+              | tr '\t' '\n' | grep -v '^$' | while read -r KEY; do
+                [ -n "$KEY" ] && aws s3 rm "s3://misvales-storage/$KEY" --endpoint-url https://sfo3.digitaloceanspaces.com
+              done
+            echo "Cleanup OK: deleted $DELETED old tarball(s)"
+          else
+            echo "Cleanup OK: no old tarballs"
+          fi
 
       - name: Generate presigned URL (1h)
         id: presign
