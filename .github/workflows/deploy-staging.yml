@@ -64,13 +64,14 @@ jobs:
         if: github.repository == 'YacaTec-Vales/backend-api'
         run: npm ci --omit=dev --ignore-scripts
 
-      - name: Configure AWS (DO Spaces)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.DO_SPACES_KEY }}
-          aws-secret-access-key: ${{ secrets.DO_SPACES_SECRET }}
-          aws-region: us-east-1
-          endpoint-url: https://sfo3.digitaloceanspaces.com
+      - name: Configure AWS env (DO Spaces via direct env vars, NOT configure-aws-credentials)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.DO_SPACES_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_SPACES_SECRET }}
+          AWS_DEFAULT_REGION: us-east-1
+          AWS_ENDPOINT_URL_S3: https://sfo3.digitaloceanspaces.com
+        run: |
+          echo "AWS env configured (region=${AWS_DEFAULT_REGION})"
 
       - name: Package artifact
         id: package
