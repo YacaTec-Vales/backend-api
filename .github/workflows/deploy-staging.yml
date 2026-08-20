@@ -1,0 +1,100 @@
+name: Deploy Staging (auto on develop merge)
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [develop]
+
+jobs:
+  deploy-staging:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-${{ github.repository }}
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install all deps (dev + prod)
+        run: npm ci
+
+      - name: Build (NestJS)
+        run: npm run build
+
+      - name: Install prod-only deps for runtime bundle
+        run: npm ci --omit=dev --ignore-scripts
+
+      - name: Package and upload artifact
+        env:
+          REPO: ${{ github.repository }}
+          SHORT_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          SHORT="${SHORT_SHA:0:7}"
+          echo "SHORT_SHA=$SHORT" >> "$GITHUB_ENV"
+
+          # Backend bundle: dist + package.json + node_modules (prod)
+          tar -czf /tmp/release.tar.gz \
+            dist package.json package-lock.json node_modules
+
+          # Subir a DO Spaces: staging-<sha>/backend-api.tar.gz
+          aws s3 cp /tmp/release.tar.gz \
+            "s3://misvales-staging-builds/staging-${SHORT}/${REPO}.tar.gz"
+
+          echo "Uploaded to s3://misvales-staging-builds/staging-${SHORT}/${REPO}.tar.gz"
+
+      - name: Configure DO Spaces credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.DO_SPACES_KEY }}
+          aws-secret-access-key: ${{ secrets.DO_SPACES_SECRET }}
+          aws-region: us-east-1
+          endpoint-url: https://sfo3.digitaloceanspaces.com
+
+      - name: Deploy to app-02 via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: 143.110.226.18
+          username: shulker
+          port: 58901
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          command_timeout: 5m
+          script: |
+            set -euo pipefail
+            ~/bin/deploy-only.sh \
+              "YacaTec-Vales/backend-api" \
+              "/opt/misvales/backend" \
+              "${{ env.SHORT_SHA }}" \
+              "apply"
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "## Deploy OK" >> $GITHUB_STEP_SUMMARY
+          echo "- Repo: ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
+          echo "- SHA: ${{ github.event.pull_request.merge_commit_sha }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Short SHA: ${{ env.SHORT_SHA }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Droplet: app-02 (143.110.226.18)" >> $GITHUB_STEP_SUMMARY
+          echo "- Asset: s3://misvales-staging-builds/staging-${{ env.SHORT_SHA }}/backend-api.tar.gz" >> $GITHUB_STEP_SUMMARY
+
+      - name: Summary on failure
+        if: failure()
+        run: |
+          echo "## Deploy FAILED" >> $GITHUB_STEP_SUMMARY
+          echo "Verificar logs del step anterior." >> $GITHUB_STEP_SUMMARY
+          echo "Para rollback manual:" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "ssh shulker@app-02" >> $GITHUB_STEP_SUMMARY
+          echo "cd /opt/misvales/backend" >> $GITHUB_STEP_SUMMARY
+          echo "ls -dt staging-* | head -5   # ver versiones disponibles" >> $GITHUB_STEP_SUMMARY
+          echo "ln -sfn staging-<sha-anterior> CURRENT.new" >> $GITHUB_STEP_SUMMARY
+          echo "mv -T CURRENT.new CURRENT" >> $GITHUB_STEP_SUMMARY
+          echo "systemctl restart misvales-backend.service" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
