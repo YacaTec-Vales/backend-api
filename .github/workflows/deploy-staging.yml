@@ -151,12 +151,17 @@ jobs:
 
       - name: Deploy to droplet via SSH
         uses: appleboy/ssh-action@v1
+        env:
+          RECAPTCHA_ENABLED: ${{ secrets.RECAPTCHA_ENABLED }}
+          RECAPTCHA_SECRET_KEY: ${{ secrets.RECAPTCHA_SECRET_KEY }}
+          RECAPTCHA_MIN_SCORE: ${{ secrets.RECAPTCHA_MIN_SCORE }}
         with:
           host: ${{ secrets.STAGING_HOST }}
           username: ${{ secrets.STAGING_USER }}
           port: ${{ secrets.STAGING_PORT }}
           key: ${{ secrets.STAGING_SSH_KEY }}
           command_timeout: 10m
+          envs: RECAPTCHA_ENABLED,RECAPTCHA_SECRET_KEY,RECAPTCHA_MIN_SCORE
           script: |
             set -euo pipefail
 
@@ -185,6 +190,32 @@ jobs:
             # 3. Extract
             tar -xzf release.tar.gz -C "$DEST"
             rm -f release.tar.gz
+
+            # 3.5 Upsert de variables reCAPTCHA en el EnvironmentFile de la unidad.
+            #     Se descubre la ruta con systemctl cat (el .env vive fuera de DEST,
+            #     que se borra en cada release).
+            ENV_FILE="$(systemctl cat "$SERVICE" 2>/dev/null | grep -oP '^EnvironmentFile=-?\K\S+' | head -1 || true)"
+            if [ -z "$ENV_FILE" ]; then
+              echo "    aviso: unidad sin EnvironmentFile; recaptcha no aplicado"
+            else
+              case "$ENV_FILE" in
+                /*) ;;
+                *) ENV_FILE="/etc/systemd/system/$ENV_FILE" ;;
+              esac
+              touch "$ENV_FILE"
+              for kv in \
+                "RECAPTCHA_ENABLED=${RECAPTCHA_ENABLED:-false}" \
+                "RECAPTCHA_SECRET_KEY=${RECAPTCHA_SECRET_KEY:-}" \
+                "RECAPTCHA_MIN_SCORE=${RECAPTCHA_MIN_SCORE:-0.5}"; do
+                key="${kv%%=*}"
+                if grep -q "^${key}=" "$ENV_FILE" 2>/dev/null; then
+                  sed -i "s|^${key}=.*|${kv}|" "$ENV_FILE"
+                else
+                  printf '%s\n' "$kv" >> "$ENV_FILE"
+                fi
+              done
+              echo "    recaptcha env aplicado en $ENV_FILE (ENABLED=${RECAPTCHA_ENABLED:-false})"
+            fi
 
             # 4. Smoke test o restart
             if [ -n "$SERVICE" ]; then
