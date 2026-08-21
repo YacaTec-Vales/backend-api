@@ -143,7 +143,8 @@ describe('SolicitationsService', () => {
     } as unknown as Parameters<SolicitationsService['create']>[1];
 
     it('crea la solicitud cuando todo es valido', async () => {
-      const { service, solicitationRepo, branchRepo, userRepository } = buildService();
+      const { service, solicitationRepo, branchRepo, userRepository } =
+        buildService();
       branchRepo.findActiveById.mockResolvedValueOnce({ id: BRANCH_ID });
       solicitationRepo.countActiveByCoordinator.mockResolvedValueOnce(0);
       userRepository.findByEmail.mockResolvedValueOnce(null);
@@ -155,7 +156,8 @@ describe('SolicitationsService', () => {
     });
 
     it('rechaza cuando el correo ya existe', async () => {
-      const { service, branchRepo, solicitationRepo, userRepository } = buildService();
+      const { service, branchRepo, solicitationRepo, userRepository } =
+        buildService();
       branchRepo.findActiveById.mockResolvedValueOnce({ id: BRANCH_ID });
       solicitationRepo.countActiveByCoordinator.mockResolvedValueOnce(0);
       userRepository.findByEmail.mockResolvedValueOnce({ id: 'existing-user' });

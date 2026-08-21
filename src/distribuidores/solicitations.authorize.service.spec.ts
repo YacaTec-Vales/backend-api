@@ -256,7 +256,9 @@ describe('SolicitationsAuthorizeService', () => {
       expect(pool.query).toHaveBeenCalledWith('BEGIN', []);
       expect(pool.query).toHaveBeenCalledWith('COMMIT', []);
 
-      const userInsertCall = calls.find((c: { sql: string }) => c.sql.includes('INSERT INTO app.user'));
+      const userInsertCall = calls.find((c: { sql: string }) =>
+        c.sql.includes('INSERT INTO app.user'),
+      );
       expect(userInsertCall).toBeDefined();
       expect(userInsertCall!.params).toContain('carlos@ejemplo.com');
     });
@@ -270,9 +272,11 @@ describe('SolicitationsAuthorizeService', () => {
         dto,
       );
       expect(result.distributorNumber).toBe('D-0002');
-      expect(mailService.sendUserWelcome).toHaveBeenCalledWith(expect.objectContaining({
-        to: 'carlos@ejemplo.com',
-      }));
+      expect(mailService.sendUserWelcome).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'carlos@ejemplo.com',
+        }),
+      );
     });
 
     it('rechaza si el gerente de sucursal pertenece a otra branch', async () => {

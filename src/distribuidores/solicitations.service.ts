@@ -208,7 +208,8 @@ export class SolicitationsService {
     if (existingUser) {
       throw new ConflictException({
         code: SOLICITUD_ERROR_CODES.EMAIL_ALREADY_EXISTS,
-        message: 'el correo electrónico ya se encuentra en uso por otro usuario',
+        message:
+          'el correo electrónico ya se encuentra en uso por otro usuario',
       });
     }
 
@@ -434,7 +435,8 @@ export class SolicitationsService {
         if (existingUser) {
           throw new ConflictException({
             code: SOLICITUD_ERROR_CODES.EMAIL_ALREADY_EXISTS,
-            message: 'el correo electrónico ya se encuentra en uso por otro usuario',
+            message:
+              'el correo electrónico ya se encuentra en uso por otro usuario',
           });
         }
       }

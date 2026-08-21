@@ -159,7 +159,7 @@ export class SolicitationsAuthorizeService {
 
     // Construir correlativo `D-NNNN`.
     const distributorNumber = await this.computeNextDistributorNumber();
-    
+
     const fallbackEmail = `distrib-${distributorNumber.toLowerCase()}@yacatec.test`;
     const userEmail = correo || fallbackEmail;
 
