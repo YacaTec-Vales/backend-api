@@ -219,24 +219,49 @@ export class SolicitationsService {
     dto.generalData.curp = dto.generalData.curp.trim().toUpperCase();
 
     // Validar unicidad del CURP en distribuidores existentes
-    const existingCurpDistributor = await this.distributorRepo.findByCurpInGeneralData(
-      dto.generalData.curp,
-    );
+    const existingCurpDistributor =
+      await this.distributorRepo.findByCurpInGeneralData(dto.generalData.curp);
     if (existingCurpDistributor) {
       throw new ConflictException({
         code: SOLICITUD_ERROR_CODES.CURP_ALREADY_EXISTS,
-        message: 'el CURP ya se encuentra registrado en una distribuidora activa',
+        message:
+          'el CURP ya se encuentra registrado en una distribuidora activa',
       });
     }
 
     // Validar unicidad del CURP en otras solicitudes activas
-    const existingCurpSolicitation = await this.solicitationRepo.findByCurpInGeneralData(
-      dto.generalData.curp,
-    );
+    const existingCurpSolicitation =
+      await this.solicitationRepo.findByCurpInGeneralData(dto.generalData.curp);
     if (existingCurpSolicitation) {
       throw new ConflictException({
         code: SOLICITUD_ERROR_CODES.CURP_ALREADY_EXISTS,
-        message: 'el CURP ya se encuentra en otra solicitud de distribuidora activa',
+        message:
+          'el CURP ya se encuentra en otra solicitud de distribuidora activa',
+      });
+    }
+
+    // Normalizar RFC
+    dto.generalData.rfc = dto.generalData.rfc.trim().toUpperCase();
+
+    // Validar unicidad del RFC en distribuidores existentes
+    const existingRfcDistributor =
+      await this.distributorRepo.findByRfcInGeneralData(dto.generalData.rfc);
+    if (existingRfcDistributor) {
+      throw new ConflictException({
+        code: SOLICITUD_ERROR_CODES.RFC_ALREADY_EXISTS,
+        message:
+          'el RFC ya se encuentra registrado en una distribuidora activa',
+      });
+    }
+
+    // Validar unicidad del RFC en otras solicitudes activas
+    const existingRfcSolicitation =
+      await this.solicitationRepo.findByRfcInGeneralData(dto.generalData.rfc);
+    if (existingRfcSolicitation) {
+      throw new ConflictException({
+        code: SOLICITUD_ERROR_CODES.RFC_ALREADY_EXISTS,
+        message:
+          'el RFC ya se encuentra en otra solicitud de distribuidora activa',
       });
     }
 
@@ -467,29 +492,67 @@ export class SolicitationsService {
           });
         }
       }
-      
+
       if (dto.generalData.curp) {
         dto.generalData.curp = dto.generalData.curp.trim().toUpperCase();
-        
+
         // Excluir la solicitud actual de la validacion? En el repo, findByCurpInGeneralData devuelve 1 fila
         // Si esa fila es la misma solicitud, no hay conflicto.
-        const existingCurpDistributor = await this.distributorRepo.findByCurpInGeneralData(
-          dto.generalData.curp,
-        );
+        const existingCurpDistributor =
+          await this.distributorRepo.findByCurpInGeneralData(
+            dto.generalData.curp,
+          );
         if (existingCurpDistributor) {
           throw new ConflictException({
             code: SOLICITUD_ERROR_CODES.CURP_ALREADY_EXISTS,
-            message: 'el CURP ya se encuentra registrado en una distribuidora activa',
+            message:
+              'el CURP ya se encuentra registrado en una distribuidora activa',
           });
         }
 
-        const existingCurpSolicitation = await this.solicitationRepo.findByCurpInGeneralData(
-          dto.generalData.curp,
-        );
-        if (existingCurpSolicitation && existingCurpSolicitation.id !== solicitationId) {
+        const existingCurpSolicitation =
+          await this.solicitationRepo.findByCurpInGeneralData(
+            dto.generalData.curp,
+          );
+        if (
+          existingCurpSolicitation &&
+          existingCurpSolicitation.id !== solicitationId
+        ) {
           throw new ConflictException({
             code: SOLICITUD_ERROR_CODES.CURP_ALREADY_EXISTS,
-            message: 'el CURP ya se encuentra en otra solicitud de distribuidora activa',
+            message:
+              'el CURP ya se encuentra en otra solicitud de distribuidora activa',
+          });
+        }
+      }
+
+      if (dto.generalData.rfc) {
+        dto.generalData.rfc = dto.generalData.rfc.trim().toUpperCase();
+
+        const existingRfcDistributor =
+          await this.distributorRepo.findByRfcInGeneralData(
+            dto.generalData.rfc,
+          );
+        if (existingRfcDistributor) {
+          throw new ConflictException({
+            code: SOLICITUD_ERROR_CODES.RFC_ALREADY_EXISTS,
+            message:
+              'el RFC ya se encuentra registrado en una distribuidora activa',
+          });
+        }
+
+        const existingRfcSolicitation =
+          await this.solicitationRepo.findByRfcInGeneralData(
+            dto.generalData.rfc,
+          );
+        if (
+          existingRfcSolicitation &&
+          existingRfcSolicitation.id !== solicitationId
+        ) {
+          throw new ConflictException({
+            code: SOLICITUD_ERROR_CODES.RFC_ALREADY_EXISTS,
+            message:
+              'el RFC ya se encuentra en otra solicitud de distribuidora activa',
           });
         }
       }

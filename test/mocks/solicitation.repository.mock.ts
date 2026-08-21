@@ -24,5 +24,6 @@ export function createSolicitationRepositoryMock(): jest.Mocked<SolicitationRepo
     findByIds: jest.fn(),
     countActiveByCoordinator: jest.fn(),
     findByCurpInGeneralData: jest.fn(),
+    findByRfcInGeneralData: jest.fn(),
   } as unknown as jest.Mocked<SolicitationRepository>;
 }

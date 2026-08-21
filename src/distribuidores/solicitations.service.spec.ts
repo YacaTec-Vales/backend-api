@@ -100,6 +100,7 @@ function buildUserRepositoryMock() {
 function buildDistributorRepositoryMock() {
   return {
     findByCurpInGeneralData: jest.fn(),
+    findByRfcInGeneralData: jest.fn(),
   };
 }
 
@@ -135,7 +136,14 @@ function buildService() {
     distributorRepo as never,
     readDb as never,
   );
-  return { service, solicitationRepo, branchRepo, userRepository, distributorRepo, readDb };
+  return {
+    service,
+    solicitationRepo,
+    branchRepo,
+    userRepository,
+    distributorRepo,
+    readDb,
+  };
 }
 
 // ===========================================================================
@@ -146,7 +154,12 @@ describe('SolicitationsService', () => {
   describe('create', () => {
     const dto = {
       branchId: BRANCH_ID,
-      generalData: { ...BASE_GENERAL, curp: 'LOHE000512MGTRRA01' },
+      generalData: {
+        ...BASE_GENERAL,
+        curp: 'LOHE000512MGTRRA01',
+        rfc: 'LOHC900101AAA',
+        phone: '8711234567',
+      },
       additionalData: {},
     } as unknown as Parameters<SolicitationsService['create']>[1];
 
@@ -175,23 +188,82 @@ describe('SolicitationsService', () => {
     });
 
     it('rechaza cuando el CURP ya existe en una distribuidora', async () => {
-      const { service, branchRepo, solicitationRepo, userRepository, distributorRepo } = buildService();
+      const {
+        service,
+        branchRepo,
+        solicitationRepo,
+        userRepository,
+        distributorRepo,
+      } = buildService();
       branchRepo.findActiveById.mockResolvedValueOnce({ id: BRANCH_ID });
       solicitationRepo.countActiveByCoordinator.mockResolvedValueOnce(0);
       userRepository.findByEmail.mockResolvedValueOnce(null);
-      distributorRepo.findByCurpInGeneralData.mockResolvedValueOnce({ id: 'existing-distributor' });
+      distributorRepo.findByCurpInGeneralData.mockResolvedValueOnce({
+        id: 'existing-distributor',
+      });
       await expect(
         service.create(buildActor('COORDINADOR'), dto),
       ).rejects.toBeInstanceOf(ConflictException);
     });
 
     it('rechaza cuando el CURP ya existe en otra solicitud activa', async () => {
-      const { service, branchRepo, solicitationRepo, userRepository, distributorRepo } = buildService();
+      const {
+        service,
+        branchRepo,
+        solicitationRepo,
+        userRepository,
+        distributorRepo,
+      } = buildService();
       branchRepo.findActiveById.mockResolvedValueOnce({ id: BRANCH_ID });
       solicitationRepo.countActiveByCoordinator.mockResolvedValueOnce(0);
       userRepository.findByEmail.mockResolvedValueOnce(null);
       distributorRepo.findByCurpInGeneralData.mockResolvedValueOnce(null);
-      solicitationRepo.findByCurpInGeneralData.mockResolvedValueOnce({ id: 'existing-solicitation' });
+      solicitationRepo.findByCurpInGeneralData.mockResolvedValueOnce({
+        id: 'existing-solicitation',
+      });
+      await expect(
+        service.create(buildActor('COORDINADOR'), dto),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('rechaza cuando el RFC ya existe en una distribuidora', async () => {
+      const {
+        service,
+        branchRepo,
+        solicitationRepo,
+        userRepository,
+        distributorRepo,
+      } = buildService();
+      branchRepo.findActiveById.mockResolvedValueOnce({ id: BRANCH_ID });
+      solicitationRepo.countActiveByCoordinator.mockResolvedValueOnce(0);
+      userRepository.findByEmail.mockResolvedValueOnce(null);
+      distributorRepo.findByCurpInGeneralData.mockResolvedValueOnce(null);
+      solicitationRepo.findByCurpInGeneralData.mockResolvedValueOnce(null);
+      distributorRepo.findByRfcInGeneralData.mockResolvedValueOnce({
+        id: 'existing-distributor',
+      });
+      await expect(
+        service.create(buildActor('COORDINADOR'), dto),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('rechaza cuando el RFC ya existe en otra solicitud activa', async () => {
+      const {
+        service,
+        branchRepo,
+        solicitationRepo,
+        userRepository,
+        distributorRepo,
+      } = buildService();
+      branchRepo.findActiveById.mockResolvedValueOnce({ id: BRANCH_ID });
+      solicitationRepo.countActiveByCoordinator.mockResolvedValueOnce(0);
+      userRepository.findByEmail.mockResolvedValueOnce(null);
+      distributorRepo.findByCurpInGeneralData.mockResolvedValueOnce(null);
+      solicitationRepo.findByCurpInGeneralData.mockResolvedValueOnce(null);
+      distributorRepo.findByRfcInGeneralData.mockResolvedValueOnce(null);
+      solicitationRepo.findByRfcInGeneralData.mockResolvedValueOnce({
+        id: 'existing-solicitation',
+      });
       await expect(
         service.create(buildActor('COORDINADOR'), dto),
       ).rejects.toBeInstanceOf(ConflictException);
@@ -422,13 +494,31 @@ describe('SolicitationsService', () => {
     });
 
     it('rechaza edicion si el nuevo CURP ya existe en distribuidora', async () => {
-      const { service, solicitationRepo, userRepository, distributorRepo } = buildService();
+      const { service, solicitationRepo, userRepository, distributorRepo } =
+        buildService();
       solicitationRepo.findById.mockResolvedValueOnce(BASE_ROW);
       userRepository.findByEmail.mockResolvedValueOnce(null);
-      distributorRepo.findByCurpInGeneralData.mockResolvedValueOnce({ id: 'existing' });
+      distributorRepo.findByCurpInGeneralData.mockResolvedValueOnce({
+        id: 'existing',
+      });
       await expect(
         service.edit(buildActor('COORDINADOR'), SOL_ID, {
           generalData: { curp: 'LOHE000512MGTRRA01' },
+        }),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('rechaza edicion si el nuevo RFC ya existe en distribuidora', async () => {
+      const { service, solicitationRepo, userRepository, distributorRepo } =
+        buildService();
+      solicitationRepo.findById.mockResolvedValueOnce(BASE_ROW);
+      userRepository.findByEmail.mockResolvedValueOnce(null);
+      distributorRepo.findByRfcInGeneralData.mockResolvedValueOnce({
+        id: 'existing',
+      });
+      await expect(
+        service.edit(buildActor('COORDINADOR'), SOL_ID, {
+          generalData: { rfc: 'LOHC900101AAA' },
         }),
       ).rejects.toBeInstanceOf(ConflictException);
     });

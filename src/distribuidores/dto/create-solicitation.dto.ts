@@ -222,6 +222,17 @@ export class GeneralDataDto {
   apellido_materno!: string;
 
   @ApiProperty({
+    example: '8711234567',
+    description: 'Telefono a 10 digitos.',
+  })
+  @IsString()
+  @IsNotEmpty()
+  @Matches(/^[0-9]{10}$/, {
+    message: 'El telefono debe contener exactamente 10 digitos.',
+  })
+  phone!: string;
+
+  @ApiProperty({
     example: 'LOHC900101AAA',
     description: 'RFC 13 caracteres: 4 letras + 6 digitos + 3 alfanumericos.',
     pattern: '^[A-Z]{4}[0-9]{6}[A-Z0-9]{3}$',

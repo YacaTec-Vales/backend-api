@@ -277,6 +277,35 @@ export class SolicitationRepository {
   }
 
   /**
+   * Busca una solicitud activa (no rechazada) que tenga el RFC dado
+   * en sus datos generales. Usado para prevenir duplicados.
+   *
+   * Conexion: `DRIZZLE_READ`.
+   */
+  async findByRfcInGeneralData(
+    rfc: string,
+  ): Promise<SolicitationEntity | null> {
+    const activeStatuses: SolicitationEntity['status'][] = [
+      'PRE_SOLICITUD',
+      'EN_VERIFICACION',
+      'DICTAMINADA',
+      'AUTORIZADA',
+    ];
+    const [row] = await this.readDb
+      .select()
+      .from(solicitations)
+      .where(
+        and(
+          isNull(solicitations.deletedAt),
+          inArray(solicitations.status, activeStatuses),
+          eq(sql`${solicitations.generalData}->>'rfc'`, rfc),
+        ),
+      )
+      .limit(1);
+    return row ?? null;
+  }
+
+  /**
    * Cuenta solicitudes activas (no terminales) de un Coordinador.
    *
    * Una solicitud es "activa" cuando su estado esta en
