@@ -63,6 +63,7 @@ export const VOUCHER_ERROR_CODES = {
   PRODUCT_NOT_FOUND: 'PRODUCT.NOT_FOUND',
   PRODUCT_INACTIVE: 'PRODUCT.INACTIVE',
   AMOUNT_TOO_LOW: 'VOUCHER.AMOUNT_BELOW_MIN',
+  INSUFFICIENT_CREDIT: 'VOUCHER.INSUFFICIENT_CREDIT',
   PREVALE_EXCEEDS_50: 'VOUCHER.PREVALE_EXCEEDS_50_PERCENT',
   CLIENT_HAS_ACTIVE: 'VOUCHER.CLIENT_HAS_ACTIVE',
   VOUCHER_NOT_FOUND: 'VOUCHER.NOT_FOUND',
@@ -166,6 +167,17 @@ export class VouchersService {
       throw new BadRequestException({
         code: VOUCHER_ERROR_CODES.AMOUNT_TOO_LOW,
         message: 'El monto minimo es $100 MXN (10000 centavos).',
+      });
+    }
+
+    if (amountCents > (distributor.creditAvailableCents ?? 0)) {
+      throw new BadRequestException({
+        code: VOUCHER_ERROR_CODES.INSUFFICIENT_CREDIT,
+        message: 'La distribuidora no tiene suficiente credito disponible.',
+        details: {
+          amountCents,
+          creditAvailableCents: distributor.creditAvailableCents,
+        },
       });
     }
 

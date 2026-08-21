@@ -257,6 +257,25 @@ describe('VouchersService', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
+  it('lanza 400 VOUCHER.INSUFFICIENT_CREDIT cuando monto > credito disponible', async () => {
+    distributorRepo.findByUserId.mockResolvedValue(distributor as never);
+    clientRepo.findById.mockResolvedValue(client as never);
+    // creditAvailable = 1000000. monto 1200000 > 1000000.
+    productRepo.findActiveById.mockResolvedValue({
+      ...product,
+      costCents: 1200000,
+    } as never);
+
+    await expect(
+      service.emit(actor, {
+        clientId: 'c-1',
+        productId: 'p-1',
+      }),
+    ).rejects.toMatchObject({
+      response: { code: 'VOUCHER.INSUFFICIENT_CREDIT' },
+    });
+  });
+
   it('lanza 400 VOUCHER.AMOUNT_BELOW_MIN cuando monto < 10000', async () => {
     distributorRepo.findByUserId.mockResolvedValue(distributor as never);
     clientRepo.findById.mockResolvedValue(client as never);
