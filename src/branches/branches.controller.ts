@@ -56,8 +56,10 @@ import {
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import { JwtAuthGuard, type RequestUser } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
+import { VpnOriginGuard } from '../shared/guards/vpn-origin.guard';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';
+import { RequireVpnOrigin } from '../shared/decorators/require-vpn-origin.decorator';
 import { contextFromRequest } from '../shared/utils/request-context.util';
 
 /**
@@ -67,7 +69,7 @@ import { contextFromRequest } from '../shared/utils/request-context.util';
 @ApiTags('Branches')
 @ApiBearerAuth('bearer')
 @Controller('branches')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, VpnOriginGuard)
 export class BranchesController {
   constructor(private readonly branchesService: BranchesService) {}
 
@@ -141,6 +143,7 @@ export class BranchesController {
    * @apiPermission branch.create
    */
   @Post()
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('branch.create')
   @ApiOperation({
     summary: 'Crear sucursal',
@@ -181,6 +184,7 @@ export class BranchesController {
    * @apiPermission branch.update
    */
   @Patch(':id')
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('branch.update')
   @ApiOperation({
     summary: 'Actualizar sucursal (patch parcial)',
@@ -226,6 +230,7 @@ export class BranchesController {
    * @apiPermission branch.delete
    */
   @Delete(':id')
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('branch.delete')
   @ApiOperation({
     summary: 'Eliminar sucursal (soft delete)',

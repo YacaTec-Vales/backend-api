@@ -38,14 +38,16 @@ import {
 } from '../shared/user-creation/internal-user-response.dto';
 import { JwtAuthGuard, type RequestUser } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
+import { VpnOriginGuard } from '../shared/guards/vpn-origin.guard';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';
+import { RequireVpnOrigin } from '../shared/decorators/require-vpn-origin.decorator';
 import { contextFromRequest } from '../shared/utils/request-context.util';
 
 @ApiTags('Verificadores')
 @ApiBearerAuth('bearer')
 @Controller('verificadores')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, VpnOriginGuard)
 export class VerificadoresController {
   constructor(private readonly service: VerificadoresService) {}
 
@@ -90,6 +92,7 @@ export class VerificadoresController {
   }
 
   @Post()
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('verificador.create')
   @ApiOperation({ summary: 'Crear verificador' })
   @ApiEnvelopeCreatedResponse({

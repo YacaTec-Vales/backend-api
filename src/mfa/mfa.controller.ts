@@ -33,6 +33,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiConflictResponse,
   ApiForbiddenResponse,
   ApiNoContentResponse,
   ApiOperation,
@@ -68,13 +69,16 @@ export class MfaController {
     description:
       'Genera un secret TOTP y N backup codes para el usuario autenticado. ' +
       'Devuelve una URI `otpauth://` para generar el QR y los backup codes ' +
-      'en claro (visibles una sola vez). El MFA queda activado inmediatamente. ' +
-      'Si el usuario ya tenia MFA, se regenera todo (idempotente). ' +
+      'en claro (visibles una sola vez). El MFA **NO** queda activado hasta ' +
+      'que el usuario llame `POST /mfa/verify-setup` con un codigo valido. ' +
+      'Si el usuario ya tenia una credencial `pending_setup=true`, se ' +
+      'regenera todo (idempotente). Si la credencial ya estaba verificada ' +
+      'tambien se regenera (caso `adminDisable` que deja pending_setup=true). ' +
       'Requiere sesion JWT valida y token de reCAPTCHA v3 ' +
       '(header `x-recaptcha-token`, generado automaticamente por el frontend).',
   })
   @ApiEnvelopeOkResponse({
-    message: 'MFA configurado correctamente',
+    message: 'MFA setup pendiente de verificacion',
     type: MfaSetupResponseDto,
   })
   @ApiUnauthorizedResponse({
@@ -88,26 +92,36 @@ export class MfaController {
     return {
       otpauthUrl: result.otpauthUrl,
       backupCodes: result.backupCodes,
+      pendingSetup: result.pendingSetup,
     };
   }
 
   @UseGuards(JwtAuthGuard)
   @Post('verify-setup')
   @ApiOperation({
-    summary: 'Verificar configuracion MFA',
+    summary: 'Verificar configuracion MFA y activar',
     description:
       'Confirma que el usuario puede generar codigos TOTP correctamente. ' +
       'Envia un codigo de 6 digitos generado por la app autenticadora. ' +
-      'Si el codigo es valido, el MFA queda confirmado. ' +
+      'Si el codigo es valido y la credencial esta en `pending_setup=true`, ' +
+      'se activa MFA (marca `mfa_enabled=true` y `pending_setup=false`). ' +
+      'Si el codigo es invalido, el estado `pending_setup=true` se mantiene ' +
+      'para permitir reintento. Si la credencial ya estaba verificada, ' +
+      'retorna 409 `MFA.ALREADY_VERIFIED`. ' +
       'Requiere sesion JWT valida y token de reCAPTCHA v3 ' +
       '(header `x-recaptcha-token`).',
   })
   @ApiEnvelopeOkResponse({
-    message: 'Codigo MFA verificado correctamente',
+    message: 'Codigo MFA verificado y MFA activado correctamente',
     withoutData: true,
   })
+  @ApiConflictResponse({
+    description: 'MFA.ALREADY_VERIFIED — la credencial ya fue activada.',
+    type: ErrorResponseDto,
+  })
   @ApiUnauthorizedResponse({
-    description: 'AUTH.MFA_NOT_CONFIGURED o codigo invalido.',
+    description:
+      'AUTH.MFA_NOT_CONFIGURED o AUTH.MFA_INVALID_CODE.',
     type: ErrorResponseDto,
   })
   @HttpCode(HttpStatus.OK)
@@ -115,14 +129,7 @@ export class MfaController {
     @CurrentUser() user: RequestUser,
     @Body() dto: MfaVerifyDto,
   ): Promise<void> {
-    const result = await this.mfaService.verify(user.id, dto.code);
-    if (!result.valid) {
-      this.logger.warn(`MFA verify-setup fallido para usuario ${user.id}`);
-      throw new UnauthorizedException({
-        code: 'AUTH.MFA_INVALID_CODE',
-        message: 'el código MFA proporcionado es inválido',
-      });
-    }
+    await this.mfaService.verifySetupAndActivate(user.id, dto.code);
     this.logger.log(`MFA verify-setup exitoso para usuario ${user.id}`);
   }
 

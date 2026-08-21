@@ -52,14 +52,16 @@ import {
 } from '../shared/decorators/api-envelope-response.decorator';
 import { JwtAuthGuard } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
+import { VpnOriginGuard } from '../shared/guards/vpn-origin.guard';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';
+import { RequireVpnOrigin } from '../shared/decorators/require-vpn-origin.decorator';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
 import type { RequestUser } from '../shared/guards/auth.guards';
 
 @ApiTags('Clients')
 @ApiBearerAuth('bearer')
 @Controller('clients')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, VpnOriginGuard)
 export class ClientsController {
   constructor(
     private readonly clientsService: ClientsService,
@@ -110,6 +112,7 @@ export class ClientsController {
   }
 
   @Post()
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('client.create')
   @ApiOperation({ summary: 'Crear cliente (alta cruda)' })
   @ApiEnvelopeCreatedResponse({
@@ -187,6 +190,7 @@ export class ClientsController {
    */
   @Post('transfer-distributor')
   @HttpCode(200)
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('distribuidor.solicitud.create')
   @ApiOperation({
     summary: 'Solicitar transferencia de cliente a otra distribuidora',

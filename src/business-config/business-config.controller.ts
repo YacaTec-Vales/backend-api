@@ -39,14 +39,16 @@ import { ApiEnvelopeOkResponse } from '../shared/decorators/api-envelope-respons
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import { JwtAuthGuard } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
+import { VpnOriginGuard } from '../shared/guards/vpn-origin.guard';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';
+import { RequireVpnOrigin } from '../shared/decorators/require-vpn-origin.decorator';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
 import type { RequestUser } from '../shared/guards/auth.guards';
 
 @ApiTags('BusinessConfig')
 @ApiBearerAuth('bearer')
 @Controller('business-config')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, VpnOriginGuard)
 export class BusinessConfigController {
   constructor(private readonly service: BusinessConfigService) {}
 
@@ -85,6 +87,7 @@ export class BusinessConfigController {
    */
   @Patch()
   @HttpCode(HttpStatus.OK)
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('business_config.update')
   @ApiOperation({
     summary: 'Actualiza uno o varios parametros del calculo de la relacion',

@@ -69,8 +69,10 @@ import {
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import { JwtAuthGuard, type RequestUser } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
+import { VpnOriginGuard } from '../shared/guards/vpn-origin.guard';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';
+import { RequireVpnOrigin } from '../shared/decorators/require-vpn-origin.decorator';
 import { contextFromRequest } from '../shared/utils/request-context.util';
 
 /**
@@ -80,7 +82,7 @@ import { contextFromRequest } from '../shared/utils/request-context.util';
 @ApiTags('Users')
 @ApiBearerAuth('bearer')
 @Controller('users')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, VpnOriginGuard)
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
@@ -153,6 +155,7 @@ export class UsersController {
    * @apiPermission user.create
    */
   @Post()
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('user.create')
   @ApiOperation({
     summary: 'Crear usuario',
@@ -193,6 +196,7 @@ export class UsersController {
    * @apiPermission user.update
    */
   @Patch(':id')
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('user.update')
   @ApiOperation({
     summary: 'Actualizar usuario',
@@ -237,6 +241,7 @@ export class UsersController {
    * @apiPermission user.delete
    */
   @Delete(':id')
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('user.delete')
   @ApiOperation({
     summary: 'Eliminar usuario (soft delete)',
@@ -275,6 +280,7 @@ export class UsersController {
    * @apiPermission user.update
    */
   @Post(':id/reset-password')
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('user.update')
   @ApiOperation({
     summary: 'Restablecer contrasena (admin)',
@@ -315,6 +321,7 @@ export class UsersController {
    * @apiPermission auth.session.revoke_any
    */
   @Post(':id/invalidate-sessions')
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('auth.session.revoke_any')
   @ApiOperation({
     summary: 'Invalidar todas las sesiones del usuario',
@@ -384,6 +391,7 @@ export class UsersController {
    * @apiPermission permission.assign
    */
   @Post(':id/permissions')
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('permission.assign')
   @ApiOperation({
     summary: 'Asignar override de permiso',
@@ -429,6 +437,7 @@ export class UsersController {
    * @apiPermission permission.assign
    */
   @Delete(':id/permissions/:permissionCode')
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('permission.assign')
   @ApiOperation({
     summary: 'Revocar override de permiso',
