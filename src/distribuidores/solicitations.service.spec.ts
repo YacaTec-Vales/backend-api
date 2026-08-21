@@ -181,7 +181,7 @@ describe('SolicitationsService', () => {
         buildService();
       branchRepo.findActiveById.mockResolvedValueOnce({ id: BRANCH_ID });
       solicitationRepo.countActiveByCoordinator.mockResolvedValueOnce(0);
-      userRepository.findByEmail.mockResolvedValueOnce({ id: 'existing-user' });
+      userRepository.findByEmail.mockResolvedValueOnce({ id: 'existing-user' } as never);
       await expect(
         service.create(buildActor('COORDINADOR'), dto),
       ).rejects.toBeInstanceOf(ConflictException);
@@ -198,9 +198,7 @@ describe('SolicitationsService', () => {
       branchRepo.findActiveById.mockResolvedValueOnce({ id: BRANCH_ID });
       solicitationRepo.countActiveByCoordinator.mockResolvedValueOnce(0);
       userRepository.findByEmail.mockResolvedValueOnce(null);
-      distributorRepo.findByCurpInGeneralData.mockResolvedValueOnce({
-        id: 'existing-distributor',
-      });
+      distributorRepo.findByCurpInGeneralData.mockResolvedValueOnce({ id: 'existing-distributor' } as never);
       await expect(
         service.create(buildActor('COORDINADOR'), dto),
       ).rejects.toBeInstanceOf(ConflictException);
@@ -218,9 +216,7 @@ describe('SolicitationsService', () => {
       solicitationRepo.countActiveByCoordinator.mockResolvedValueOnce(0);
       userRepository.findByEmail.mockResolvedValueOnce(null);
       distributorRepo.findByCurpInGeneralData.mockResolvedValueOnce(null);
-      solicitationRepo.findByCurpInGeneralData.mockResolvedValueOnce({
-        id: 'existing-solicitation',
-      });
+      solicitationRepo.findByCurpInGeneralData.mockResolvedValueOnce({ id: 'existing-solicitation' } as never);
       await expect(
         service.create(buildActor('COORDINADOR'), dto),
       ).rejects.toBeInstanceOf(ConflictException);
@@ -239,9 +235,7 @@ describe('SolicitationsService', () => {
       userRepository.findByEmail.mockResolvedValueOnce(null);
       distributorRepo.findByCurpInGeneralData.mockResolvedValueOnce(null);
       solicitationRepo.findByCurpInGeneralData.mockResolvedValueOnce(null);
-      distributorRepo.findByRfcInGeneralData.mockResolvedValueOnce({
-        id: 'existing-distributor',
-      });
+      distributorRepo.findByRfcInGeneralData.mockResolvedValueOnce({ id: 'existing-distributor' } as never);
       await expect(
         service.create(buildActor('COORDINADOR'), dto),
       ).rejects.toBeInstanceOf(ConflictException);
@@ -261,9 +255,7 @@ describe('SolicitationsService', () => {
       distributorRepo.findByCurpInGeneralData.mockResolvedValueOnce(null);
       solicitationRepo.findByCurpInGeneralData.mockResolvedValueOnce(null);
       distributorRepo.findByRfcInGeneralData.mockResolvedValueOnce(null);
-      solicitationRepo.findByRfcInGeneralData.mockResolvedValueOnce({
-        id: 'existing-solicitation',
-      });
+      solicitationRepo.findByRfcInGeneralData.mockResolvedValueOnce({ id: 'existing-solicitation' } as never);
       await expect(
         service.create(buildActor('COORDINADOR'), dto),
       ).rejects.toBeInstanceOf(ConflictException);
@@ -485,7 +477,7 @@ describe('SolicitationsService', () => {
     it('rechaza edicion si el nuevo correo ya existe', async () => {
       const { service, solicitationRepo, userRepository } = buildService();
       solicitationRepo.findById.mockResolvedValueOnce(BASE_ROW);
-      userRepository.findByEmail.mockResolvedValueOnce({ id: 'existing-user' });
+      userRepository.findByEmail.mockResolvedValueOnce({ id: 'existing-user' } as never);
       await expect(
         service.edit(buildActor('COORDINADOR'), SOL_ID, {
           generalData: { correo: 'existente@ejemplo.com' },
