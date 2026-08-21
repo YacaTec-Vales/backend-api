@@ -5,12 +5,14 @@
  * globales en el orden en que deben ejecutarse:
  *
  *  1. `ThrottlerGuard` (rate limit).
- *  2. `JwtAuthGuard` (autenticacion).
- *  3. `RolesGuard` (autorizacion por rol; sin uso actual).
- *  4. `PermissionsGuard` (autorizacion por permiso).
+ *  2. `RecaptchaGuard` (antifraude reCAPTCHA v3 en metodos mutantes).
+ *  3. `JwtAuthGuard` (autenticacion).
+ *  4. `RolesGuard` (autorizacion por rol; sin uso actual).
+ *  5. `PermissionsGuard` (autorizacion por permiso).
  *
  * Carga la configuracion con validacion Joi y aplica las
- * factories `appConfig`, `authConfig`, `mailConfig` y `mfaConfig`.
+ * factories `appConfig`, `authConfig`, `mailConfig`, `mfaConfig`
+ * y `recaptchaConfig`.
  *
  * @module app
  * @author Equipo de desarrollo Mis Vales
@@ -27,6 +29,7 @@ import { appConfig } from './config/app.config';
 import { authConfig } from './config/auth.config';
 import { mailConfig } from './config/mail.config';
 import { mfaConfig } from './config/mfa.config';
+import { recaptchaConfig } from './config/recaptcha.config';
 import { envValidationSchema } from './config/env.validation';
 
 import { AppController } from './app.controller';
@@ -65,6 +68,8 @@ import { PermissionsGuard } from './shared/guards/permissions.guard';
 import { MustChangePasswordGuard } from './shared/guards/must-change-password.guard';
 import { MfaPendingGuard } from './shared/guards/mfa-pending.guard';
 import { RequireMfaGuard } from './shared/guards/require-mfa.guard';
+import { RecaptchaModule } from './shared/recaptcha/recaptcha.module';
+import { RecaptchaGuard } from './shared/recaptcha/recaptcha.guard';
 
 /**
  * Modulo raiz. Importa config, modulos funcionales y registra
@@ -74,7 +79,7 @@ import { RequireMfaGuard } from './shared/guards/require-mfa.guard';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, authConfig, mailConfig, mfaConfig],
+      load: [appConfig, authConfig, mailConfig, mfaConfig, recaptchaConfig],
       validationSchema: envValidationSchema,
       validationOptions: { abortEarly: true, allowUnknown: true },
     }),
@@ -127,11 +132,13 @@ import { RequireMfaGuard } from './shared/guards/require-mfa.guard';
     AutorizacionesModule,
     ReconciliationsModule,
     AuditModule,
+    RecaptchaModule,
   ],
   controllers: [AppController],
   providers: [
     AppService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: RecaptchaGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
