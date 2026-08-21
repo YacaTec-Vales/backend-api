@@ -253,6 +253,47 @@ export class SolicitationRepository {
    * @param coordinatorId - UUID del Coordinador.
    * @returns Numero de solicitudes activas del Coordinador (>= 0).
    */
+  async findByCurpInGeneralData(
+    curp: string,
+  ): Promise<SolicitationEntity | null> {
+    const activeStatuses: SolicitationEntity['status'][] = [
+      'PRE_SOLICITUD',
+      'EN_VERIFICACION',
+      'DICTAMINADA',
+      'AUTORIZADA',
+    ];
+    const [row] = await this.readDb
+      .select()
+      .from(solicitations)
+      .where(
+        and(
+          isNull(solicitations.deletedAt),
+          inArray(solicitations.status, activeStatuses),
+          eq(sql`${solicitations.generalData}->>'curp'`, curp),
+        ),
+      )
+      .limit(1);
+    return row ?? null;
+  }
+
+  /**
+   * Cuenta solicitudes activas (no terminales) de un Coordinador.
+   *
+   * Una solicitud es "activa" cuando su estado esta en
+   * `{PRE_SOLICITUD, EN_VERIFICACION, DICTAMINADA}`. Esto permite
+   * al servicio aplicar la regla "un Coordinador solo puede tener
+   * una solicitud activa a la vez" en `SolicitationsService.create`.
+   *
+   * Las solicitudes en `{AUTORIZADA, RECHAZADA}` NO cuentan porque
+   * el expediente ya esta cerrado (regla 2.0 §6.1.1: la persona
+   * puede volver a aplicar pero como una solicitud NUEVA, no como
+   * edicion de la anterior).
+   *
+   * Conexion: `DRIZZLE_READ`.
+   *
+   * @param coordinatorId - UUID del Coordinador.
+   * @returns Numero de solicitudes activas del Coordinador (>= 0).
+   */
   async countActiveByCoordinator(coordinatorId: string): Promise<number> {
     const activeStatuses: SolicitationEntity['status'][] = [
       'PRE_SOLICITUD',

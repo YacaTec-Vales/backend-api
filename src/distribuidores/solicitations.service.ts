@@ -55,6 +55,7 @@ import { sql } from 'drizzle-orm';
 import { SolicitationRepository } from '../database/repositories/solicitation.repository';
 import { BranchRepository } from '../database/repositories/branch.repository';
 import { UserRepository } from '../database/repositories/user.repository';
+import { DistributorRepository } from '../database/repositories/distributor.repository';
 import { DRIZZLE_READ, type DrizzleRead } from '../database/drizzle.provider';
 import type { RequestUser } from '../shared/guards/auth.guards';
 import { SOLICITUD_ERROR_CODES } from './solicitations.errors';
@@ -108,6 +109,7 @@ export class SolicitationsService {
     private readonly solicitationRepo: SolicitationRepository,
     private readonly branchRepo: BranchRepository,
     private readonly userRepository: UserRepository,
+    private readonly distributorRepo: DistributorRepository,
     // DRIZZLE_READ se inyecta solo para el lookup de validacion
     // de branch del actor vs. branch de la solicitud. Toda escritura
     // pasa por SolicitationRepository (DRIZZLE_WRITE).
@@ -210,6 +212,31 @@ export class SolicitationsService {
         code: SOLICITUD_ERROR_CODES.EMAIL_ALREADY_EXISTS,
         message:
           'el correo electrónico ya se encuentra en uso por otro usuario',
+      });
+    }
+
+    // Normalizar CURP (trim y mayusculas)
+    dto.generalData.curp = dto.generalData.curp.trim().toUpperCase();
+
+    // Validar unicidad del CURP en distribuidores existentes
+    const existingCurpDistributor = await this.distributorRepo.findByCurpInGeneralData(
+      dto.generalData.curp,
+    );
+    if (existingCurpDistributor) {
+      throw new ConflictException({
+        code: SOLICITUD_ERROR_CODES.CURP_ALREADY_EXISTS,
+        message: 'el CURP ya se encuentra registrado en una distribuidora activa',
+      });
+    }
+
+    // Validar unicidad del CURP en otras solicitudes activas
+    const existingCurpSolicitation = await this.solicitationRepo.findByCurpInGeneralData(
+      dto.generalData.curp,
+    );
+    if (existingCurpSolicitation) {
+      throw new ConflictException({
+        code: SOLICITUD_ERROR_CODES.CURP_ALREADY_EXISTS,
+        message: 'el CURP ya se encuentra en otra solicitud de distribuidora activa',
       });
     }
 
@@ -440,6 +467,33 @@ export class SolicitationsService {
           });
         }
       }
+      
+      if (dto.generalData.curp) {
+        dto.generalData.curp = dto.generalData.curp.trim().toUpperCase();
+        
+        // Excluir la solicitud actual de la validacion? En el repo, findByCurpInGeneralData devuelve 1 fila
+        // Si esa fila es la misma solicitud, no hay conflicto.
+        const existingCurpDistributor = await this.distributorRepo.findByCurpInGeneralData(
+          dto.generalData.curp,
+        );
+        if (existingCurpDistributor) {
+          throw new ConflictException({
+            code: SOLICITUD_ERROR_CODES.CURP_ALREADY_EXISTS,
+            message: 'el CURP ya se encuentra registrado en una distribuidora activa',
+          });
+        }
+
+        const existingCurpSolicitation = await this.solicitationRepo.findByCurpInGeneralData(
+          dto.generalData.curp,
+        );
+        if (existingCurpSolicitation && existingCurpSolicitation.id !== solicitationId) {
+          throw new ConflictException({
+            code: SOLICITUD_ERROR_CODES.CURP_ALREADY_EXISTS,
+            message: 'el CURP ya se encuentra en otra solicitud de distribuidora activa',
+          });
+        }
+      }
+
       patch.generalData = {
         ...(current.generalData as Record<string, unknown>),
         ...(dto.generalData as Record<string, unknown>),
