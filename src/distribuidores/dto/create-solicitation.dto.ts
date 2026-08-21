@@ -24,6 +24,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   Matches,
   Max,
   MaxLength,
@@ -285,6 +286,16 @@ export class GeneralDataDto {
   @IsNotEmpty()
   @MaxLength(80)
   ciudad!: string;
+
+  @ApiPropertyOptional({
+    description: 'UUID del documento de la INE en el bucket de storage.',
+    example: '550e8400-e29b-41d4-a716-446655440000',
+  })
+  @IsOptional()
+  @IsUUID('4', {
+    message: 'El ID del documento de la INE debe ser un UUID v4 válido.',
+  })
+  ine_document_id?: string;
 }
 
 @ApiSchema({ name: 'AdditionalDataSolicitanteDto' })
