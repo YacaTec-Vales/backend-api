@@ -49,6 +49,7 @@ export interface ClientRowShape {
   deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
+  outstandingCents?: number;
 }
 
 /**
@@ -89,6 +90,7 @@ export function toClientResponseDto(row: ClientRowShape): ClientResponseDto {
       row.firstVoucherWithCurrentDistributorId ?? null,
     bankAccount: row.bankAccount ?? {},
     isActive: row.isActive,
+    outstandingCents: row.outstandingCents ?? 0,
     createdAt: toIso(row.createdAt) ?? '',
     updatedAt: toIso(row.updatedAt) ?? '',
   };
