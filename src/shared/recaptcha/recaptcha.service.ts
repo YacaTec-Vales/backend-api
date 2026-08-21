@@ -33,7 +33,7 @@ import type { RecaptchaConfig } from '../../config/recaptcha.config';
 const SITEVERIFY_URL = 'https://www.google.com/recaptcha/api/siteverify';
 
 /** Timeout de la llamada a siteverify antes de fail-closed. */
-const VERIFY_TIMEOUT_MS = 5000;
+const VERIFY_TIMEOUT_MS = 10000;
 
 /** Respuesta exitosa de siteverify para reCAPTCHA v3. */
 interface SiteverifySuccessResponse {
