@@ -116,6 +116,18 @@ export const envValidationSchema = Joi.object({
   MFA_ISSUER: Joi.string().default('vales-yacatec'),
   MFA_BACKUP_CODES_COUNT: Joi.number().integer().positive().default(10),
 
+  // reCAPTCHA v3 (feature flag de activacion)
+  // RECAPTCHA_ENABLED: 'true' exige token en metodos mutantes.
+  // Default 'false' (dev/test pasan directo). Activar en produccion
+  // cuando los frontends ya envien `x-recaptcha-token`.
+  RECAPTCHA_ENABLED: Joi.string().valid('true', 'false').default('false'),
+  // Secreto del sitio (Google reCAPTCHA Admin). Obligatorio cuando
+  // RECAPTCHA_ENABLED=true; el servicio aborta el bootstrap si falta.
+  RECAPTCHA_SECRET_KEY: Joi.string().allow('').default(''),
+  // Score minimo de confianza v3 (0-1). Peticiones con score menor
+  // son rechazadas con RECAPTCHA.LOW_SCORE.
+  RECAPTCHA_MIN_SCORE: Joi.number().min(0).max(1).default(0.5),
+
   // VPN Origin Guard (feature flag de activacion)
   // Default: activo solo en NODE_ENV=production. Override explicito:
   //   true  → fuerza activacion en cualquier entorno (incluido dev/testing)

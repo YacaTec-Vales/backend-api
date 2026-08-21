@@ -93,4 +93,34 @@ describe('envValidationSchema', () => {
     );
     expect(error).toBeUndefined();
   });
+
+  it('aplica defaults de recaptcha (flag off, score 0.5)', () => {
+    const { error, value } = envValidationSchema.validate(BASE_ENV, {
+      abortEarly: false,
+    });
+    expect(error).toBeUndefined();
+    expect(value.RECAPTCHA_ENABLED).toBe('false');
+    expect(value.RECAPTCHA_SECRET_KEY).toBe('');
+    expect(value.RECAPTCHA_MIN_SCORE).toBe(0.5);
+  });
+
+  it('rechaza RECAPTCHA_ENABLED con valor distinto de true/false', () => {
+    const { error } = envValidationSchema.validate(
+      { ...BASE_ENV, RECAPTCHA_ENABLED: 'yes' },
+      { abortEarly: false },
+    );
+    expect(
+      error?.details.some((d) => d.path.includes('RECAPTCHA_ENABLED')),
+    ).toBe(true);
+  });
+
+  it('rechaza RECAPTCHA_MIN_SCORE fuera del rango 0-1', () => {
+    const { error } = envValidationSchema.validate(
+      { ...BASE_ENV, RECAPTCHA_MIN_SCORE: 1.5 },
+      { abortEarly: false },
+    );
+    expect(
+      error?.details.some((d) => d.path.includes('RECAPTCHA_MIN_SCORE')),
+    ).toBe(true);
+  });
 });
