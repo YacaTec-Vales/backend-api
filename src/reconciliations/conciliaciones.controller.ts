@@ -83,7 +83,7 @@ export class ConciliacionesController {
   @Post('manual')
   @HttpCode(200)
   @RequireVpnOrigin('Tecu')
-  @RequirePermissions('conciliacion.manual')
+  @RequirePermissions('reconciliation.manual')
   @ApiOperation({
     summary: 'Conciliación manual de movimientos',
     description:
