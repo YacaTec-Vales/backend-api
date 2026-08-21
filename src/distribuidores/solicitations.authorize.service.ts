@@ -149,6 +149,7 @@ export class SolicitationsAuthorizeService {
       (generalData['apellido_paterno'] as string | undefined) ?? '';
     const lastNameMaternal =
       (generalData['apellido_materno'] as string | undefined) ?? '';
+    const correo = (generalData['correo'] as string | undefined) ?? '';
     const branchId = current.branchId;
     const categoryId = await this.findDefaultCategoryId();
 
@@ -158,6 +159,9 @@ export class SolicitationsAuthorizeService {
 
     // Construir correlativo `D-NNNN`.
     const distributorNumber = await this.computeNextDistributorNumber();
+
+    const fallbackEmail = `distrib-${distributorNumber.toLowerCase()}@yacatec.test`;
+    const userEmail = correo || fallbackEmail;
 
     // TX serializable.
     const pool = (
@@ -197,7 +201,7 @@ export class SolicitationsAuthorizeService {
           firstName,
           lastNamePaternal,
           lastNameMaternal,
-          `distrib-${distributorNumber.toLowerCase()}@yacatec.test`,
+          userEmail,
           `distrib_${distributorNumber.toLowerCase()}`,
           passwordHash,
         ],
@@ -266,7 +270,7 @@ export class SolicitationsAuthorizeService {
     try {
       const loginUrl = this.config.get<string>('app.appPublicUrl') ?? '';
       const mailResult = await this.mailService.sendUserWelcome({
-        to: `distrib-${distributorNumber.toLowerCase()}@yacatec.test`,
+        to: userEmail,
         displayName: `${firstName} ${lastNamePaternal}`.trim(),
         username: `distrib_${distributorNumber.toLowerCase()}`,
         temporaryPassword: tempPassword,

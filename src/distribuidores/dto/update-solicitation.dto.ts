@@ -23,6 +23,7 @@ import {
   ArrayMaxSize,
   IsArray,
   IsDateString,
+  IsEmail,
   IsIn,
   IsInt,
   IsNotEmpty,
@@ -182,6 +183,12 @@ export class UpdateGeneralDataDto {
   @IsNotEmpty()
   @MaxLength(100)
   nombre?: string;
+
+  @ApiPropertyOptional({ example: 'carlos@ejemplo.com', maxLength: 255 })
+  @IsOptional()
+  @IsEmail()
+  @MaxLength(255)
+  correo?: string;
 
   @ApiPropertyOptional({ example: 'Lopez', maxLength: 100 })
   @IsOptional()

@@ -41,6 +41,7 @@ const BASE_GENERAL = {
   lugar_nacimiento: 'Torreon',
   estado: 'Coahuila',
   ciudad: 'Torreon',
+  correo: 'carlos@ejemplo.com',
 } as unknown as Record<string, unknown>;
 
 const BASE_ROW: SolicitationEntity = {
@@ -158,7 +159,7 @@ function buildActor(
 
 function buildService() {
   const solicitationRepo = createSolicitationRepositoryMock();
-  const { pool } = buildSmartPoolMock();
+  const { pool, calls } = buildSmartPoolMock();
   const writeDb = buildWriteDb(pool);
   const passwordService = buildPasswordService();
   const mailService = buildMailService();
@@ -174,6 +175,7 @@ function buildService() {
     service,
     solicitationRepo,
     pool,
+    calls,
     passwordService,
     mailService,
     config,
@@ -238,7 +240,7 @@ describe('SolicitationsAuthorizeService', () => {
     };
 
     it('autoriza como GERENTE_GENERAL con TX serializable', async () => {
-      const { service, solicitationRepo, pool } = buildService();
+      const { service, solicitationRepo, pool, calls } = buildService();
       solicitationRepo.findById.mockResolvedValueOnce(BASE_ROW);
       const result = await service.authorize(
         buildActor('GERENTE_GENERAL', null),
@@ -253,10 +255,16 @@ describe('SolicitationsAuthorizeService', () => {
       // Verificar BEGIN/COMMIT.
       expect(pool.query).toHaveBeenCalledWith('BEGIN', []);
       expect(pool.query).toHaveBeenCalledWith('COMMIT', []);
+
+      const userInsertCall = calls.find((c: { sql: string }) =>
+        c.sql.includes('INSERT INTO app.user'),
+      );
+      expect(userInsertCall).toBeDefined();
+      expect(userInsertCall!.params).toContain('carlos@ejemplo.com');
     });
 
     it('autoriza como GERENTE_SUCURSAL de la misma branch', async () => {
-      const { service, solicitationRepo } = buildService();
+      const { service, solicitationRepo, mailService } = buildService();
       solicitationRepo.findById.mockResolvedValueOnce(BASE_ROW);
       const result = await service.authorize(
         buildActor('GERENTE_SUCURSAL', BRANCH_ID),
@@ -264,6 +272,11 @@ describe('SolicitationsAuthorizeService', () => {
         dto,
       );
       expect(result.distributorNumber).toBe('D-0002');
+      expect(mailService.sendUserWelcome).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'carlos@ejemplo.com',
+        }),
+      );
     });
 
     it('rechaza si el gerente de sucursal pertenece a otra branch', async () => {
