@@ -28,6 +28,7 @@ import { SolicitationsService } from './solicitations.service';
 import { SolicitationsAuthorizeService } from './solicitations.authorize.service';
 import { SolicitationRepository } from '../database/repositories/solicitation.repository';
 import { BranchRepository } from '../database/repositories/branch.repository';
+import { DistributorRepository } from '../database/repositories/distributor.repository';
 
 @Module({
   imports: [AuthModule, MailModule, DatabaseModule],
@@ -37,6 +38,7 @@ import { BranchRepository } from '../database/repositories/branch.repository';
     SolicitationsAuthorizeService,
     SolicitationRepository,
     BranchRepository,
+    DistributorRepository,
   ],
 })
 export class SolicitationsModule {}
