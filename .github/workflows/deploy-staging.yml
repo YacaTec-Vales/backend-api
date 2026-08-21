@@ -12,7 +12,7 @@ on:
         default: ""
 
 jobs:
-  deploy:
+  build:
     if: |
       github.event_name == 'push' ||
       github.event_name == 'workflow_dispatch' ||
@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: staging
     concurrency:
-      group: deploy-staging-${{ github.repository }}
+      group: deploy-staging-${{ github.repository }}-build
       cancel-in-progress: false
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.DO_SPACES_KEY }}
@@ -35,19 +35,6 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || (github.event.inputs.ref || 'develop') }}
           submodules: recursive
-
-      - name: Clone frontend-global-styles as sibling + install deps
-        if: github.repository != 'YacaTec-Vales/backend-api'
-        run: |
-          TARGET="$(dirname "$GITHUB_WORKSPACE")/frontend-global-styles"
-          echo "Target dir: $TARGET"
-          if [ ! -d "$TARGET" ]; then
-            git clone --depth=1 https://github.com/YacaTec-Vales/frontend-global-styles.git "$TARGET"
-            cd "$TARGET"
-            npm install --no-audit --no-fund --prefer-offline
-          fi
-          ls -la "$TARGET/"
-          ls "$TARGET/node_modules/" 2>/dev/null | head -10
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -65,11 +52,6 @@ jobs:
       - name: Install prod deps (backend only, incluye node_modules en tarball)
         if: github.repository == 'YacaTec-Vales/backend-api'
         run: npm ci --omit=dev --ignore-scripts
-
-      - name: Configure AWS env (job-level, available for all steps)
-        run: |
-          echo "AWS env configured (region=${AWS_DEFAULT_REGION})"
-          echo "Spaces endpoint: ${AWS_ENDPOINT_URL_S3}"
 
       - name: Package artifact
         id: package
@@ -146,54 +128,125 @@ jobs:
             "s3://misvales-storage/staging-builds/${REPO_NAME}-${SHORT}.tar.gz" \
             --expires-in 3600 \
             --endpoint-url https://sfo3.digitaloceanspaces.com)
-          echo "ARTIFACT_URL=$URL" >> "$GITHUB_OUTPUT"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
           echo "Presigned URL generated (1h TTL)"
 
-      - name: Deploy to droplet via SSH
+  # Jobs de deploy ----------------------------------------------------------------
+
+  deploy-frontend:
+    needs: build
+    if: |
+      github.repository != 'YacaTec-Vales/backend-api' &&
+      (github.event_name == 'push' ||
+       github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'pull_request' && github.event.pull_request.merged == true))
+    runs-on: ubuntu-latest
+    environment: staging
+    concurrency:
+      group: deploy-staging-${{ github.repository }}-frontend
+      cancel-in-progress: false
+
+    steps:
+      - name: Deploy to front-01 via SSH
         uses: appleboy/ssh-action@v1
-        env:
-          RECAPTCHA_ENABLED: ${{ secrets.RECAPTCHA_ENABLED }}
-          RECAPTCHA_SECRET_KEY: ${{ secrets.RECAPTCHA_SECRET_KEY }}
-          RECAPTCHA_MIN_SCORE: ${{ secrets.RECAPTCHA_MIN_SCORE }}
         with:
           host: ${{ secrets.STAGING_HOST }}
           username: ${{ secrets.STAGING_USER }}
           port: ${{ secrets.STAGING_PORT }}
           key: ${{ secrets.STAGING_SSH_KEY }}
           command_timeout: 10m
-          envs: RECAPTCHA_ENABLED,RECAPTCHA_SECRET_KEY,RECAPTCHA_MIN_SCORE
           script: |
             set -euo pipefail
 
-            ARTIFACT_URL="${{ steps.presign.outputs.ARTIFACT_URL }}"
+            ARTIFACT_URL="${{ needs.build.outputs.url }}"
             DEST="${{ secrets.STAGING_DEST }}"
-            SERVICE="${{ secrets.STAGING_SERVICE }}"
-            BACKEND_PORT="${{ secrets.STAGING_BACKEND_PORT }}"
 
-            echo "=== Deploying ${{ github.repository }} ==="
-            echo "    dest=$DEST service=$SERVICE backend_port=$BACKEND_PORT"
+            echo "=== Deploying ${{ github.repository }} -> front-01 ==="
+            echo "    dest=$DEST"
             echo "    url=${ARTIFACT_URL:0:80}..."
 
-            # 1. Download artifact (presigned URL, no auth required)
             cd /tmp
             rm -f release.tar.gz
             curl -fsS -o release.tar.gz "$ARTIFACT_URL"
             echo "    downloaded: $(ls -lh release.tar.gz | awk '{print $5}')"
 
-            # 2. Cleanup destination (sin rollback: cada deploy reemplaza)
             if [ -n "$DEST" ] && [ -d "$DEST" ]; then
               find "$DEST" -mindepth 1 -delete
             else
               mkdir -p "$DEST"
             fi
 
-            # 3. Extract
             tar -xzf release.tar.gz -C "$DEST"
             rm -f release.tar.gz
 
-            # 3.5 Upsert de variables reCAPTCHA en el EnvironmentFile de la unidad.
-            #     Se descubre la ruta con systemctl cat (el .env vive fuera de DEST,
-            #     que se borra en cada release).
+            nginx -s reload
+            echo "=== Deploy OK (nginx reloaded) ==="
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Deploy Staging Summary (frontend)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Repository**: ${{ github.repository }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Merge commit**: \`${{ github.event.pull_request.merge_commit_sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Short SHA**: \`${{ env.SHORT_SHA }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Result**: ${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Destino**: \`${{ secrets.STAGING_DEST }}\`" >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-app02:
+    needs: build
+    if: |
+      github.repository == 'YacaTec-Vales/backend-api' &&
+      (github.event_name == 'push' ||
+       github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'pull_request' && github.event.pull_request.merged == true))
+    runs-on: ubuntu-latest
+    environment: staging
+    concurrency:
+      group: deploy-staging-${{ github.repository }}-app02
+      cancel-in-progress: false
+
+    steps:
+      - name: Deploy to app-02 via SSH
+        uses: appleboy/ssh-action@v1
+        env:
+          RECAPTCHA_ENABLED: ${{ secrets.RECAPTCHA_ENABLED }}
+          RECAPTCHA_SECRET_KEY: ${{ secrets.RECAPTCHA_SECRET_KEY }}
+          RECAPTCHA_MIN_SCORE: ${{ secrets.RECAPTCHA_MIN_SCORE }}
+        with:
+          host: ${{ secrets.STAGING_HOST_APP02 }}
+          username: ${{ secrets.STAGING_USER }}
+          port: ${{ secrets.STAGING_PORT_APP02 }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          command_timeout: 10m
+          envs: RECAPTCHA_ENABLED,RECAPTCHA_SECRET_KEY,RECAPTCHA_MIN_SCORE
+          script: |
+            set -euo pipefail
+
+            ARTIFACT_URL="${{ needs.build.outputs.url }}"
+            DEST="${{ secrets.STAGING_DEST_APP02 }}"
+            SERVICE="${{ secrets.STAGING_SERVICE_APP02 }}"
+            BACKEND_PORT="${{ secrets.STAGING_BACKEND_PORT_APP02 }}"
+
+            echo "=== Deploying ${{ github.repository }} -> app-02 ==="
+            echo "    dest=$DEST service=$SERVICE backend_port=$BACKEND_PORT"
+            echo "    url=${ARTIFACT_URL:0:80}..."
+
+            cd /tmp
+            rm -f release.tar.gz
+            curl -fsS -o release.tar.gz "$ARTIFACT_URL"
+            echo "    downloaded: $(ls -lh release.tar.gz | awk '{print $5}')"
+
+            if [ -n "$DEST" ] && [ -d "$DEST" ]; then
+              find "$DEST" -mindepth 1 -delete
+            else
+              mkdir -p "$DEST"
+            fi
+
+            tar -xzf release.tar.gz -C "$DEST"
+            rm -f release.tar.gz
+
+            # Upsert RECAPTCHA_* en el EnvironmentFile de la unidad systemd.
             ENV_FILE="$(systemctl cat "$SERVICE" 2>/dev/null | grep -oP '^EnvironmentFile=-?\K\S+' | head -1 || true)"
             if [ -z "$ENV_FILE" ]; then
               echo "    aviso: unidad sin EnvironmentFile; recaptcha no aplicado"
@@ -217,7 +270,6 @@ jobs:
               echo "    recaptcha env aplicado en $ENV_FILE (ENABLED=${RECAPTCHA_ENABLED:-false})"
             fi
 
-            # 4. Smoke test o restart
             if [ -n "$SERVICE" ]; then
               systemctl restart "$SERVICE"
               HEALTH=""
@@ -231,7 +283,7 @@ jobs:
                 echo "    health/live try $i not ready: ${HEALTH:-<no response>}"
               done
               if echo "$HEALTH" | grep -q '"status":"ok"'; then
-                echo "=== Deploy OK (backend live) ==="
+                echo "=== Deploy OK (app-02 live) ==="
               else
                 echo "::error::Backend health check failed after 20s"
                 journalctl -u "$SERVICE" --no-pager -n 20 2>&1 || true
@@ -245,10 +297,122 @@ jobs:
       - name: Summary
         if: always()
         run: |
-          echo "### Deploy Staging Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Deploy Staging Summary (app-02)" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Repository**: ${{ github.repository }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Merge commit**: \`${{ github.event.pull_request.merge_commit_sha }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Short SHA**: \`${{ env.SHORT_SHA }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Result**: ${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Destino**: \`${{ secrets.STAGING_DEST }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Destino**: \`${{ secrets.STAGING_DEST_APP02 }}\`" >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-app03:
+    needs: build
+    if: |
+      github.repository == 'YacaTec-Vales/backend-api' &&
+      (github.event_name == 'push' ||
+       github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'pull_request' && github.event.pull_request.merged == true))
+    runs-on: ubuntu-latest
+    environment: staging
+    concurrency:
+      group: deploy-staging-${{ github.repository }}-app03
+      cancel-in-progress: false
+
+    steps:
+      - name: Deploy to app-03 via SSH
+        uses: appleboy/ssh-action@v1
+        env:
+          RECAPTCHA_ENABLED: ${{ secrets.RECAPTCHA_ENABLED }}
+          RECAPTCHA_SECRET_KEY: ${{ secrets.RECAPTCHA_SECRET_KEY }}
+          RECAPTCHA_MIN_SCORE: ${{ secrets.RECAPTCHA_MIN_SCORE }}
+        with:
+          host: ${{ secrets.STAGING_HOST_APP03 }}
+          username: ${{ secrets.STAGING_USER }}
+          port: ${{ secrets.STAGING_PORT_APP03 }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          command_timeout: 10m
+          envs: RECAPTCHA_ENABLED,RECAPTCHA_SECRET_KEY,RECAPTCHA_MIN_SCORE
+          script: |
+            set -euo pipefail
+
+            ARTIFACT_URL="${{ needs.build.outputs.url }}"
+            DEST="${{ secrets.STAGING_DEST_APP03 }}"
+            SERVICE="${{ secrets.STAGING_SERVICE_APP03 }}"
+            BACKEND_PORT="${{ secrets.STAGING_BACKEND_PORT_APP03 }}"
+
+            echo "=== Deploying ${{ github.repository }} -> app-03 ==="
+            echo "    dest=$DEST service=$SERVICE backend_port=$BACKEND_PORT"
+            echo "    url=${ARTIFACT_URL:0:80}..."
+
+            cd /tmp
+            rm -f release.tar.gz
+            curl -fsS -o release.tar.gz "$ARTIFACT_URL"
+            echo "    downloaded: $(ls -lh release.tar.gz | awk '{print $5}')"
+
+            if [ -n "$DEST" ] && [ -d "$DEST" ]; then
+              find "$DEST" -mindepth 1 -delete
+            else
+              mkdir -p "$DEST"
+            fi
+
+            tar -xzf release.tar.gz -C "$DEST"
+            rm -f release.tar.gz
+
+            # Upsert RECAPTCHA_* en el EnvironmentFile de la unidad systemd.
+            ENV_FILE="$(systemctl cat "$SERVICE" 2>/dev/null | grep -oP '^EnvironmentFile=-?\K\S+' | head -1 || true)"
+            if [ -z "$ENV_FILE" ]; then
+              echo "    aviso: unidad sin EnvironmentFile; recaptcha no aplicado"
+            else
+              case "$ENV_FILE" in
+                /*) ;;
+                *) ENV_FILE="/etc/systemd/system/$ENV_FILE" ;;
+              esac
+              touch "$ENV_FILE"
+              for kv in \
+                "RECAPTCHA_ENABLED=${RECAPTCHA_ENABLED:-false}" \
+                "RECAPTCHA_SECRET_KEY=${RECAPTCHA_SECRET_KEY:-}" \
+                "RECAPTCHA_MIN_SCORE=${RECAPTCHA_MIN_SCORE:-0.5}"; do
+                key="${kv%%=*}"
+                if grep -q "^${key}=" "$ENV_FILE" 2>/dev/null; then
+                  sed -i "s|^${key}=.*|${kv}|" "$ENV_FILE"
+                else
+                  printf '%s\n' "$kv" >> "$ENV_FILE"
+                fi
+              done
+              echo "    recaptcha env aplicado en $ENV_FILE (ENABLED=${RECAPTCHA_ENABLED:-false})"
+            fi
+
+            if [ -n "$SERVICE" ]; then
+              systemctl restart "$SERVICE"
+              HEALTH=""
+              for i in 1 2 3 4 5 6 7 8 9 10; do
+                sleep 2
+                HEALTH=$(curl -fsS -m 3 "http://127.0.0.1:${BACKEND_PORT}/api/v1/health/live" 2>/dev/null || echo "")
+                if echo "$HEALTH" | grep -q '"status":"ok"'; then
+                  echo "    health/live OK on try $i: $HEALTH"
+                  break
+                fi
+                echo "    health/live try $i not ready: ${HEALTH:-<no response>}"
+              done
+              if echo "$HEALTH" | grep -q '"status":"ok"'; then
+                echo "=== Deploy OK (app-03 live) ==="
+              else
+                echo "::error::Backend health check failed after 20s"
+                journalctl -u "$SERVICE" --no-pager -n 20 2>&1 || true
+                exit 1
+              fi
+            else
+              nginx -s reload
+              echo "=== Deploy OK (nginx reloaded) ==="
+            fi
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Deploy Staging Summary (app-03)" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Repository**: ${{ github.repository }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Merge commit**: \`${{ github.event.pull_request.merge_commit_sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Short SHA**: \`${{ env.SHORT_SHA }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Result**: ${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Destino**: \`${{ secrets.STAGING_DEST_APP03 }}\`" >> "$GITHUB_STEP_SUMMARY"
