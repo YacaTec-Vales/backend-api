@@ -54,6 +54,7 @@ import {
 import { sql } from 'drizzle-orm';
 import { SolicitationRepository } from '../database/repositories/solicitation.repository';
 import { BranchRepository } from '../database/repositories/branch.repository';
+import { UserRepository } from '../database/repositories/user.repository';
 import { DRIZZLE_READ, type DrizzleRead } from '../database/drizzle.provider';
 import type { RequestUser } from '../shared/guards/auth.guards';
 import { SOLICITUD_ERROR_CODES } from './solicitations.errors';
@@ -106,6 +107,7 @@ export class SolicitationsService {
   constructor(
     private readonly solicitationRepo: SolicitationRepository,
     private readonly branchRepo: BranchRepository,
+    private readonly userRepository: UserRepository,
     // DRIZZLE_READ se inyecta solo para el lookup de validacion
     // de branch del actor vs. branch de la solicitud. Toda escritura
     // pasa por SolicitationRepository (DRIZZLE_WRITE).
@@ -199,6 +201,17 @@ export class SolicitationsService {
         details: { activeCount },
       });
     }
+
+    const existingUser = await this.userRepository.findByEmail(
+      dto.generalData.correo,
+    );
+    if (existingUser) {
+      throw new ConflictException({
+        code: SOLICITUD_ERROR_CODES.EMAIL_ALREADY_EXISTS,
+        message: 'el correo electrónico ya se encuentra en uso por otro usuario',
+      });
+    }
+
     const created = await this.solicitationRepo.create({
       coordinatorId: actor.id,
       verifierId: null,
@@ -414,6 +427,17 @@ export class SolicitationsService {
     );
     const patch: Record<string, unknown> = {};
     if (dto.generalData) {
+      if (dto.generalData.correo) {
+        const existingUser = await this.userRepository.findByEmail(
+          dto.generalData.correo,
+        );
+        if (existingUser) {
+          throw new ConflictException({
+            code: SOLICITUD_ERROR_CODES.EMAIL_ALREADY_EXISTS,
+            message: 'el correo electrónico ya se encuentra en uso por otro usuario',
+          });
+        }
+      }
       patch.generalData = {
         ...(current.generalData as Record<string, unknown>),
         ...(dto.generalData as Record<string, unknown>),

@@ -52,6 +52,7 @@ const BASE_GENERAL = {
   lugar_nacimiento: 'Torreon',
   estado: 'Coahuila',
   ciudad: 'Torreon',
+  correo: 'test@ejemplo.com',
 } as unknown as Record<string, unknown>;
 
 const BASE_ROW: SolicitationEntity = {
@@ -90,6 +91,12 @@ function buildBranchRepoMock() {
   };
 }
 
+function buildUserRepositoryMock() {
+  return {
+    findByEmail: jest.fn(),
+  };
+}
+
 function buildActor(
   role: 'COORDINADOR' | 'VERIFICADOR' | 'GERENTE_GENERAL' | 'GERENTE_SUCURSAL',
   branchId: string | null = BRANCH_ID,
@@ -113,12 +120,14 @@ function buildService() {
   const solicitationRepo = createSolicitationRepositoryMock();
   const branchRepo = buildBranchRepoMock();
   const readDb = buildReadDbMock();
+  const userRepository = buildUserRepositoryMock();
   const service = new SolicitationsService(
     solicitationRepo,
     branchRepo as never,
+    userRepository as never,
     readDb as never,
   );
-  return { service, solicitationRepo, branchRepo, readDb };
+  return { service, solicitationRepo, branchRepo, userRepository, readDb };
 }
 
 // ===========================================================================
@@ -134,14 +143,25 @@ describe('SolicitationsService', () => {
     } as unknown as Parameters<SolicitationsService['create']>[1];
 
     it('crea la solicitud cuando todo es valido', async () => {
-      const { service, solicitationRepo, branchRepo } = buildService();
+      const { service, solicitationRepo, branchRepo, userRepository } = buildService();
       branchRepo.findActiveById.mockResolvedValueOnce({ id: BRANCH_ID });
       solicitationRepo.countActiveByCoordinator.mockResolvedValueOnce(0);
+      userRepository.findByEmail.mockResolvedValueOnce(null);
       solicitationRepo.create.mockResolvedValueOnce(BASE_ROW);
       const result = await service.create(buildActor('COORDINADOR'), dto);
       expect(result.id).toBe(SOL_ID);
       expect(result.status).toBe('EN_VERIFICACION');
       expect(solicitationRepo.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('rechaza cuando el correo ya existe', async () => {
+      const { service, branchRepo, solicitationRepo, userRepository } = buildService();
+      branchRepo.findActiveById.mockResolvedValueOnce({ id: BRANCH_ID });
+      solicitationRepo.countActiveByCoordinator.mockResolvedValueOnce(0);
+      userRepository.findByEmail.mockResolvedValueOnce({ id: 'existing-user' });
+      await expect(
+        service.create(buildActor('COORDINADOR'), dto),
+      ).rejects.toBeInstanceOf(ConflictException);
     });
 
     it('rechaza cuando el rol no es COORDINADOR', async () => {
@@ -339,20 +359,33 @@ describe('SolicitationsService', () => {
 
   describe('edit', () => {
     it('permite editar a EN_VERIFICACION sin volver atras', async () => {
-      const { service, solicitationRepo } = buildService();
+      const { service, solicitationRepo, userRepository } = buildService();
       solicitationRepo.findById.mockResolvedValueOnce(BASE_ROW);
+      userRepository.findByEmail.mockResolvedValueOnce(null);
       solicitationRepo.update.mockResolvedValueOnce(
         Object.assign({}, BASE_ROW, {
           generalData: {
             nombre: 'Juan',
+            correo: 'nuevo@ejemplo.com',
           },
         }),
       );
       const result = await service.edit(buildActor('COORDINADOR'), SOL_ID, {
-        generalData: { nombre: 'Juan' },
+        generalData: { nombre: 'Juan', correo: 'nuevo@ejemplo.com' },
       });
       expect(result.status).toBe('EN_VERIFICACION');
       expect(solicitationRepo.updateStatus).not.toHaveBeenCalled();
+    });
+
+    it('rechaza edicion si el nuevo correo ya existe', async () => {
+      const { service, solicitationRepo, userRepository } = buildService();
+      solicitationRepo.findById.mockResolvedValueOnce(BASE_ROW);
+      userRepository.findByEmail.mockResolvedValueOnce({ id: 'existing-user' });
+      await expect(
+        service.edit(buildActor('COORDINADOR'), SOL_ID, {
+          generalData: { correo: 'existente@ejemplo.com' },
+        }),
+      ).rejects.toBeInstanceOf(ConflictException);
     });
 
     it('edicion tras dictamen devuelve la solicitud a EN_VERIFICACION', async () => {
