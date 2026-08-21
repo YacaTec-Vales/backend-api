@@ -36,11 +36,11 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { ClientRepository } from '../database/repositories/client.repository';
 import { VoucherRepository } from '../database/repositories/voucher.repository';
 import { DRIZZLE_READ, type DrizzleRead } from '../database/drizzle.provider';
-import { distributors, branches } from '../database/schema';
+import { distributors, branches, vouchers } from '../database/schema';
 import type { RequestUser } from '../shared/guards/auth.guards';
 import type { CreateClientDto } from './dto/create-client.dto';
 import type { ClientResponseDto } from './dto/client-response.dto';
@@ -128,8 +128,49 @@ export class ClientsService {
       query.sortOrder,
     );
 
+    const clientIds = items.map((row) => row.id);
+    let activeVouchers: Array<{
+      clientId: string;
+      totalToPayCents: number;
+      paidPeriods: number;
+      paymentPerPeriodCents: number;
+    }> = [];
+    if (clientIds.length > 0) {
+      activeVouchers = await this.readDb
+        .select({
+          clientId: vouchers.clientId,
+          totalToPayCents: vouchers.totalToPayCents,
+          paidPeriods: vouchers.paidPeriods,
+          paymentPerPeriodCents: vouchers.paymentPerPeriodCents,
+        })
+        .from(vouchers)
+        .where(
+          and(
+            inArray(vouchers.clientId, clientIds),
+            eq(vouchers.status, 'ACTIVO'),
+            isNull(vouchers.deletedAt),
+          ),
+        );
+    }
+
+    const vouchersByClient = new Map(
+      activeVouchers.map((v) => [v.clientId, v]),
+    );
+
+    const data = items.map((row) => {
+      const activeVoucher = vouchersByClient.get(row.id);
+      let outstanding = 0;
+      if (activeVoucher) {
+        outstanding =
+          activeVoucher.totalToPayCents -
+          activeVoucher.paidPeriods * activeVoucher.paymentPerPeriodCents;
+        if (outstanding < 0) outstanding = 0;
+      }
+      return toClientResponseDto({ ...row, outstandingCents: outstanding });
+    });
+
     return {
-      data: items.map((row) => toClientResponseDto(row)),
+      data,
       meta: { page: query.page, limit: query.limit, total },
     };
   }

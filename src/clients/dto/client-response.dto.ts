@@ -126,6 +126,12 @@ export class ClientResponseDto {
   })
   updatedAt!: string;
 
+  @ApiProperty({
+    description: 'Deuda pendiente total de los vales activos del cliente.',
+    example: 560000,
+  })
+  outstandingCents!: number;
+
   @ApiPropertyOptional({
     description: 'Historial de vales del cliente.',
     type: [VoucherResponseDto],

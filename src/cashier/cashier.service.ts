@@ -227,7 +227,7 @@ export class CashierService {
     }
 
     if (dto.dataConfirmed) {
-      const updated = await this.voucherRepo.markAsLiquidated(
+      const updated = await this.voucherRepo.confirmFeriado(
         voucher.id,
         dto.authorizationNumber.trim(),
       );

@@ -297,23 +297,20 @@ export class VoucherRepository {
   }
 
   /**
-   * Marca un voucher como LIQUIDADO con authorizationNumber.
+   * Confirma un vale (lo ferie) con authorizationNumber.
    * Solo si status='ACTIVO' y no borrado.
    *
-   * Sema[]ntica: en el esquema canonico, LIQUIDADO es el primer
-   * estado del life cycle post-feria. La conciliacion de abonos
-   * corre en un flujo independiente (no implementado en este commit).
+   * Se usa cuando la cajera entrega el efectivo al cliente.
+   * El vale mantiene su estado 'ACTIVO' para el ciclo de cobranza.
    */
-  async markAsLiquidated(
+  async confirmFeriado(
     voucherId: string,
     authorizationNumber: string,
   ): Promise<VoucherEntity | null> {
     const [row] = await this.writeDb
       .update(vouchers)
       .set({
-        status: 'LIQUIDADO',
         authorizationNumber,
-        liquidatedAt: new Date(),
         updatedAt: new Date(),
       })
       .where(
