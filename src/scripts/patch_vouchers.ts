@@ -29,9 +29,8 @@ async function main(): Promise<void> {
       `,
     );
 
-    logger.log(
-      `Fixed ${result.length ?? (result as unknown as { rowCount?: number }).rowCount ?? 0} corrupted vouchers.`,
-    );
+    const count = (result as unknown as { rowCount?: number }).rowCount ?? 0;
+    logger.log(`Fixed ${count} corrupted vouchers.`);
   } finally {
     await app.close();
   }
