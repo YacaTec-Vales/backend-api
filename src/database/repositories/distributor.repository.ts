@@ -77,6 +77,52 @@ export class DistributorRepository {
   }
 
   /**
+   * Busca un distribuidor activo por CURP dentro del campo JSONB generalData.
+   *
+   * Conexion: `DRIZZLE_READ`.
+   *
+   * @param curp - CURP del distribuidor.
+   * @returns Entidad o `null`.
+   */
+  async findByCurpInGeneralData(
+    curp: string,
+  ): Promise<DistributorEntity | null> {
+    const [row] = await this.readDb
+      .select()
+      .from(distributors)
+      .where(
+        and(
+          isNull(distributors.deletedAt),
+          eq(sql`${distributors.generalData}->>'curp'`, curp),
+        ),
+      )
+      .limit(1);
+    return row ?? null;
+  }
+
+  /**
+   * Busca un distribuidor activo por RFC dentro del campo JSONB generalData.
+   *
+   * Conexion: `DRIZZLE_READ`.
+   *
+   * @param rfc - RFC del distribuidor.
+   * @returns Entidad o `null`.
+   */
+  async findByRfcInGeneralData(rfc: string): Promise<DistributorEntity | null> {
+    const [row] = await this.readDb
+      .select()
+      .from(distributors)
+      .where(
+        and(
+          isNull(distributors.deletedAt),
+          eq(sql`${distributors.generalData}->>'rfc'`, rfc),
+        ),
+      )
+      .limit(1);
+    return row ?? null;
+  }
+
+  /**
    * Inserta un nuevo distribuidor. Lo usara el modulo `distribuidores`
    * cuando se levante el flujo de solicitud de distribuidora (el
    * modulo `distribuidores/controllers/solicitudes`). Por ahora

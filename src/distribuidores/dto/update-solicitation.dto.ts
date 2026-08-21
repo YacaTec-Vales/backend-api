@@ -190,6 +190,18 @@ export class UpdateGeneralDataDto {
   @MaxLength(255)
   correo?: string;
 
+  @ApiPropertyOptional({
+    example: 'LOHE000512MGTRRA01',
+    description: 'CURP de 18 caracteres (formato mexicano).',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^[A-Za-z]{4}\d{6}[A-Za-z0-9]{6}[A-Za-z]\d{1}$/, {
+    message:
+      'CURP debe tener formato valido (4 letras + 6 digitos + 6 alfanumericos + 1 homoclave + 1 verificador).',
+  })
+  curp?: string;
+
   @ApiPropertyOptional({ example: 'Lopez', maxLength: 100 })
   @IsOptional()
   @IsString()
@@ -203,6 +215,17 @@ export class UpdateGeneralDataDto {
   @IsNotEmpty()
   @MaxLength(100)
   apellido_materno?: string;
+
+  @ApiPropertyOptional({
+    example: '8711234567',
+    description: 'Telefono a 10 digitos.',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^[0-9]{10}$/, {
+    message: 'El telefono debe contener exactamente 10 digitos.',
+  })
+  phone?: string;
 
   @ApiPropertyOptional({
     example: 'LOHC900101AAA',

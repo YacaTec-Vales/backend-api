@@ -31,6 +31,12 @@ import {
   ValidateNested,
 } from 'class-validator';
 
+/**
+ * Regex del formato de CURP mexicana (RENAPO):
+ * 4 letras, 6 numeros (YYMMDD), 6 alfanumericos, 1 letra/numero, 1 digito.
+ */
+const CURP_REGEX = /^[A-Za-z]{4}\d{6}[A-Za-z0-9]{6}[A-Za-z]\d{1}$/;
+
 // ============================================================================
 // Sub-DTOs internos (no se exportan, solo se usan dentro del body)
 // ============================================================================
@@ -191,6 +197,18 @@ export class GeneralDataDto {
   @MaxLength(255)
   correo!: string;
 
+  @ApiProperty({
+    example: 'LOHE000512MGTRRA01',
+    description: 'CURP de 18 caracteres (formato mexicano).',
+  })
+  @IsString()
+  @IsNotEmpty()
+  @Matches(CURP_REGEX, {
+    message:
+      'CURP debe tener formato valido (4 letras + 6 digitos + 6 alfanumericos + 1 homoclave + 1 verificador).',
+  })
+  curp!: string;
+
   @ApiProperty({ example: 'Lopez', maxLength: 100 })
   @IsString()
   @IsNotEmpty()
@@ -202,6 +220,17 @@ export class GeneralDataDto {
   @IsNotEmpty()
   @MaxLength(100)
   apellido_materno!: string;
+
+  @ApiProperty({
+    example: '8711234567',
+    description: 'Telefono a 10 digitos.',
+  })
+  @IsString()
+  @IsNotEmpty()
+  @Matches(/^[0-9]{10}$/, {
+    message: 'El telefono debe contener exactamente 10 digitos.',
+  })
+  phone!: string;
 
   @ApiProperty({
     example: 'LOHC900101AAA',
