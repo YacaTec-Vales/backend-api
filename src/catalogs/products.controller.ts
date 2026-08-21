@@ -42,7 +42,9 @@ import {
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import { JwtAuthGuard } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
+import { VpnOriginGuard } from '../shared/guards/vpn-origin.guard';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';
+import { RequireVpnOrigin } from '../shared/decorators/require-vpn-origin.decorator';
 import { IsIn, IsOptional } from 'class-validator';
 
 /**
@@ -84,7 +86,7 @@ class ListProductsQueryDto implements ProductListFilters {
 @ApiTags('Catalogs')
 @ApiBearerAuth('bearer')
 @Controller('products')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, VpnOriginGuard)
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
@@ -167,6 +169,7 @@ export class ProductsController {
    * @apiPermission catalog.write (solo GERENTE_GENERAL por seed canonico)
    */
   @Post()
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('catalog.write')
   @ApiOperation({
     summary: 'Alta de producto',

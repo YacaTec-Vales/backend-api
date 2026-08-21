@@ -46,7 +46,9 @@ import {
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import { JwtAuthGuard } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
+import { VpnOriginGuard } from '../shared/guards/vpn-origin.guard';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';
+import { RequireVpnOrigin } from '../shared/decorators/require-vpn-origin.decorator';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
 import type { RequestUser } from '../shared/guards/auth.guards';
 
@@ -56,11 +58,13 @@ import type { RequestUser } from '../shared/guards/auth.guards';
  * Gateado por:
  *  - `JwtAuthGuard` (token valido, sesion activa, versionada).
  *  - `PermissionsGuard` (permisos requeridos por endpoint).
+ *  - `VpnOriginGuard` (solo desde VPN + frontend Tecu, ver
+ *    `@RequireVpnOrigin('Tecu')`).
  */
 @ApiTags('Vouchers')
 @ApiBearerAuth('bearer')
 @Controller('vouchers')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, VpnOriginGuard)
 export class VouchersController {
   constructor(private readonly vouchersService: VouchersService) {}
 
@@ -72,6 +76,7 @@ export class VouchersController {
    * @apiPermission voucher.create
    */
   @Post()
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('voucher.create')
   @ApiOperation({
     summary: 'Emitir un vale',
@@ -135,6 +140,7 @@ export class VouchersController {
    */
   @Post(':folio/cancel')
   @HttpCode(200)
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('voucher.cancel')
   @ApiOperation({
     summary: 'Cancelar un vale no feriado',

@@ -106,6 +106,7 @@ export class SolicitationsController {
    */
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('distribuidor.solicitud.create')
   @ApiOperation({
     summary: 'Crear solicitud de Distribuidora (alta cruda)',
@@ -161,6 +162,7 @@ export class SolicitationsController {
    */
   @Patch(':id')
   @HttpCode(HttpStatus.OK)
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('distribuidor.solicitud.update')
   @ApiOperation({
     summary: 'Editar solicitud (Coordinador, libre)',
@@ -211,6 +213,7 @@ export class SolicitationsController {
    */
   @Post(':id/tomar')
   @HttpCode(HttpStatus.OK)
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('distribuidor.solicitud.take')
   @ApiOperation({
     summary: 'Tomar solicitud para verificar',
@@ -255,6 +258,7 @@ export class SolicitationsController {
    */
   @Post(':id/verificar')
   @HttpCode(HttpStatus.OK)
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('distribuidor.solicitud.verify')
   @ApiOperation({
     summary: 'Registrar dictamen de verificacion',

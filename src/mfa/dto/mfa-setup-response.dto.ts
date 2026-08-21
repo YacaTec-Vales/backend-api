@@ -32,4 +32,18 @@ export class MfaSetupResponseDto {
     example: ['ABCD1234XY', 'EFGH5678XY'],
   })
   backupCodes: string[];
+
+  /**
+   * Siempre `true` en la respuesta actual: la activacion ocurre
+   * en `POST /mfa/verify-setup`. El frontend debe pedir al usuario
+   * que escanee el QR y luego envie un codigo de 6 digitos a ese
+   * endpoint para completar el setup.
+   */
+  @ApiProperty({
+    description:
+      'true si la credencial quedo en estado pendiente (aun NO activa). ' +
+      'El frontend debe pedir al usuario que confirme con /mfa/verify-setup.',
+    example: true,
+  })
+  pendingSetup: boolean;
 }

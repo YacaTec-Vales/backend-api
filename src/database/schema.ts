@@ -399,6 +399,9 @@ export const passwordResetTokens = appSchema.table('password_reset_token', {
  * Almacena:
  *  - `secretEncrypted`: secret TOTP cifrado con AES-256-GCM (formato `iv.tag.enc`).
  *  - `backupCodesHash`: array JSON con Argon2id de los backup codes.
+ *  - `pendingSetup`: true = secret generado pero el usuario NO ha verificado
+ *    el codigo TOTP (puede reintentar /verify-setup sin perder acceso). false
+ *    = codigo verificado, MFA activo (no se puede re-verificar, retorna 409).
  *
  * 1:1 con `users` (PK = userId).
  */
@@ -414,6 +417,7 @@ export const mfaCredentials = appSchema.table('mfa_credential', {
     .notNull()
     .defaultNow(),
   lastUsedCounter: integer('last_used_counter').notNull().default(0),
+  pendingSetup: boolean('pending_setup').notNull().default(true),
 });
 
 /**

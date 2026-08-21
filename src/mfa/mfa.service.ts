@@ -19,6 +19,7 @@
  */
 
 import {
+  ConflictException,
   Inject,
   Injectable,
   Logger,
@@ -48,6 +49,8 @@ export interface MfaSetupResult {
   otpauthUrl: string;
   /** Backup codes de un solo uso (visibles solo en este momento). */
   backupCodes: string[];
+  /** true si la credencial quedo en estado pendiente (aun NO activa). */
+  pendingSetup: boolean;
 }
 
 /** Algoritmo AES usado para cifrar el secret TOTP. */
@@ -77,13 +80,23 @@ export class MfaService {
 
   /**
    * Genera un secret TOTP, N backup codes, hashea y cifra, y
-   * persiste la credencial. Marca `user.mfaEnabled = true`.
+   * persiste la credencial con `pending_setup=true`.
    *
-   * Es idempotente: si el usuario ya tiene credencial, hace
-   * `onConflictDoUpdate` y regenera todo.
+   * **NO** marca `user.mfaEnabled=true` aqui. La activacion
+   * ocurre en `verifySetupAndActivate` cuando el usuario prueba
+   * que puede generar codigos correctos (asi si pierde la pestana
+   * entre el QR y el codigo, puede reintentar sin quedar bloqueado).
+   *
+   * Si el usuario ya tiene una credencial `pending_setup=true`,
+   * se regenera todo (idempotente). Si ya esta verificada
+   * (`pending_setup=false`), tambien se regenera (util para
+   * re-setup desde `DELETE /mfa/admin-disable/:userId` que luego
+   * limpia `pending_setup=true` via SQL en recovery).
    *
    * @param userId - UUID del usuario.
-   * @returns `otpauthUrl` (para QR) y `backupCodes` (visibles una vez).
+   * @returns `otpauthUrl` (para QR), `backupCodes` (visibles una vez) y
+   *          `pendingSetup=true` para que el frontend sepa que debe
+   *          pedir `/mfa/verify-setup`.
    */
   async setupForUser(userId: string): Promise<MfaSetupResult> {
     const secret = authenticator.generateSecret();
@@ -107,6 +120,7 @@ export class MfaService {
         userId,
         secretEncrypted: encrypted,
         backupCodesHash,
+        pendingSetup: true,
       })
       .onConflictDoUpdate({
         target: mfaCredentials.userId,
@@ -115,15 +129,85 @@ export class MfaService {
           backupCodesHash,
           enabledAt: new Date(),
           lastUsedCounter: 0,
+          pendingSetup: true,
         },
       });
+
+    return { otpauthUrl, backupCodes, pendingSetup: true };
+  }
+
+  /**
+   * Verifica un codigo TOTP del setup pendiente y, si es correcto,
+   * activa MFA en una sola transaccion logica:
+   *   1. Marca `mfa_credential.pending_setup = false`.
+   *   2. Marca `user.mfa_enabled = true`.
+   *
+   * **Requisitos**:
+   *   - La credencial debe existir.
+   *   - `pending_setup = true` (si ya esta verificada, lanza 409).
+   *   - El codigo TOTP debe ser valido.
+   *
+   * Si la verificacion falla (codigo invalido), NO se hace rollback
+   * del estado pending_setup (el usuario puede reintentar).
+   *
+   * @throws {ConflictException} `MFA.ALREADY_VERIFIED` si pending_setup=false.
+   * @throws {UnauthorizedException} `AUTH.MFA_INVALID_CODE` si codigo invalido.
+   */
+  async verifySetupAndActivate(
+    userId: string,
+    code: string,
+  ): Promise<{ valid: true }> {
+    const credential = await this.findCredential(userId);
+    if (!credential) {
+      throw new UnauthorizedException({
+        code: 'AUTH.MFA_NOT_CONFIGURED',
+        message: 'MFA no esta habilitado para este usuario.',
+      });
+    }
+
+    if (!credential.pendingSetup) {
+      throw new ConflictException({
+        code: 'MFA.ALREADY_VERIFIED',
+        message:
+          'el setup MFA ya fue verificado para este usuario; no se puede re-verificar',
+        details: {
+          userId,
+          enabledAt: credential.enabledAt,
+        },
+      });
+    }
+
+    const secret = this.decryptSecret(credential.secretEncrypted);
+    const isValidTotp = authenticator.verify({
+      token: code,
+      secret,
+    });
+
+    if (!isValidTotp) {
+      this.logger.warn(
+        `MFA verify-setup codigo invalido para usuario ${userId} (pending_setup=true, codigo no valido)`,
+      );
+      throw new UnauthorizedException({
+        code: 'AUTH.MFA_INVALID_CODE',
+        message: 'el codigo MFA proporcionado es invalido',
+      });
+    }
+
+    // Activar: pending_setup=false + mfa_enabled=true
+    await this.writeDb
+      .update(mfaCredentials)
+      .set({ pendingSetup: false, lastUsedCounter: 1 })
+      .where(eq(mfaCredentials.userId, userId));
 
     await this.writeDb
       .update(users)
       .set({ mfaEnabled: true, updatedAt: new Date() })
       .where(eq(users.id, userId));
 
-    return { otpauthUrl, backupCodes };
+    this.logger.log(
+      `MFA activado correctamente para usuario ${userId} (verify-setup OK)`,
+    );
+    return { valid: true };
   }
 
   /**
@@ -184,11 +268,43 @@ export class MfaService {
    * Desactiva MFA para un usuario. Borra la credencial y limpia
    * el flag `mfa_enabled`.
    *
+   * Tras esto el usuario esta en estado "limpio" (sin credencial).
+   * Si vuelve a llamar `/mfa/setup`, se generara una nueva credencial
+   * con `pending_setup=true`.
+   *
    * @param userId - UUID del usuario.
    */
   async disable(userId: string): Promise<void> {
     await this.writeDb
       .delete(mfaCredentials)
+      .where(eq(mfaCredentials.userId, userId));
+    await this.writeDb
+      .update(users)
+      .set({ mfaEnabled: false, updatedAt: new Date() })
+      .where(eq(users.id, userId));
+  }
+
+  /**
+   * Reset manual para operaciones de admin (ej. `adminDisable` cuando
+   * el usuario se queda atascado). NO borra la credencial (la deja
+   * en `pending_setup=true`) y resetea `mfa_enabled=false`. Asi el
+   * usuario puede hacer `/mfa/setup` (que regenerara secret) o llamar
+   * directamente `/mfa/verify-setup` con el Authenticator previo.
+   *
+   * Usado por `MfaController.adminDisable` para evitar el caso donde
+   * el usuario tiene el Authenticator correcto pero el backend lo
+   * bloqueo. Lo dejamos en `pending_setup=true` para que un codigo
+   * valido reactive MFA.
+   *
+   * **No usado en este PR** — el `adminDisable` actual hace un `disable`
+   * completo. Se deja implementado para una iteracion futura.
+   *
+   * @param userId - UUID del usuario.
+   */
+  async adminReset(userId: string): Promise<void> {
+    await this.writeDb
+      .update(mfaCredentials)
+      .set({ pendingSetup: true })
       .where(eq(mfaCredentials.userId, userId));
     await this.writeDb
       .update(users)

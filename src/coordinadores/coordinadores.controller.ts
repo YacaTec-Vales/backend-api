@@ -49,8 +49,10 @@ import {
 } from '../shared/user-creation/internal-user-response.dto';
 import { JwtAuthGuard, type RequestUser } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
+import { VpnOriginGuard } from '../shared/guards/vpn-origin.guard';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';
+import { RequireVpnOrigin } from '../shared/decorators/require-vpn-origin.decorator';
 import { contextFromRequest } from '../shared/utils/request-context.util';
 import { DistribuidoresService } from '../distribuidores/distribuidores.service';
 import { ListDistribuidoresQueryDto } from '../distribuidores/dto/list-distribuidores-query.dto';
@@ -62,7 +64,7 @@ import { PaginatedDistribuidoresResponseDto } from '../distribuidores/dto/pagina
 @ApiTags('Coordinadores')
 @ApiBearerAuth('bearer')
 @Controller('coordinadores')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, VpnOriginGuard)
 export class CoordinadoresController {
   constructor(
     private readonly service: CoordinadoresService,
@@ -114,6 +116,7 @@ export class CoordinadoresController {
   }
 
   @Post()
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('coordinador.create')
   @ApiOperation({
     summary: 'Crear coordinador',
