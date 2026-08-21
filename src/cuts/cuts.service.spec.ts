@@ -637,7 +637,7 @@ describe('CutService', () => {
   });
 
   describe('warnings', () => {
-    it('omite vales sin categoria y los reporta en warnings', async () => {
+    it('incluye vales sin categoria calculando su ganancia como 0 y los reporta en warnings', async () => {
       const vouchers = [
         buildVoucher({ id: 'v-1', folio: 'T-1' }),
         buildVoucher({ id: 'v-2', folio: 'T-2', categoryCommissionBps: null }),
@@ -652,9 +652,16 @@ describe('CutService', () => {
         BRANCH_ID,
         '2026-08-28',
       );
-      expect(result.relationDetailsCreated).toBe(1);
+
+      expect(result.relationDetailsCreated).toBe(2);
       expect(result.warnings.length).toBe(1);
       expect(result.warnings[0]).toContain('T-2');
+      expect(result.warnings[0]).toContain('comision en cero');
+
+      // v-1: Cobre 3% -> Pago puntual 19625, Ganancia 375
+      // v-2: NULL (0%) -> Pago puntual 20000, Ganancia 0
+      expect(result.totalToPayCents).toBe(39625);
+      expect(result.totalCommissionCents).toBe(375);
     });
 
     it('omite distribuidores inexistentes y los reporta', async () => {
