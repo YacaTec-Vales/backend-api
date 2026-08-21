@@ -8,8 +8,10 @@
  *  - `DELETE /mfa/admin-disable/:userId` — admin desactiva MFA de otro
  *    usuario (requiere permiso `mfa.admin_disable`).
  *
- * Todos los endpoints requieren sesion activa (JWT valido). El admin
- * endpoint adicional requiere el permiso `mfa.admin_disable`.
+ * Todos los endpoints requieren sesion activa (JWT valido) y token de
+ * reCAPTCHA v3 en `x-recaptcha-token` (adjunto automaticamente por el
+ * interceptor del frontend). El admin endpoint adicional requiere el
+ * permiso `mfa.admin_disable`.
  *
  * @module mfa
  * @author Equipo de desarrollo Mis Vales
@@ -45,9 +47,7 @@ import { ApiEnvelopeOkResponse } from '../shared/decorators/api-envelope-respons
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
 import { JwtAuthGuard, type RequestUser } from '../shared/guards/auth.guards';
-import { VpnOriginGuard } from '../shared/guards/vpn-origin.guard';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';
-import { RequireVpnOrigin } from '../shared/decorators/require-vpn-origin.decorator';
 
 /**
  * Controlador MFA. Ruta base: `/mfa` (prefija `api/v1`).
@@ -61,8 +61,7 @@ export class MfaController {
 
   constructor(private readonly mfaService: MfaService) {}
 
-  @UseGuards(JwtAuthGuard, VpnOriginGuard)
-  @RequireVpnOrigin('Tecu')
+  @UseGuards(JwtAuthGuard)
   @Post('setup')
   @ApiOperation({
     summary: 'Iniciar configuracion MFA',
@@ -71,7 +70,8 @@ export class MfaController {
       'Devuelve una URI `otpauth://` para generar el QR y los backup codes ' +
       'en claro (visibles una sola vez). El MFA queda activado inmediatamente. ' +
       'Si el usuario ya tenia MFA, se regenera todo (idempotente). ' +
-      'Requiere VPN+Tecu (header `X-Origin: vpn` + `X-Client-App: Tecu`).',
+      'Requiere sesion JWT valida y token de reCAPTCHA v3 ' +
+      '(header `x-recaptcha-token`, generado automaticamente por el frontend).',
   })
   @ApiEnvelopeOkResponse({
     message: 'MFA configurado correctamente',
@@ -91,8 +91,7 @@ export class MfaController {
     };
   }
 
-  @UseGuards(JwtAuthGuard, VpnOriginGuard)
-  @RequireVpnOrigin('Tecu')
+  @UseGuards(JwtAuthGuard)
   @Post('verify-setup')
   @ApiOperation({
     summary: 'Verificar configuracion MFA',
@@ -100,7 +99,8 @@ export class MfaController {
       'Confirma que el usuario puede generar codigos TOTP correctamente. ' +
       'Envia un codigo de 6 digitos generado por la app autenticadora. ' +
       'Si el codigo es valido, el MFA queda confirmado. ' +
-      'Requiere VPN+Tecu (header `X-Origin: vpn` + `X-Client-App: Tecu`).',
+      'Requiere sesion JWT valida y token de reCAPTCHA v3 ' +
+      '(header `x-recaptcha-token`).',
   })
   @ApiEnvelopeOkResponse({
     message: 'Codigo MFA verificado correctamente',
@@ -126,15 +126,15 @@ export class MfaController {
     this.logger.log(`MFA verify-setup exitoso para usuario ${user.id}`);
   }
 
-  @UseGuards(JwtAuthGuard, VpnOriginGuard)
-  @RequireVpnOrigin('Tecu')
+  @UseGuards(JwtAuthGuard)
   @Delete('disable')
   @ApiOperation({
     summary: 'Desactivar MFA propio',
     description:
       'Desactiva MFA del usuario autenticado. Requiere un codigo TOTP ' +
       'o backup code valido para confirmar la identidad antes de desactivar. ' +
-      'Requiere VPN+Tecu (header `X-Origin: vpn` + `X-Client-App: Tecu`).',
+      'Requiere sesion JWT valida y token de reCAPTCHA v3 ' +
+      '(header `x-recaptcha-token`).',
   })
   @ApiNoContentResponse({ description: 'MFA desactivado correctamente' })
   @ApiUnauthorizedResponse({
@@ -160,8 +160,7 @@ export class MfaController {
     this.logger.log(`MFA desactivado para usuario ${user.id}`);
   }
 
-  @UseGuards(JwtAuthGuard, VpnOriginGuard)
-  @RequireVpnOrigin('Tecu')
+  @UseGuards(JwtAuthGuard)
   @RequirePermissions('mfa.admin_disable')
   @Delete('admin-disable/:userId')
   @ApiOperation({
@@ -170,7 +169,8 @@ export class MfaController {
       'Permite a un administrador o gerente desactivar el MFA de otro ' +
       'usuario (ej. cuando el usuario perdio su telefono). Requiere el ' +
       'permiso `mfa.admin_disable`. ' +
-      'Requiere VPN+Tecu (header `X-Origin: vpn` + `X-Client-App: Tecu`).',
+      'Requiere sesion JWT valida y token de reCAPTCHA v3 ' +
+      '(header `x-recaptcha-token`).',
   })
   @ApiParam({
     name: 'userId',
