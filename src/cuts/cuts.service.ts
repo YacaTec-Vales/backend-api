@@ -183,9 +183,8 @@ export class CutService {
     for (const voucher of vouchers) {
       if (voucher.categoryCommissionBps === null) {
         warnings.push(
-          `vale ${voucher.folio}: sin categoria (commission_bps NULL); se omite`,
+          `vale ${voucher.folio}: sin categoria (commission_bps NULL); comision en cero`,
         );
-        continue;
       }
       const list = grouped.get(voucher.distributorId) ?? [];
       list.push(voucher);
@@ -198,6 +197,7 @@ export class CutService {
     let totalCommissionCents = 0;
     let totalPenaltiesCents = 0;
     let totalPointsAwarded = 0;
+    let totalRelationDetailsCreated = 0;
 
     for (const [distributorId, list] of grouped) {
       const distributor =
@@ -264,7 +264,10 @@ export class CutService {
 
         // --- Paso 5: Ganancia de la Distribuidora por Quincena ---
         // Ganancia Quincenal = (Cantidad Vale * Categoria %) / Numero de Quincenas
-        const categoryBps = v.categoryCommissionBps as number;
+        const categoryBps =
+          v.categoryCommissionBps !== null
+            ? Number(v.categoryCommissionBps)
+            : 0;
         const distributorGain = Math.floor(
           Math.floor((amount * categoryBps) / 10000) / periods,
         );
@@ -365,6 +368,7 @@ export class CutService {
       totalCommissionCents += distributorGainTotal;
       totalPenaltiesCents += distributorPenalty;
       totalPointsAwarded += pointsAwarded;
+      totalRelationDetailsCreated += list.length;
     }
 
     const result: CutResultDto = {
@@ -373,7 +377,7 @@ export class CutService {
       paymentDeadlineDate,
       distributorsAffected: relationSummaries.length,
       relationsCreated: relationSummaries.length,
-      relationDetailsCreated: vouchers.length - warnings.length,
+      relationDetailsCreated: totalRelationDetailsCreated,
       totalToPayCents,
       totalCommissionCents,
       totalPenaltiesCents,
