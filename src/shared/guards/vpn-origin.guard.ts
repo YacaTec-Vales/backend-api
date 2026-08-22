@@ -18,10 +18,19 @@
  * Comportamiento:
  *  - Endpoint `@Public()`: pasa siempre.
  *  - Endpoint sin `@RequireVpnOrigin(...)`: pasa siempre (no requiere VPN).
- *  - Endpoint CON `@RequireVpnOrigin('Tecu')`:
+ *  - Endpoint CON `@RequireVpnOrigin(...)` y guard INACTIVO (dev/test):
+ *      pasa siempre (con WARNING al arranque). Esto evita que los
+ *      developers sin VPN ni nginx vean 403 en cada POST.
+ *  - Endpoint CON `@RequireVpnOrigin(...)` y guard ACTIVO (prod):
  *      - X-Origin != "vpn" → 403 AUTH.NOT_VPN_ORIGIN
- *      - X-Client-App != "Tecu" → 403 AUTH.WRONG_CLIENT_APP
+ *      - X-Client-App != esperado → 403 AUTH.WRONG_CLIENT_APP
  *      - Si ambos OK → pasa (PermissionsGuard ya valido permiso DB antes)
+ *
+ * Activacion (resuelta en `vpnOriginConfig`):
+ *  - `VPN_ORIGIN_GUARD_ENABLED=true`  -> activo en cualquier entorno
+ *  - `VPN_ORIGIN_GUARD_ENABLED=false` -> inactivo (rollback rapido)
+ *  - unset + `NODE_ENV=production`   -> activo (default seguro)
+ *  - unset + cualquier otro NODE_ENV  -> inactivo (dev/test pasan)
  *
  * Orden de guards recomendado:
  *   @UseGuards(JwtAuthGuard, PermissionsGuard, VpnOriginGuard)
@@ -40,16 +49,42 @@ import {
   ExecutionContext,
   ForbiddenException,
   Injectable,
+  Logger,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { ConfigService } from '@nestjs/config';
 import type { Request } from 'express';
 import { REQUIRE_VPN_ORIGIN_KEY } from '../decorators/require-vpn-origin.decorator';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import type { Device } from '../types/auth.types';
+import type { VpnOriginConfig } from '../../config/vpn-origin.config';
 
 @Injectable()
 export class VpnOriginGuard implements CanActivate {
-  constructor(private readonly reflector: Reflector) {}
+  private readonly logger = new Logger(VpnOriginGuard.name);
+  private readonly config: VpnOriginConfig;
+
+  constructor(
+    private readonly reflector: Reflector,
+    configService: ConfigService,
+  ) {
+    this.config =
+      configService.get<VpnOriginConfig>('vpnOrigin') ??
+      Object.freeze({ enabled: false, override: null, nodeEnv: 'unknown' });
+
+    if (!this.config.enabled) {
+      const overrideNote =
+        this.config.override !== null
+          ? `VPN_ORIGIN_GUARD_ENABLED=${this.config.override}`
+          : `NODE_ENV=${this.config.nodeEnv} (default)`;
+      this.logger.warn(
+        `[VpnOriginGuard] INACTIVO en este entorno (${overrideNote}). ` +
+          'Los endpoints con @RequireVpnOrigin(...) pasan sin validar ' +
+          'X-Origin / X-Client-App. Para forzar activacion en dev: ' +
+          'VPN_ORIGIN_GUARD_ENABLED=true npm run start:dev',
+      );
+    }
+  }
 
   canActivate(ctx: ExecutionContext): boolean {
     // 1. Endpoints publicos (login, refresh, health) pasan siempre
@@ -66,7 +101,11 @@ export class VpnOriginGuard implements CanActivate {
     );
     if (!required) return true;
 
-    // 3. Endpoints CON @RequireVpnOrigin: validar origen y frontend
+    // 3. Guard inactivo en este entorno (dev/test por default): pasa
+    //    siempre para no romper el flujo de desarrollo local.
+    if (!this.config.enabled) return true;
+
+    // 4. Guard activo: validar origen VPN y frontend autorizado
     const req = ctx.switchToHttp().getRequest<Request>();
     const origin = (
       req.headers['x-origin'] as string | undefined
