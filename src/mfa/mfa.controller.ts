@@ -120,8 +120,7 @@ export class MfaController {
     type: ErrorResponseDto,
   })
   @ApiUnauthorizedResponse({
-    description:
-      'AUTH.MFA_NOT_CONFIGURED o AUTH.MFA_INVALID_CODE.',
+    description: 'AUTH.MFA_NOT_CONFIGURED o AUTH.MFA_INVALID_CODE.',
     type: ErrorResponseDto,
   })
   @HttpCode(HttpStatus.OK)
