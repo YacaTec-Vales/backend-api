@@ -30,6 +30,7 @@ import { authConfig } from './config/auth.config';
 import { mailConfig } from './config/mail.config';
 import { mfaConfig } from './config/mfa.config';
 import { recaptchaConfig } from './config/recaptcha.config';
+import { vpnOriginConfig } from './config/vpn-origin.config';
 import { envValidationSchema } from './config/env.validation';
 
 import { AppController } from './app.controller';
@@ -79,7 +80,14 @@ import { RecaptchaGuard } from './shared/recaptcha/recaptcha.guard';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [appConfig, authConfig, mailConfig, mfaConfig, recaptchaConfig],
+      load: [
+        appConfig,
+        authConfig,
+        mailConfig,
+        mfaConfig,
+        recaptchaConfig,
+        vpnOriginConfig,
+      ],
       validationSchema: envValidationSchema,
       validationOptions: { abortEarly: true, allowUnknown: true },
     }),
