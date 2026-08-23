@@ -3,7 +3,10 @@
  *
  * Cubre los caminos criticos de identidad:
  *  - `login`: happy path, credenciales invalidas, password no
- *    seteada, cuenta inactiva, lockout.
+ *    seteada, cuenta inactiva, lockout, single-session (revoca
+ *    sesiones previas al crear la nueva).
+ *  - `verifyMfaAndLogin`: MFA_NOT_CONFIGURED, USER_NOT_FOUND,
+ *    MFA_INVALID_CODE, happy path con revocacion de sesiones.
  *  - `refresh`: rotacion, reuse detection, expired, token version
  *    mismatch.
  *  - `logout`: revoca la sesion correcta.
@@ -37,6 +40,7 @@ import {
 import { TokenService } from './services/token.service';
 import { SessionService } from './services/session.service';
 import { PermissionCacheService } from './services/permission-cache.service';
+import { MfaService } from '../mfa/mfa.service';
 import {
   createRefreshTokenRepositoryMock,
   createUserRepositoryMock,
@@ -215,6 +219,10 @@ describe('AuthService', () => {
         'ana@yacatec.demo',
       );
       expect(userRepo.recordSuccessfulLogin).toHaveBeenCalledWith('user-1');
+      expect(sessionService.revokeAllForUser).toHaveBeenCalledWith(
+        'user-1',
+        'login_new_session',
+      );
       expect(tokenService.signAccessToken).toHaveBeenCalledWith(
         expect.objectContaining({
           sub: 'user-1',
@@ -222,6 +230,26 @@ describe('AuthService', () => {
           sessionId: 'session-1',
         }),
       );
+    });
+
+    it('single-session: revoca sesiones previas antes de crear la nueva', async () => {
+      userRepo.findByUsernameOrEmail.mockResolvedValue(buildUser() as never);
+      passwordService.verify.mockResolvedValue(true);
+
+      await service.login('ana', 'PlainPass1', false, baseContext);
+
+      expect(sessionService.revokeAllForUser).toHaveBeenCalledTimes(1);
+      expect(sessionService.revokeAllForUser).toHaveBeenCalledWith(
+        'user-1',
+        'login_new_session',
+      );
+      // La revocacion corre ANTES de createSession para que la sesion
+      // emitida en este login no sea borrada por su propio barrido.
+      const revokeOrder =
+        sessionService.revokeAllForUser.mock.invocationCallOrder[0];
+      const createOrder =
+        sessionService.createSession.mock.invocationCallOrder[0];
+      expect(revokeOrder).toBeLessThan(createOrder);
     });
 
     it('lanza INVALID_CREDENTIALS si el usuario no existe', async () => {
@@ -338,6 +366,109 @@ describe('AuthService', () => {
       );
       expect((result as { accessToken: string }).accessToken).toBe(
         'access.jwt',
+      );
+    });
+  });
+
+  describe('verifyMfaAndLogin', () => {
+    /**
+     * Recrea el `AuthService` con un `MfaService` mockeado. El resto
+     * de los tests pasan `null` porque no usan MFA; aquí necesitamos
+     * el servicio real para ejercitar el flujo del challenge.
+     */
+    function buildServiceWithMfa(
+      mfa: jest.Mocked<Pick<MfaService, 'verify'>>,
+    ): AuthService {
+      const mfaStub = {
+        verify: mfa.verify,
+        setupForUser: jest.fn(),
+        verifySetupAndActivate: jest.fn(),
+        disable: jest.fn(),
+        adminReset: jest.fn(),
+      } as unknown as jest.Mocked<MfaService>;
+      return new AuthService(
+        authConfig,
+        userRepo,
+        refreshRepo,
+        passwordService,
+        tokenService,
+        sessionService,
+        permissionCache,
+        { get: jest.fn() } as unknown as ConfigService,
+        mfaStub,
+      );
+    }
+
+    it('lanza MFA_NOT_CONFIGURED cuando mfaService es null', async () => {
+      // El `service` por defecto se construye con mfaService=null;
+      // reusamos esa instancia para este caso.
+      await expect(
+        service.verifyMfaAndLogin('u', '123456', false, baseContext),
+      ).rejects.toBeInstanceOf(UnauthorizedException);
+    });
+
+    it('lanza USER_NOT_FOUND si el usuario no existe', async () => {
+      const mfa = { verify: jest.fn() };
+      userRepo.findById.mockResolvedValue(null);
+      const svc = buildServiceWithMfa(mfa);
+      try {
+        await svc.verifyMfaAndLogin('u', '123456', false, baseContext);
+        fail('Debio lanzar');
+      } catch (err) {
+        expect(err).toBeInstanceOf(UnauthorizedException);
+        expect(codeOf(err)).toBe('AUTH.USER_NOT_FOUND');
+      }
+      expect(mfa.verify).not.toHaveBeenCalled();
+    });
+
+    it('lanza MFA_INVALID_CODE cuando el codigo TOTP no es valido', async () => {
+      const mfa = {
+        verify: jest
+          .fn()
+          .mockResolvedValue({ valid: false, consumedBackupCode: false }),
+      };
+      userRepo.findById.mockResolvedValue(buildUser() as never);
+      const svc = buildServiceWithMfa(mfa);
+      try {
+        await svc.verifyMfaAndLogin('user-1', '000000', false, baseContext);
+        fail('Debio lanzar');
+      } catch (err) {
+        expect(err).toBeInstanceOf(UnauthorizedException);
+        expect(codeOf(err)).toBe('AUTH.MFA_INVALID_CODE');
+      }
+      expect(sessionService.createSession).not.toHaveBeenCalled();
+    });
+
+    it('happy path: revoca sesiones previas y emite tokens', async () => {
+      const mfa = {
+        verify: jest
+          .fn()
+          .mockResolvedValue({ valid: true, consumedBackupCode: false }),
+      };
+      userRepo.findById.mockResolvedValue(buildUser() as never);
+      const svc = buildServiceWithMfa(mfa);
+
+      const result = await svc.verifyMfaAndLogin(
+        'user-1',
+        '123456',
+        false,
+        baseContext,
+      );
+
+      expect(mfa.verify).toHaveBeenCalledWith('user-1', '123456');
+      expect(sessionService.revokeAllForUser).toHaveBeenCalledWith(
+        'user-1',
+        'login_new_session',
+      );
+      expect((result as { accessToken: string }).accessToken).toBe(
+        'access.jwt',
+      );
+      expect(tokenService.signAccessToken).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sub: 'user-1',
+          role: 'COORDINADOR',
+          sessionId: 'session-1',
+        }),
       );
     });
   });
