@@ -161,6 +161,11 @@ export type LogType = (typeof LOG_TYPES)[number];
 export interface AuditWriteContext {
   /** UUID del usuario que ejecuta la accion (actor). */
   actorUserId: string;
+  /**
+   * UUID del usuario OBJETIVO de la accion (distinto del actor
+   * cuando un admin hace algo sobre otro usuario). Opcional.
+   */
+  targetUserId?: string | null;
   /** Codigo de accion de negocio. */
   action: AuditAction;
   /** Direccion IP del cliente. */

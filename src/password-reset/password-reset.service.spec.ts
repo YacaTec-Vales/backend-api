@@ -26,6 +26,7 @@ import {
 import { UserRepository } from '../database/repositories/user.repository';
 import { PasswordResetTokenRepository } from '../database/repositories/password-reset-token.repository';
 import { RefreshTokenRepository } from '../database/repositories/refresh-token.repository';
+import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 import { MailService } from '../mail/mail.service';
 import { PermissionCacheService } from '../auth/services/permission-cache.service';
 import {
@@ -73,6 +74,18 @@ describe('PasswordResetService', () => {
           k === 'app.appPublicUrl' ? 'https://app' : undefined,
         ),
       } as unknown as ConfigService,
+      {
+        runWithContext: jest
+          .fn()
+          .mockImplementation(
+            async <T>(
+              _ctx: unknown,
+              work: (tx: unknown) => Promise<T>,
+            ) =>
+              work({ __isTx: true }),
+          ),
+        logEvent: jest.fn().mockResolvedValue(undefined),
+      } as unknown as AuditLogRepository,
     );
   });
 
@@ -169,12 +182,19 @@ describe('PasswordResetService', () => {
         'u1',
         'hashed:NewPass1!',
         false,
+        { __isTx: true },
       );
-      expect(resetRepo.markUsed).toHaveBeenCalledWith(record.id);
-      expect(resetRepo.invalidateForUser).toHaveBeenCalledWith('u1');
+      expect(resetRepo.markUsed).toHaveBeenCalledWith(
+        record.id,
+        { __isTx: true },
+      );
+      expect(resetRepo.invalidateForUser).toHaveBeenCalledWith('u1', {
+        __isTx: true,
+      });
       expect(refreshRepo.revokeAllForUser).toHaveBeenCalledWith(
         'u1',
         'password_reset',
+        { __isTx: true },
       );
       expect(permissionCache.invalidate).toHaveBeenCalledWith('u1');
     });

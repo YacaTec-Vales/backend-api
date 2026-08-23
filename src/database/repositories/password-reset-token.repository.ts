@@ -84,8 +84,9 @@ export class PasswordResetTokenRepository {
    *
    * @param id - UUID del token.
    */
-  async markUsed(id: string): Promise<void> {
-    await this.writeDb
+  async markUsed(id: string, tx?: DrizzleWrite): Promise<void> {
+    const db = tx ?? this.writeDb;
+    await db
       .update(passwordResetTokens)
       .set({ usedAt: sql`now()` })
       .where(eq(passwordResetTokens.id, id));
@@ -97,9 +98,14 @@ export class PasswordResetTokenRepository {
    * utilizables.
    *
    * @param userId - UUID del usuario.
+   * @param tx - Cliente Drizzle opcional dentro de una TX de auditoria.
    */
-  async invalidateForUser(userId: string): Promise<void> {
-    await this.writeDb
+  async invalidateForUser(
+    userId: string,
+    tx?: DrizzleWrite,
+  ): Promise<void> {
+    const db = tx ?? this.writeDb;
+    await db
       .update(passwordResetTokens)
       .set({ usedAt: sql`now()` })
       .where(
