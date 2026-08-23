@@ -208,8 +208,10 @@ export class UserRepository {
   async updatePasswordHash(
     id: string,
     passwordHash: string,
+    tx?: DrizzleWrite,
   ): Promise<UserEntity | null> {
-    const [row] = await this.writeDb
+    const db = tx ?? this.writeDb;
+    const [row] = await db
       .update(users)
       .set({
         passwordHash,
@@ -229,9 +231,11 @@ export class UserRepository {
    * un administrador invalida todas las sesiones de un usuario.
    *
    * @param id - UUID del usuario.
+   * @param tx - Cliente Drizzle opcional dentro de una TX de auditoria.
    */
-  async bumpTokenVersion(id: string): Promise<void> {
-    await this.writeDb
+  async bumpTokenVersion(id: string, tx?: DrizzleWrite): Promise<void> {
+    const db = tx ?? this.writeDb;
+    await db
       .update(users)
       .set({
         tokenVersion: sql`${users.tokenVersion} + 1`,
