@@ -35,6 +35,6 @@ import { DocumentsService } from './documents.service';
       useFactory: (config: ConfigService) => buildS3Client(config),
     },
   ],
-  exports: [StorageService],
+  exports: [StorageService, DocumentsService],
 })
 export class DocumentsModule {}
