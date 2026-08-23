@@ -39,6 +39,7 @@ import {
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { ClientRepository } from '../database/repositories/client.repository';
 import { VoucherRepository } from '../database/repositories/voucher.repository';
+import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 import { DRIZZLE_READ, type DrizzleRead } from '../database/drizzle.provider';
 import { distributors, branches, vouchers } from '../database/schema';
 import type { RequestUser } from '../shared/guards/auth.guards';
@@ -61,6 +62,7 @@ export class ClientsService {
   constructor(
     private readonly clientRepo: ClientRepository,
     private readonly voucherRepo: VoucherRepository,
+    private readonly auditRepo: AuditLogRepository,
     @Inject(DRIZZLE_READ) private readonly readDb: DrizzleRead,
   ) {}
 
@@ -296,28 +298,42 @@ export class ClientsService {
     // 5. Insertar el cliente. La BD rellena `id`, `created_at`,
     //    `updated_at`. `is_active = true`. `bankAccount` se
     //    normaliza a {} si no llega.
-    const created = await this.clientRepo.create({
-      curp: curpNormalized,
-      firstName: dto.firstName,
-      lastNamePaternal: dto.lastNamePaternal,
-      lastNameMaternal: dto.lastNameMaternal,
-      rfc: dto.rfc ?? null,
-      birthDate: dto.birthDate ?? null,
-      street: dto.street ?? null,
-      streetNumber: dto.streetNumber ?? null,
-      colonia: dto.colonia ?? null,
-      postalCode: dto.postalCode ?? null,
-      birthPlace: dto.birthPlace ?? null,
-      state: dto.state ?? null,
-      city: dto.city ?? null,
-      ineDocumentId: null,
-      addressProofDocumentId: null,
-      bankAccount: dto.bankAccount ?? {},
-      currentDistributorId: distributorRow.id,
-      firstVoucherWithCurrentDistributorId: null,
-      isActive: true,
-      deletedAt: null,
-    });
+    const created = await this.auditRepo.runWithContext(
+      {
+        actorUserId: actor.id,
+        action: 'CLIENT.CREATED',
+        metadata: {
+          distributorId: distributorRow.id,
+          curp: curpNormalized,
+        },
+      },
+      async (tx) =>
+        this.clientRepo.create(
+          {
+            curp: curpNormalized,
+            firstName: dto.firstName,
+            lastNamePaternal: dto.lastNamePaternal,
+            lastNameMaternal: dto.lastNameMaternal,
+            rfc: dto.rfc ?? null,
+            birthDate: dto.birthDate ?? null,
+            street: dto.street ?? null,
+            streetNumber: dto.streetNumber ?? null,
+            colonia: dto.colonia ?? null,
+            postalCode: dto.postalCode ?? null,
+            birthPlace: dto.birthPlace ?? null,
+            state: dto.state ?? null,
+            city: dto.city ?? null,
+            ineDocumentId: null,
+            addressProofDocumentId: null,
+            bankAccount: dto.bankAccount ?? {},
+            currentDistributorId: distributorRow.id,
+            firstVoucherWithCurrentDistributorId: null,
+            isActive: true,
+            deletedAt: null,
+          },
+          tx,
+        ),
+    );
 
     this.logger.log(
       `Cliente creado: id=${created.id} curp=${created.curp} ` +

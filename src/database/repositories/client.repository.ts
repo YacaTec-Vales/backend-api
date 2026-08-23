@@ -89,8 +89,12 @@ export class ClientRepository {
    *   `updated_at`: la BD los rellena con defaults).
    * @returns Entidad creada tal cual quedo persistida.
    */
-  async create(data: NewClientEntity): Promise<ClientEntity> {
-    const [row] = await this.writeDb.insert(clients).values(data).returning();
+  async create(
+    data: NewClientEntity,
+    tx?: DrizzleWrite,
+  ): Promise<ClientEntity> {
+    const db = tx ?? this.writeDb;
+    const [row] = await db.insert(clients).values(data).returning();
     return row;
   }
 
