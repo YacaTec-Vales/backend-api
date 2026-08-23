@@ -13,6 +13,7 @@ describe('CategoriesService', () => {
       select: jest.fn().mockReturnThis(),
       from: jest.fn().mockReturnThis(),
       where: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
       limit: jest.fn().mockReturnThis(),
     };
 
@@ -43,7 +44,7 @@ describe('CategoriesService', () => {
   describe('findAll', () => {
     it('should return all categories', async () => {
       const mockCategories = [{ id: '1', name: 'Oro', commissionBps: 1000 }];
-      readDbMock.where.mockResolvedValueOnce(mockCategories);
+      readDbMock.orderBy.mockResolvedValueOnce(mockCategories);
 
       const result = await service.findAll();
       expect(result).toEqual(mockCategories);
