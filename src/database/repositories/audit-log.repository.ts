@@ -47,9 +47,7 @@ import {
   type AuditLogEntity,
   type NewAuditLogEntity,
 } from '../schema';
-import {
-  AuditContextStoreService,
-} from '../../shared/context/audit-context.store';
+import { AuditContextStoreService } from '../../shared/context/audit-context.store';
 import type {
   AuditAction,
   AuditWriteContext,

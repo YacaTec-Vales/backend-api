@@ -10,21 +10,21 @@
 import { Test, type TestingModule } from '@nestjs/testing';
 import { Logger } from '@nestjs/common';
 import { LogService } from './log.service';
-import { DRIZZLE_WRITE, type DrizzleWrite } from '../../database/drizzle.provider';
+import { DRIZZLE_WRITE } from '../../database/drizzle.provider';
 
 describe('LogService', () => {
   let service: LogService;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   let insertMock: jest.Mock;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   let valuesMock: jest.Mock;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   let writeDbMock: any;
 
   beforeEach(async () => {
     valuesMock = jest.fn().mockResolvedValue(undefined);
     insertMock = jest.fn().mockReturnValue({ values: valuesMock });
-    writeDbMock = { insert: insertMock } as unknown as DrizzleWrite;
+    writeDbMock = { insert: insertMock };
 
     const moduleRef: TestingModule = await Test.createTestingModule({
       providers: [
@@ -40,7 +40,7 @@ describe('LogService', () => {
 
   afterEach(() => {
     // Limpiar globalThis side-effect entre tests
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
     delete (globalThis as any).__auditContextStore;
   });
 

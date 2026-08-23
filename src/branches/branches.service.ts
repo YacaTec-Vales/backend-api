@@ -213,19 +213,22 @@ export class BranchesService {
       },
     };
 
-    const entity = await this.auditRepo.runWithContext(auditCtx, async () => {
-      return this.branchesRepo.insert({
-        name: dto.name,
-        branchType: dto.branchType,
-        esMatriz: dto.esMatriz ?? dto.branchType === 'MATRIZ',
-        address: dto.address ?? null,
-        managerUserId,
-        folioPrefix,
-        cutoffDay: dto.cutoffDay ?? null,
-        paymentDay: dto.paymentDay ?? null,
-        earlyPaymentDays: dto.earlyPaymentDays ?? null,
-      });
-    });
+    const entity = await this.auditRepo.runWithContext(auditCtx, async (tx) =>
+      this.branchesRepo.insert(
+        {
+          name: dto.name,
+          branchType: dto.branchType,
+          esMatriz: dto.esMatriz ?? dto.branchType === 'MATRIZ',
+          address: dto.address ?? null,
+          managerUserId,
+          folioPrefix,
+          cutoffDay: dto.cutoffDay ?? null,
+          paymentDay: dto.paymentDay ?? null,
+          earlyPaymentDays: dto.earlyPaymentDays ?? null,
+        },
+        tx,
+      ),
+    );
 
     const manager = await this.fetchManager(entity.managerUserId);
     return this.toBranchResponse(this.toAdminRow(entity, manager));
@@ -300,19 +303,23 @@ export class BranchesService {
       },
     };
 
-    const updated = await this.auditRepo.runWithContext(auditCtx, async () => {
-      return this.branchesRepo.update(branchId, {
-        name: dto.name,
-        branchType: dto.branchType,
-        esMatriz: dto.esMatriz,
-        address: dto.address,
-        managerUserId: managerPatch,
-        isActive: dto.isActive,
-        cutoffDay: dto.cutoffDay,
-        paymentDay: dto.paymentDay,
-        earlyPaymentDays: dto.earlyPaymentDays,
-      });
-    });
+    const updated = await this.auditRepo.runWithContext(auditCtx, async (tx) =>
+      this.branchesRepo.update(
+        branchId,
+        {
+          name: dto.name,
+          branchType: dto.branchType,
+          esMatriz: dto.esMatriz,
+          address: dto.address,
+          managerUserId: managerPatch,
+          isActive: dto.isActive,
+          cutoffDay: dto.cutoffDay,
+          paymentDay: dto.paymentDay,
+          earlyPaymentDays: dto.earlyPaymentDays,
+        },
+        tx,
+      ),
+    );
     if (!updated) {
       throw new NotFoundException({
         code: 'BRANCH.NOT_FOUND',
@@ -380,8 +387,8 @@ export class BranchesService {
       metadata: { table: 'branch', branchId },
     };
 
-    await this.auditRepo.runWithContext(auditCtx, async () => {
-      await this.branchesRepo.softDelete(branchId);
+    await this.auditRepo.runWithContext(auditCtx, async (tx) => {
+      await this.branchesRepo.softDelete(branchId, tx);
     });
   }
 

@@ -268,18 +268,22 @@ export class BranchesRepository {
    * @param data - Datos de insercion.
    * @returns Entidad creada.
    */
-  async insert(data: {
-    name: string;
-    branchType: 'MATRIZ' | 'SUCURSAL';
-    esMatriz: boolean;
-    address: string | null;
-    managerUserId: string | null;
-    folioPrefix: string;
-    cutoffDay?: number | null;
-    paymentDay?: number | null;
-    earlyPaymentDays?: number | null;
-  }): Promise<BranchEntity> {
-    const [row] = await this.writeDb
+  async insert(
+    data: {
+      name: string;
+      branchType: 'MATRIZ' | 'SUCURSAL';
+      esMatriz: boolean;
+      address: string | null;
+      managerUserId: string | null;
+      folioPrefix: string;
+      cutoffDay?: number | null;
+      paymentDay?: number | null;
+      earlyPaymentDays?: number | null;
+    },
+    tx?: DrizzleWrite,
+  ): Promise<BranchEntity> {
+    const db = tx ?? this.writeDb;
+    const [row] = await db
       .insert(branches)
       .values({
         name: data.name,
@@ -320,6 +324,7 @@ export class BranchesRepository {
       earlyPaymentDays?: number | null;
       isActive?: boolean;
     },
+    tx?: DrizzleWrite,
   ): Promise<BranchEntity | null> {
     const set: Partial<typeof branches.$inferInsert> = {
       updatedAt: new Date(),
@@ -336,7 +341,8 @@ export class BranchesRepository {
     if (patch.earlyPaymentDays !== undefined)
       set.earlyPaymentDays = patch.earlyPaymentDays;
 
-    const [row] = await this.writeDb
+    const db = tx ?? this.writeDb;
+    const [row] = await db
       .update(branches)
       .set(set)
       .where(eq(branches.id, id))
@@ -350,10 +356,15 @@ export class BranchesRepository {
    * Conexion: `DRIZZLE_WRITE`.
    *
    * @param id - UUID de la sucursal.
+   * @param tx - Cliente Drizzle opcional dentro de una TX de auditoria.
    * @returns Entidad actualizada o `null` si no existe.
    */
-  async softDelete(id: string): Promise<BranchEntity | null> {
-    const [row] = await this.writeDb
+  async softDelete(
+    id: string,
+    tx?: DrizzleWrite,
+  ): Promise<BranchEntity | null> {
+    const db = tx ?? this.writeDb;
+    const [row] = await db
       .update(branches)
       .set({
         isActive: false,
@@ -373,13 +384,16 @@ export class BranchesRepository {
    *
    * @param id - UUID de la sucursal.
    * @param managerUserId - UUID del gerente o `null`.
+   * @param tx - Cliente Drizzle opcional dentro de una TX de auditoria.
    * @returns Entidad actualizada o `null` si la sucursal no existe.
    */
   async setManagerUserId(
     id: string,
     managerUserId: string | null,
+    tx?: DrizzleWrite,
   ): Promise<BranchEntity | null> {
-    const [row] = await this.writeDb
+    const db = tx ?? this.writeDb;
+    const [row] = await db
       .update(branches)
       .set({
         managerUserId,

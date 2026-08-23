@@ -36,12 +36,8 @@ import {
   DRIZZLE_WRITE,
   type DrizzleWrite,
 } from '../../database/drizzle.provider';
-import {
-  contextFromRequest,
-} from '../utils/request-context.util';
-import {
-  AuditContextStoreService,
-} from '../context/audit-context.store';
+import { contextFromRequest } from '../utils/request-context.util';
+import { AuditContextStoreService } from '../context/audit-context.store';
 import type { AuditContext } from '../context/audit-context';
 
 interface RequestUser {
@@ -63,10 +59,7 @@ export class AuditContextInterceptor implements NestInterceptor {
     private readonly als: AuditContextStoreService,
   ) {}
 
-  intercept(
-    context: ExecutionContext,
-    next: CallHandler,
-  ): Observable<unknown> {
+  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const http = context.switchToHttp();
     const request = http.getRequest<Request & { user?: RequestUser }>();
     const requestCtx = contextFromRequest(request);
@@ -99,9 +92,8 @@ export class AuditContextInterceptor implements NestInterceptor {
         // Propagar el tx via ALS para que cualquier servicio pueda
         // leerlo con `AuditContextStoreService.get().txHandle`.
         const ctxWithTx: AuditContext = { ...initialCtx, txHandle: tx };
-        return firstValueFrom(
-          this.als.run(ctxWithTx, () => next.handle()),
-        );
+        const handler$: Observable<unknown> = next.handle();
+        return firstValueFrom(this.als.run(ctxWithTx, () => handler$));
       }),
     );
   }

@@ -295,8 +295,13 @@ export class UserRepository {
    * @param id - UUID del usuario.
    * @param enabled - Nuevo valor del flag.
    */
-  async setMfaEnabled(id: string, enabled: boolean): Promise<void> {
-    await this.writeDb
+  async setMfaEnabled(
+    id: string,
+    enabled: boolean,
+    tx?: DrizzleWrite,
+  ): Promise<void> {
+    const db = tx ?? this.writeDb;
+    await db
       .update(users)
       .set({ mfaEnabled: enabled, updatedAt: new Date() })
       .where(eq(users.id, id));
@@ -359,8 +364,10 @@ export class UserRepository {
     id: string,
     passwordHash: string,
     mustChangePassword: boolean,
+    tx?: DrizzleWrite,
   ): Promise<UserEntity | null> {
-    const [row] = await this.writeDb
+    const db = tx ?? this.writeDb;
+    const [row] = await db
       .update(users)
       .set({
         passwordHash,
@@ -647,22 +654,26 @@ export class UserRepository {
    * @param data - Datos de insercion.
    * @returns Entidad creada.
    */
-  async create(data: {
-    roleCode: UserType;
-    branchId: string | null;
-    firstName: string;
-    lastNamePaternal: string;
-    lastNameMaternal: string;
-    email: string;
-    phone: string | null;
-    username: string | null;
-    passwordHash: string;
-    mustChangePassword: boolean;
-    userStatus: UserStatus;
-    isActive: boolean;
-    personalData: Record<string, unknown>;
-  }): Promise<UserEntity> {
-    const [row] = await this.writeDb
+  async create(
+    data: {
+      roleCode: UserType;
+      branchId: string | null;
+      firstName: string;
+      lastNamePaternal: string;
+      lastNameMaternal: string;
+      email: string;
+      phone: string | null;
+      username: string | null;
+      passwordHash: string;
+      mustChangePassword: boolean;
+      userStatus: UserStatus;
+      isActive: boolean;
+      personalData: Record<string, unknown>;
+    },
+    tx?: DrizzleWrite,
+  ): Promise<UserEntity> {
+    const db = tx ?? this.writeDb;
+    const [row] = await db
       .insert(users)
       .values({
         roleCode: data.roleCode,
@@ -696,7 +707,11 @@ export class UserRepository {
    * @param patch - Campos a modificar.
    * @returns Entidad actualizada o `null` si no existe.
    */
-  async update(id: string, patch: UserUpdatePatch): Promise<UserEntity | null> {
+  async update(
+    id: string,
+    patch: UserUpdatePatch,
+    tx?: DrizzleWrite,
+  ): Promise<UserEntity | null> {
     const set: Partial<typeof users.$inferInsert> = { updatedAt: new Date() };
     if (patch.firstName !== undefined) set.firstName = patch.firstName;
     if (patch.lastNamePaternal !== undefined)
@@ -729,7 +744,8 @@ export class UserRepository {
         sql`${users.tokenVersion} + 1`;
     }
 
-    const [row] = await this.writeDb
+    const db = tx ?? this.writeDb;
+    const [row] = await db
       .update(users)
       .set(set)
       .where(eq(users.id, id))
@@ -746,10 +762,12 @@ export class UserRepository {
    * Conexion: `DRIZZLE_WRITE`.
    *
    * @param id - UUID del usuario.
+   * @param tx - Cliente Drizzle opcional dentro de una TX de auditoria.
    * @returns Entidad actualizada o `null` si no existe.
    */
-  async softDelete(id: string): Promise<UserEntity | null> {
-    const [row] = await this.writeDb
+  async softDelete(id: string, tx?: DrizzleWrite): Promise<UserEntity | null> {
+    const db = tx ?? this.writeDb;
+    const [row] = await db
       .update(users)
       .set({
         isActive: false,
@@ -773,8 +791,13 @@ export class UserRepository {
    * @param status - Nuevo status.
    * @returns Entidad actualizada o `null` si no existe.
    */
-  async setStatus(id: string, status: UserStatus): Promise<UserEntity | null> {
-    const [row] = await this.writeDb
+  async setStatus(
+    id: string,
+    status: UserStatus,
+    tx?: DrizzleWrite,
+  ): Promise<UserEntity | null> {
+    const db = tx ?? this.writeDb;
+    const [row] = await db
       .update(users)
       .set({
         userStatus: status,

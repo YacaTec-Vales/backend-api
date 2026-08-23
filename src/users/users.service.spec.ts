@@ -302,6 +302,7 @@ describe('UsersService', () => {
           mustChangePassword: true,
           passwordHash: 'hashed:Temp#Aa1xyz!',
         }),
+        expect.anything(),
       );
       expect(mailService.sendUserWelcome).toHaveBeenCalledWith(
         expect.objectContaining({ temporaryPassword: 'Temp#Aa1xyz!' }),
@@ -384,7 +385,10 @@ describe('UsersService', () => {
         userAgent: 'jest',
         device: 'unknown',
       });
-      expect(userRepo.softDelete).toHaveBeenCalledWith(target.id);
+      expect(userRepo.softDelete).toHaveBeenCalledWith(
+        target.id,
+        expect.anything(),
+      );
       expect(sessionService.revokeAllForUser).toHaveBeenCalledWith(
         target.id,
         'user_deleted',
@@ -426,6 +430,7 @@ describe('UsersService', () => {
         target.id,
         'hashed:Temp#Aa1xyz!',
         true,
+        expect.anything(),
       );
       expect(sessionService.revokeAllForUser).toHaveBeenCalledWith(
         target.id,
@@ -461,6 +466,7 @@ describe('UsersService', () => {
         gg.id,
         'hashed:Temp#Aa1xyz!',
         true,
+        expect.anything(),
       );
       expect(result.emailSent).toBe(true);
     });
@@ -506,7 +512,10 @@ describe('UsersService', () => {
         target.id,
         'incident',
       );
-      expect(userRepo.bumpTokenVersion).toHaveBeenCalledWith(target.id);
+      expect(userRepo.bumpTokenVersion).toHaveBeenCalledWith(
+        target.id,
+        expect.anything(),
+      );
       expect(permissionCache.invalidate).toHaveBeenCalledWith(target.id);
     });
 
@@ -523,7 +532,10 @@ describe('UsersService', () => {
         gg.id,
         'gg_compromised',
       );
-      expect(userRepo.bumpTokenVersion).toHaveBeenCalledWith(gg.id);
+      expect(userRepo.bumpTokenVersion).toHaveBeenCalledWith(
+        gg.id,
+        expect.anything(),
+      );
     });
 
     it('ADMINISTRADOR NO puede invalidar sesiones de un COORDINADOR (read-only)', async () => {

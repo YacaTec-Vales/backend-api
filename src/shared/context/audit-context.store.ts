@@ -12,6 +12,8 @@
  * ciclo: `shared/logging` no depende de `shared/context`).
  *
  * @module shared/context
+ * @author Equipo de desarrollo Mis Vales
+ * @since 1.0.0
  */
 import { Injectable } from '@nestjs/common';
 import { AsyncLocalStorage } from 'node:async_hooks';
@@ -23,21 +25,40 @@ import type { AuditContext } from './audit-context';
  */
 export const AUDIT_CONTEXT_GLOBAL_KEY = '__auditContextStore';
 
+/**
+ * Tipo del registro en `globalThis` para el sentinel del store.
+ * Permite que `LogService` lo lea con tipos sin `any`.
+ */
+interface GlobalWithAuditContextStore {
+  [AUDIT_CONTEXT_GLOBAL_KEY]?: AuditContextStoreService;
+}
+
+/**
+ * Servicio singleton que expone `run`/`get` sobre un
+ * `AsyncLocalStorage<AuditContext>`. Usado por el
+ * `AuditContextInterceptor` para envolver el handler y por
+ * `AuditLogRepository.runWithContext` para resolver el `tx`.
+ */
 @Injectable()
 export class AuditContextStoreService {
   private readonly als = new AsyncLocalStorage<AuditContext>();
 
   constructor() {
     // Registrar el store en globalThis para que LogService pueda
-    // encontrarlo sin DI circular. Ver nota en el JSDoc del archivo.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any)[AUDIT_CONTEXT_GLOBAL_KEY] = this;
+    // encontrarlo sin DI circular. Tipado via interface
+    // GlobalWithAuditContextStore (no `any`).
+    (globalThis as GlobalWithAuditContextStore)[AUDIT_CONTEXT_GLOBAL_KEY] =
+      this;
   }
 
   /**
    * Ejecuta `fn` dentro del ALS con `ctx` activo. Cualquier llamada
    * asincrona dentro de `fn` (incluyendo observables a través de
    * `firstValueFrom`) puede leer el contexto con `get()`.
+   *
+   * @param ctx - Contexto de auditoria a propagar.
+   * @param fn - Funcion a ejecutar dentro del scope ALS.
+   * @returns Resultado de `fn`.
    */
   run<T>(ctx: AuditContext, fn: () => T): T {
     return this.als.run(ctx, fn);
@@ -47,18 +68,23 @@ export class AuditContextStoreService {
    * Devuelve el contexto activo o `undefined` si la llamada no esta
    * dentro de un `run()`. Usado por repositorios para resolver el
    * `tx` cuando se invoca dentro del interceptor.
+   *
+   * @returns Contexto actual o `undefined`.
    */
   get(): AuditContext | undefined {
     return this.als.getStore();
   }
+}
 
-  /**
-   * Set rapido sin crear un scope nuevo (usado internamente por
-   * `runWithContext` para actualizar `action` y `metadata` en
-   * mutaciones anidadas). Cambiar el store activo NO es trivial
-   * con ALS estandar; este helper solo expone `getStore()`.
-   */
-  hasContext(): boolean {
-    return this.als.getStore() !== undefined;
-  }
+/**
+ * Helper exportado para que `LogService` pueda leer el store desde
+ * `globalThis` con tipos seguros (sin `any`). Retorna `undefined`
+ * si el modulo de contexto no esta registrado (caso normal en
+ * tests que no importan `AuditContextModule`).
+ *
+ * @returns El store activo o `undefined`.
+ */
+export function getAuditContextStoreFromGlobal():
+  AuditContextStoreService | undefined {
+  return (globalThis as GlobalWithAuditContextStore)[AUDIT_CONTEXT_GLOBAL_KEY];
 }

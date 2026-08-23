@@ -47,6 +47,6 @@ export interface AuditContext {
    * este tx (pasado a su metodo via parametro) para que el
    * trigger vea las session vars.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
   txHandle?: any;
 }

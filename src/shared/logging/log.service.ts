@@ -24,19 +24,14 @@
  * @since 1.0.0
  */
 
-import {
-  Inject,
-  Injectable,
-  Logger,
-  Optional,
-  forwardRef,
-} from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   DRIZZLE_WRITE,
   type DrizzleWrite,
 } from '../../database/drizzle.provider';
 import { systemLogs } from '../../database/schema';
 import type { LogEventInput } from '../types/audit.types';
+import { getAuditContextStoreFromGlobal } from '../context/audit-context.store';
 
 /**
  * Tipo del cliente Drizzle que puede ser una TX o el cliente raiz.
@@ -57,9 +52,7 @@ type DbClient = DrizzleWrite;
 export class LogService {
   private readonly logger = new Logger(LogService.name);
 
-  constructor(
-    @Inject(DRIZZLE_WRITE) private readonly writeDb: DrizzleWrite,
-  ) {}
+  constructor(@Inject(DRIZZLE_WRITE) private readonly writeDb: DrizzleWrite) {}
 
   /**
    * Resuelve el cliente de BD: si hay una TX activa en el
@@ -67,17 +60,16 @@ export class LogService {
    * de escritura. Esto permite que un INSERT en `app."log"` se
    * commitee o se rollbacke junto con la mutacion que lo origino.
    *
-   * Lectura lazy del store global para evitar dependencia circular
-   * en modulo: el `LogModule` se importa ANTES de que el
-   * `AuditContextModule` este disponible durante el bootstrap.
-   * Cuando la Phase 2 registre el `AuditContextInterceptor`, el
-   * `globalThis.__auditContextStore` sera un `AuditContextStoreService`
-   * con `get()` definido.
+   * Lectura via helper tipado `getAuditContextStoreFromGlobal()`
+   * para evitar `any`. El helper retorna `undefined` si el modulo
+   * de contexto no esta registrado (caso normal en tests).
+   *
+   * @returns Cliente Drizzle de la TX activa o `writeDb` como
+   *   fallback.
    */
   private resolveDb(): DbClient {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const store: any = (globalThis as any).__auditContextStore;
-    const ctx = store?.get?.();
+    const store = getAuditContextStoreFromGlobal();
+    const ctx = store?.get();
     if (ctx?.txHandle) {
       return ctx.txHandle as DbClient;
     }
@@ -101,7 +93,7 @@ export class LogService {
         logType: input.logType,
         userId: input.userId ?? null,
         action: input.action ?? null,
-        metadata: (input.metadata as object) ?? {},
+        metadata: input.metadata ?? {},
         ipAddress: input.ipAddress ?? null,
         userAgent: input.userAgent ?? null,
         device: input.device ?? null,
@@ -236,7 +228,8 @@ export class LogService {
     userAgent?: string | null;
     device?: string | null;
   }): Promise<void> {
-    const message = input.err instanceof Error ? input.err.message : String(input.err);
+    const message =
+      input.err instanceof Error ? input.err.message : String(input.err);
     return this.logEvent({
       logType: 'INTERNAL_ERROR',
       userId: input.userId ?? null,
@@ -246,7 +239,8 @@ export class LogService {
       device: input.device,
       metadata: {
         code: input.code,
-        errorName: input.err instanceof Error ? input.err.name : typeof input.err,
+        errorName:
+          input.err instanceof Error ? input.err.name : typeof input.err,
       },
       message,
     });
