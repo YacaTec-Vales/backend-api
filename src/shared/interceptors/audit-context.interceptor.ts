@@ -91,9 +91,15 @@ export class AuditContextInterceptor implements NestInterceptor {
 
         // Propagar el tx via ALS para que cualquier servicio pueda
         // leerlo con `AuditContextStoreService.get().txHandle`.
+        // Usamos `defer` para que la suscripcion del handler
+        // (y por tanto sus awaits internos) se ejecute DENTRO del
+        // ALS, no fuera. Sin esto, runWithContext falla porque
+        // el ALS se libera antes de que el handler llegue al repo.
         const ctxWithTx: AuditContext = { ...initialCtx, txHandle: tx };
-        const handler$: Observable<unknown> = next.handle();
-        return firstValueFrom(this.als.run(ctxWithTx, () => handler$));
+        const handler$: Observable<unknown> = this.als.run(ctxWithTx, () =>
+          next.handle(),
+        );
+        return firstValueFrom(handler$);
       }),
     );
   }

@@ -191,15 +191,19 @@ function buildService(
 ) {
   const repo = opts.repo ?? buildRepo();
   const distRepo = opts.distRepo ?? buildDistRepo();
-  const service = new CreditRaiseService(repo as never, distRepo as never, {
-    runWithContext: jest
-      .fn()
-      .mockImplementation(
-        async <T>(_ctx: unknown, work: (tx: unknown) => Promise<T>) =>
-          work({ __isTx: true }),
-      ),
-    logEvent: jest.fn().mockResolvedValue(undefined),
-  } as never);
+  const service = new CreditRaiseService(
+    repo as never,
+    distRepo as never,
+    {
+      runWithContext: jest
+        .fn()
+        .mockImplementation(
+          async <T>(_ctx: unknown, work: (tx: unknown) => Promise<T>) =>
+            work({ __isTx: true }),
+        ),
+      logEvent: jest.fn().mockResolvedValue(undefined),
+    } as never,
+  );
   return { service, repo, distRepo };
 }
 
