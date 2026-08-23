@@ -36,6 +36,8 @@ import {
   FindVoucherResponseDto,
   ClientSummaryDto,
 } from './dto/find-voucher-response.dto';
+import type { ListVouchersQueryDto } from './dto/list-vouchers.dto';
+import type { ListVouchersResponseDto } from './dto/list-vouchers-response.dto';
 import type {
   ReportClientDiscrepancyDto,
   ReportClientDiscrepancyResponseDto,
@@ -185,6 +187,39 @@ export class CashierService {
     this.logger.log(`cashier.findVoucher folio=${folio} actor=${actor.id}`);
 
     return response;
+  }
+
+  /**
+   * Lista los vales pertenecientes a la sucursal de la cajera,
+   * opcionalmente filtrados por tipo y estado.
+   *
+   * @param actor - Usuario autenticado (CAJERO).
+   * @param dto - Filtros de busqueda.
+   */
+  async listVouchers(
+    actor: RequestUser,
+    dto: ListVouchersQueryDto,
+  ): Promise<ListVouchersResponseDto> {
+    if (!actor.branchId) {
+      throw new ForbiddenException({
+        code: CASHIER_ERROR_CODES.USER_NO_BRANCH,
+        message: 'El usuario autenticado no tiene una sucursal asignada.',
+      });
+    }
+
+    const vouchers = await this.voucherRepo.listByBranch(actor.branchId, {
+      voucherType: dto.voucherType,
+      status: dto.status,
+      limit: dto.limit,
+    });
+
+    this.logger.log(
+      `cashier.listVouchers branch=${actor.branchId} actor=${actor.id} count=${vouchers.length}`,
+    );
+
+    return {
+      vouchers: vouchers.map(toVoucherResponseDto),
+    };
   }
 
   /**

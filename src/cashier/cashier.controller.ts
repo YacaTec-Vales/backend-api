@@ -12,9 +12,11 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   Param,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -33,6 +35,8 @@ import {
   ConfirmVoucherDto,
   ConfirmVoucherResponseDto,
 } from './dto/confirm-voucher.dto';
+import { ListVouchersQueryDto } from './dto/list-vouchers.dto';
+import { ListVouchersResponseDto } from './dto/list-vouchers-response.dto';
 import {
   ReportClientDiscrepancyDto,
   ReportClientDiscrepancyResponseDto,
@@ -113,6 +117,43 @@ export class CashierController {
     @Param('folio') folio: string,
   ): Promise<FindVoucherResponseDto> {
     return this.cashierService.findVoucher(actor, folio);
+  }
+
+  /**
+   * @api {get} /cashier/vouchers Listar vales de la sucursal
+   * @apiName ListVouchers
+   * @apiGroup Cashier
+   * @apiVersion 1.0.0
+   * @apiPermission voucher.read
+   */
+  @Get('vouchers')
+  @RequireVpnOrigin('Tecu')
+  @RequirePermissions('voucher.read')
+  @ApiOperation({
+    summary: 'Listar vales de la sucursal de la cajera',
+    description:
+      'Devuelve una lista de vales filtrada opcionalmente por tipo y estado. ' +
+      'Solo retorna vales cuya distribuidora pertenece a la sucursal de la cajera.',
+  })
+  @ApiEnvelopeOkResponse({
+    message: 'Vales listados exitosamente',
+    type: ListVouchersResponseDto,
+  })
+  @ApiUnauthorizedResponse({
+    description: 'AUTH.* — token invalido, sesion revocada o expirada.',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description:
+      'USER.NO_BRANCH (tu usuario no tiene sucursal) | ' +
+      'AUTH.PERMISSION_DENIED (sin voucher.read).',
+    type: ErrorResponseDto,
+  })
+  listVouchers(
+    @CurrentUser() actor: RequestUser,
+    @Query() query: ListVouchersQueryDto,
+  ): Promise<ListVouchersResponseDto> {
+    return this.cashierService.listVouchers(actor, query);
   }
 
   /**
