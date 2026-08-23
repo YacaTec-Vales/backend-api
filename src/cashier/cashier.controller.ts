@@ -33,6 +33,10 @@ import {
   ConfirmVoucherDto,
   ConfirmVoucherResponseDto,
 } from './dto/confirm-voucher.dto';
+import {
+  ReportClientDiscrepancyDto,
+  ReportClientDiscrepancyResponseDto,
+} from './dto/report-client-discrepancy.dto';
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import { ApiEnvelopeOkResponse } from '../shared/decorators/api-envelope-response.decorator';
 import { JwtAuthGuard } from '../shared/guards/auth.guards';
@@ -154,5 +158,50 @@ export class CashierController {
     @Body() dto: ConfirmVoucherDto,
   ): Promise<ConfirmVoucherResponseDto> {
     return this.cashierService.confirmVoucher(actor, folio, dto);
+  }
+
+  /**
+   * @api {post} /cashier/vouchers/:folio/client-discrepancy Reportar discrepancia de cliente
+   */
+  @Post('vouchers/:folio/client-discrepancy')
+  @HttpCode(200)
+  @RequireVpnOrigin('Tecu')
+  @ApiOperation({
+    summary: 'Reportar discrepancia en datos del cliente',
+    description:
+      'La cajera detecta un error en los datos del cliente (nombre, cuenta bancaria) ' +
+      'al intentar feriar un vale y levanta una autorizacion para que el gerente lo corrija.',
+  })
+  @ApiEnvelopeOkResponse({
+    message: 'Discrepancia reportada y enviada a autorizacion',
+    type: ReportClientDiscrepancyResponseDto,
+  })
+  @ApiUnauthorizedResponse({
+    description: 'AUTH.* — token invalido, sesion revocada o expirada.',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description:
+      'USER.NO_BRANCH | VOUCHER.BRANCH_MISMATCH (vale no es de tu sucursal).',
+    type: ErrorResponseDto,
+  })
+  @ApiNotFoundResponse({
+    description: 'VOUCHER.NOT_FOUND (folio no existe).',
+    type: ErrorResponseDto,
+  })
+  @ApiConflictResponse({
+    description: 'VOUCHER.NOT_ACTIVE (vale no esta en ACTIVO).',
+    type: ErrorResponseDto,
+  })
+  @ApiBadRequestResponse({
+    description: 'BODY mal formado o error de validacion.',
+    type: ErrorResponseDto,
+  })
+  reportClientDiscrepancy(
+    @CurrentUser() actor: RequestUser,
+    @Param('folio') folio: string,
+    @Body() dto: ReportClientDiscrepancyDto,
+  ): Promise<ReportClientDiscrepancyResponseDto> {
+    return this.cashierService.reportClientDiscrepancy(actor, folio, dto);
   }
 }
