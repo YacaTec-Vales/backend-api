@@ -543,7 +543,7 @@ export const vouchers = appSchema.table('voucher', {
   updatedAt: timestamp('updated_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
-  categoryId: uuid('category_id'),
+  categoryId: uuid('category_id').references((): AnyPgColumn => categories.id),
   categoryCommissionBps: integer('category_commission_bps'),
   openingCommissionBps: integer('opening_commission_bps').notNull(),
   interestPerPeriodBps: integer('interest_per_period_bps').notNull(),
@@ -662,6 +662,33 @@ export type EmailLogEntity = typeof emailLog.$inferSelect;
 export type NewEmailLogEntity = typeof emailLog.$inferInsert;
 
 /**
+ * Tabla `app.category`. Categorias de distribuidoras (porcentajes de ganancia).
+ *
+ * @module database/schema
+ * @author Equipo de desarrollo Mis Vales
+ * @since 2.1.0
+ */
+export const categories = appSchema.table('catogory', {
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  name: text('name').notNull().unique(),
+  commissionBps: integer('commission_bps').notNull(),
+  sortOrder: integer('sort_order').notNull().default(0),
+  isActive: boolean('is_active').notNull().default(true),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
+});
+
+export type CategoryEntity = typeof categories.$inferSelect;
+export type NewCategoryEntity = typeof categories.$inferInsert;
+
+/**
  * Tabla `app.distributor`. Distribuidora = cliente del sistema.
  *
  * Una distribuidora maneja una linea de credito que reparte en
@@ -684,7 +711,9 @@ export const distributors = appSchema.table('distributor', {
     .default(sql`gen_random_uuid()`),
   distributorNumber: text('distributor_number').notNull().unique(),
   userId: uuid('user_id').notNull().unique(),
-  categoryId: uuid('category_id').notNull(),
+  categoryId: uuid('category_id')
+    .notNull()
+    .references((): AnyPgColumn => categories.id),
   coordinatorId: uuid('coordinator_id').notNull(),
   branchId: uuid('branch_id').notNull(),
   // En BD estas columnas son `BIGINT` (ver
