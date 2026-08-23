@@ -46,6 +46,7 @@ import { SolicitationRepository } from '../database/repositories/solicitation.re
 import { DRIZZLE_WRITE, type DrizzleWrite } from '../database/drizzle.provider';
 import { PasswordService } from '../auth/services/password.service';
 import { MailService } from '../mail/mail.service';
+import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 import type { RequestUser } from '../shared/guards/auth.guards';
 import { ConfigService } from '@nestjs/config';
 import { AuthorizeSolicitationDto } from './dto/authorize-solicitation.dto';
@@ -81,6 +82,7 @@ export class SolicitationsAuthorizeService {
     private readonly passwordService: PasswordService,
     private readonly mailService: MailService,
     private readonly config: ConfigService,
+    private readonly auditRepo: AuditLogRepository,
   ) {}
 
   /**
