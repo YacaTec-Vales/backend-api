@@ -13,6 +13,7 @@ import { AuthModule } from '../auth/auth.module';
 import { DatabaseModule } from '../database/database.module';
 import { BranchesModule } from '../branches/branches.module';
 import { VouchersModule } from '../vouchers/vouchers.module';
+import { DocumentsModule } from '../documents/documents.module';
 import { CashierController } from './cashier.controller';
 import { CashierService } from './cashier.service';
 import { VoucherRepository } from '../database/repositories/voucher.repository';
@@ -21,7 +22,13 @@ import { DistributorRepository } from '../database/repositories/distributor.repo
 import { BranchesRepository } from '../branches/branches.repository';
 
 @Module({
-  imports: [AuthModule, DatabaseModule, BranchesModule, VouchersModule],
+  imports: [
+    AuthModule,
+    DatabaseModule,
+    BranchesModule,
+    VouchersModule,
+    DocumentsModule,
+  ],
   controllers: [CashierController],
   providers: [
     CashierService,

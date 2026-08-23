@@ -8,7 +8,7 @@
  * @author Equipo de desarrollo Mis Vales
  */
 
-import { ApiProperty, ApiSchema } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, ApiSchema } from '@nestjs/swagger';
 import { VoucherResponseDto } from '../../vouchers/dto/voucher-response.dto';
 
 @ApiSchema({ name: 'ClientSummary' })
@@ -28,6 +28,11 @@ export class ClientSummaryDto {
     additionalProperties: true,
   })
   bankAccount!: Record<string, unknown>;
+
+  @ApiPropertyOptional({
+    description: 'URL firmada de la imagen del INE, si existe.',
+  })
+  ineUrl?: string | null;
 }
 
 @ApiSchema({ name: 'FindVoucherResponse' })

@@ -37,6 +37,7 @@ import {
   ClientSummaryDto,
 } from './dto/find-voucher-response.dto';
 import { toVoucherResponseDto } from '../shared/mappers';
+import { DocumentsService } from '../documents/documents.service';
 
 /**
  * Codigos de error de negocio para el modulo cashier.
@@ -61,6 +62,7 @@ export class CashierService {
     private readonly clientRepo: ClientRepository,
     private readonly distributorRepo: DistributorRepository,
     private readonly branchesRepo: BranchesRepository,
+    private readonly documentsService: DocumentsService,
   ) {}
 
   /**
@@ -149,11 +151,24 @@ export class CashierService {
       .filter(Boolean)
       .join(' ');
 
+    let ineUrl: string | null = null;
+    if (client.ineDocumentId) {
+      try {
+        const doc = await this.documentsService.findById(client.ineDocumentId);
+        ineUrl = doc.publicUrl;
+      } catch (err) {
+        this.logger.warn(
+          `No se pudo obtener URL del INE para client ${client.id}: ${(err as Error).message}`,
+        );
+      }
+    }
+
     const clientSummary: ClientSummaryDto = {
       id: client.id,
       curp: client.curp,
       fullName,
       bankAccount: client.bankAccount ?? {},
+      ineUrl,
     };
 
     const response: FindVoucherResponseDto = {
