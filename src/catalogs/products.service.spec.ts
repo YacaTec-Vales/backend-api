@@ -8,6 +8,7 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import { ConflictException } from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { ProductRepository } from '../database/repositories/product.repository';
+import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 import { createProductRepositoryMock } from '../../test/mocks/repositories.mock';
 
 describe('ProductsService', () => {
@@ -20,6 +21,21 @@ describe('ProductsService', () => {
       providers: [
         ProductsService,
         { provide: ProductRepository, useValue: productRepo },
+        {
+          provide: AuditLogRepository,
+          useValue: {
+            runWithContext: jest
+              .fn()
+              .mockImplementation(
+                async <T>(
+                  _ctx: unknown,
+                  work: (tx: unknown) => Promise<T>,
+                ) =>
+                  work({ __isTx: true }),
+              ),
+            logEvent: jest.fn().mockResolvedValue(undefined),
+          },
+        },
       ],
     }).compile();
     service = module.get(ProductsService);
