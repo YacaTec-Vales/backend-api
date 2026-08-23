@@ -71,6 +71,7 @@ import { MfaPendingGuard } from './shared/guards/mfa-pending.guard';
 import { RequireMfaGuard } from './shared/guards/require-mfa.guard';
 import { RecaptchaModule } from './shared/recaptcha/recaptcha.module';
 import { RecaptchaGuard } from './shared/recaptcha/recaptcha.guard';
+import { LogModule } from './shared/logging/log.module';
 
 /**
  * Modulo raiz. Importa config, modulos funcionales y registra
@@ -141,6 +142,7 @@ import { RecaptchaGuard } from './shared/recaptcha/recaptcha.guard';
     ReconciliationsModule,
     AuditModule,
     RecaptchaModule,
+    LogModule,
   ],
   controllers: [AppController],
   providers: [
