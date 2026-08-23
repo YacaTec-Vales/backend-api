@@ -58,9 +58,12 @@ import type { RequestUser } from '../shared/guards/auth.guards';
  * @classdesc Gestiona la bandeja, detalle, aceptacion por destino,
  * aprobacion y rechazo de autorizaciones.
  *
- * Los endpoints de escritura (aprobar, rechazar) requieren VPN+Tecu
- * (ver `@RequireVpnOrigin('Tecu')`). Los GET (bandeja, detalle)
- * siguen funcionando desde cualquier frontend.
+ * Las operaciones de "aprobar" y "rechazar" son invocadas TANTO por
+ * gerente (Tecu, VPN) como por coordinador de sucursal (Calipx). El
+ * gating por VPN aplica solo al endpoint `aprobar-modificacion-cliente`
+ * (que es estrictamente gerencial). El resto usa `PermissionsGuard`
+ * para validar que el actor tenga `authorization.approve`. Los GET
+ * (bandeja, detalle) siguen funcionando desde cualquier frontend.
  *
  * @see AutorizacionesService
  * @author Equipo de desarrollo Mis Vales
@@ -162,7 +165,6 @@ export class AutorizacionesController {
    */
   @Post(':id/aprobar')
   @HttpCode(HttpStatus.OK)
-  @RequireVpnOrigin('Tecu')
   @RequirePermissions('authorization.approve')
   @ApiOperation({
     summary: 'Aprobar autorizacion pendiente',
@@ -216,7 +218,6 @@ export class AutorizacionesController {
    */
   @Post(':id/rechazar')
   @HttpCode(HttpStatus.OK)
-  @RequireVpnOrigin('Tecu')
   @RequirePermissions('authorization.approve')
   @ApiOperation({
     summary: 'Rechazar autorizacion pendiente',

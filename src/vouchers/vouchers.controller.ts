@@ -58,8 +58,11 @@ import type { RequestUser } from '../shared/guards/auth.guards';
  * Gateado por:
  *  - `JwtAuthGuard` (token valido, sesion activa, versionada).
  *  - `PermissionsGuard` (permisos requeridos por endpoint).
- *  - `VpnOriginGuard` (solo desde VPN + frontend Tecu, ver
- *    `@RequireVpnOrigin('Tecu')`).
+ *  - `VpnOriginGuard`: solo el endpoint `POST /:folio/cancel` lo exige
+ *    (`@RequireVpnOrigin('Tecu')`) porque cancelar vales es una
+ *    operacion gerencial. La creacion (`POST /`) NO requiere VPN: la
+ *    distribuidora emite vales desde Poch (movil) por la red publica,
+ *    es flujo normal. Ver `infra/docs/FLOW-VPN-PUBLIC.md`.
  */
 @ApiTags('Vouchers')
 @ApiBearerAuth('bearer')
@@ -76,7 +79,6 @@ export class VouchersController {
    * @apiPermission voucher.create
    */
   @Post()
-  @RequireVpnOrigin('Tecu')
   @RequirePermissions('voucher.create')
   @ApiOperation({
     summary: 'Emitir un vale',
