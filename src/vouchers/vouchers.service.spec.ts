@@ -20,6 +20,7 @@ import { VoucherRepository } from '../database/repositories/voucher.repository';
 import { ClientRepository } from '../database/repositories/client.repository';
 import { ProductRepository } from '../database/repositories/product.repository';
 import { DistributorRepository } from '../database/repositories/distributor.repository';
+import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 import { DRIZZLE_READ, DRIZZLE_WRITE } from '../database/drizzle.provider';
 import {
   createClientRepositoryMock,
@@ -106,6 +107,18 @@ describe('VouchersService', () => {
         { provide: DistributorRepository, useValue: distributorRepo },
         { provide: DRIZZLE_READ, useValue: readDb },
         { provide: DRIZZLE_WRITE, useValue: readDb },
+        {
+          provide: AuditLogRepository,
+          useValue: {
+            runWithContext: jest
+              .fn()
+              .mockImplementation(
+                async <T>(_ctx: unknown, work: (tx: unknown) => Promise<T>) =>
+                  work({ __isTx: true }),
+              ),
+            logEvent: jest.fn().mockResolvedValue(undefined),
+          },
+        },
       ],
     }).compile();
     service = module.get(VouchersService);

@@ -250,8 +250,12 @@ export class VoucherRepository {
    * antes a `getAndIncrementFolioSeq` para tener el folio unico; lo
    * pasamos en `data.folio`.
    */
-  async create(data: NewVoucherEntity): Promise<VoucherEntity> {
-    const [row] = await this.writeDb.insert(vouchers).values(data).returning();
+  async create(
+    data: NewVoucherEntity,
+    tx?: DrizzleWrite,
+  ): Promise<VoucherEntity> {
+    const db = tx ?? this.writeDb;
+    const [row] = await db.insert(vouchers).values(data).returning();
     return row;
   }
 
@@ -270,14 +274,17 @@ export class VoucherRepository {
    * @param voucherId - UUID del voucher.
    * @param reason - Motivo de la cancelacion (string libre, ej
    *   'cancelled_by_distributor').
+   * @param tx - Cliente Drizzle opcional dentro de una TX de auditoria.
    * @returns Entidad actualizada o `null` si no cambio nada
    *   (voucher no existe, ya esta cancelado/liquidado, o borrado).
    */
   async cancelByFolio(
     folio: string,
     reason: string,
+    tx?: DrizzleWrite,
   ): Promise<VoucherEntity | null> {
-    const [row] = await this.writeDb
+    const db = tx ?? this.writeDb;
+    const [row] = await db
       .update(vouchers)
       .set({
         status: 'CANCELADO',
@@ -306,8 +313,10 @@ export class VoucherRepository {
   async confirmFeriado(
     voucherId: string,
     authorizationNumber: string,
+    tx?: DrizzleWrite,
   ): Promise<VoucherEntity | null> {
-    const [row] = await this.writeDb
+    const db = tx ?? this.writeDb;
+    const [row] = await db
       .update(vouchers)
       .set({
         authorizationNumber,
