@@ -31,6 +31,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { RelationsService } from './relations.service';
+import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 import type { RelationEntity } from '../database/schema';
 import type { DistributorEntity } from '../database/schema';
 
@@ -166,6 +167,15 @@ function buildService(
   const service = new RelationsService(
     relationsRepo as never,
     distRepo as never,
+    {
+      runWithContext: jest
+        .fn()
+        .mockImplementation(
+          async <T>(_ctx: unknown, work: (tx: unknown) => Promise<T>) =>
+            work({ __isTx: true }),
+        ),
+      logEvent: jest.fn().mockResolvedValue(undefined),
+    } as never,
   );
   return { service, relationsRepo, distRepo };
 }

@@ -33,6 +33,7 @@ import {
 } from '@nestjs/common';
 import { CreditRaiseRepository } from '../database/repositories/credit-raise.repository';
 import { DistributorRepository } from '../database/repositories/distributor.repository';
+import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 import { CreditRaiseRequestDto } from './dto/credit-raise-request.dto';
 import type { RequestUser } from '../shared/guards/auth.guards';
 import type { CreditRaiseRequestEntity } from '../database/schema';

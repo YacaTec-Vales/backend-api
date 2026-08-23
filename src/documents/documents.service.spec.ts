@@ -10,6 +10,7 @@ import { NotFoundException } from '@nestjs/common';
 import { DocumentsService, DOCUMENTS_ERROR_CODES } from './documents.service';
 import { StorageService } from '../storage/storage.service';
 import { DocumentRepository } from '../database/repositories/document.repository';
+import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 
 function buildService(overrides: {
   findById?: () => Promise<unknown>;
@@ -36,6 +37,15 @@ function buildService(overrides: {
       create: jest.fn(),
       findByStoragePath: jest.fn(),
     } as unknown as DocumentRepository,
+    {
+      runWithContext: jest
+        .fn()
+        .mockImplementation(
+          async <T>(_ctx: unknown, work: (tx: unknown) => Promise<T>) =>
+            work({ __isTx: true }),
+        ),
+      logEvent: jest.fn().mockResolvedValue(undefined),
+    } as unknown as AuditLogRepository,
   );
 }
 

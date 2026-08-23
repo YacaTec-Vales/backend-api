@@ -45,6 +45,7 @@ import {
 } from '@nestjs/common';
 import { RelationsRepository } from '../database/repositories/relations.repository';
 import { DistributorRepository } from '../database/repositories/distributor.repository';
+import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 import type { RequestUser } from '../shared/guards/auth.guards';
 import type { RelationEntity } from '../database/schema';
 import { RelationResponseDto } from './dto/relation-response.dto';
@@ -77,6 +78,7 @@ export class RelationsService {
   constructor(
     private readonly relationsRepo: RelationsRepository,
     private readonly distributorRepo: DistributorRepository,
+    private readonly auditRepo: AuditLogRepository,
   ) {}
 
   /**
@@ -299,6 +301,20 @@ export class RelationsService {
         } anticipado=${qualifiesAsEarly} status=${updated.reconciliationStatus} ` +
         `metodo=${dto.paymentMethod ?? 'N/D'} actor=${actor.role}/${actor.id}`,
     );
+    // Fire-and-forget: registrar el pago en audit_log via logEvent.
+    void this.auditRepo.logEvent({
+      action: 'RELATION.PAID',
+      actorUserId: actor.id,
+      targetUserId: rel.distributorId,
+      tableName: 'relation',
+      recordId: relationId,
+      metadata: {
+        amountCents: amount,
+        statusAfter: updated.reconciliationStatus,
+        earlyPayment: qualifiesAsEarly,
+        paymentMethod: dto.paymentMethod ?? null,
+      },
+    });
     return this.toDto(updated);
   }
 
