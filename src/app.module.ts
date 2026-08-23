@@ -72,6 +72,7 @@ import { RequireMfaGuard } from './shared/guards/require-mfa.guard';
 import { RecaptchaModule } from './shared/recaptcha/recaptcha.module';
 import { RecaptchaGuard } from './shared/recaptcha/recaptcha.guard';
 import { LogModule } from './shared/logging/log.module';
+import { AuditContextModule } from './shared/context/audit-context.module';
 
 /**
  * Modulo raiz. Importa config, modulos funcionales y registra
@@ -143,6 +144,7 @@ import { LogModule } from './shared/logging/log.module';
     AuditModule,
     RecaptchaModule,
     LogModule,
+    AuditContextModule,
   ],
   controllers: [AppController],
   providers: [
