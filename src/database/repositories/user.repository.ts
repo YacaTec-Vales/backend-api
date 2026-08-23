@@ -275,8 +275,10 @@ export class UserRepository {
     id: string,
     maxAttempts: number,
     lockoutMinutes: number,
+    tx?: DrizzleWrite,
   ): Promise<UserEntity | null> {
-    const [row] = await this.writeDb
+    const db = tx ?? this.writeDb;
+    const [row] = await db
       .update(users)
       .set({
         failedLoginCount: sql`${users.failedLoginCount} + 1`,

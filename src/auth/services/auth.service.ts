@@ -42,6 +42,8 @@ import { PermissionCacheService } from './permission-cache.service';
 import { MfaService } from '../../mfa/mfa.service';
 import { AUTH_CONFIG } from '../../database/tokens';
 import type { AuthConfig } from '../../config/auth.config';
+import { AuditLogRepository } from '../../database/repositories/audit-log.repository';
+import { LogService } from '../../shared/logging/log.service';
 import type { LoginContext, UserType } from '../../shared/types/auth.types';
 import type {
   AuthUserResponseDto,
@@ -65,6 +67,8 @@ export class AuthService {
     private readonly sessionService: SessionService,
     private readonly permissionCache: PermissionCacheService,
     private readonly configService: ConfigService,
+    private readonly auditRepo: AuditLogRepository,
+    private readonly logService: LogService,
     @Optional()
     @Inject(MfaService)
     private readonly mfaService: MfaService | null,
@@ -102,6 +106,13 @@ export class AuthService {
   ): Promise<TokenResponseDto | MfaChallengeResponseDto> {
     const user = await this.userRepo.findByUsernameOrEmail(usernameOrEmail);
     if (!user) {
+      await this.logService.loginFailed({
+        username: usernameOrEmail,
+        reason: 'user_not_found',
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+        device: context.device,
+      });
       throw new UnauthorizedException({
         code: 'AUTH.INVALID_CREDENTIALS',
         message: 'Credenciales invalidas.',
@@ -116,6 +127,14 @@ export class AuthService {
     this.assertDistributorAppScope(user.roleCode, context.device);
 
     if (!user.isActive || user.deletedAt || user.userStatus !== 'ACTIVO') {
+      await this.logService.loginFailed({
+        username: usernameOrEmail,
+        reason: 'inactive',
+        userId: user.id,
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+        device: context.device,
+      });
       throw new ForbiddenException({
         code: 'AUTH.USER_INACTIVE',
         message: 'La cuenta esta desactivada o suspendida.',
@@ -123,6 +142,14 @@ export class AuthService {
     }
 
     if (user.lockedUntil && user.lockedUntil.getTime() > Date.now()) {
+      await this.logService.loginFailed({
+        username: usernameOrEmail,
+        reason: 'locked',
+        userId: user.id,
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+        device: context.device,
+      });
       throw new HttpException(
         {
           code: 'AUTH.LOCKED',
@@ -133,6 +160,14 @@ export class AuthService {
     }
 
     if (!user.passwordHash) {
+      await this.logService.loginFailed({
+        username: usernameOrEmail,
+        reason: 'password_not_set',
+        userId: user.id,
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+        device: context.device,
+      });
       throw new UnauthorizedException({
         code: 'AUTH.PASSWORD_NOT_SET',
         message: 'La cuenta no tiene una contrasena configurada.',
@@ -141,11 +176,38 @@ export class AuthService {
 
     const ok = await this.passwordService.verify(user.passwordHash, password);
     if (!ok) {
-      await this.userRepo.registerFailedLogin(
-        user.id,
-        this.authConfig.lockout.maxFailedAttempts,
-        this.authConfig.lockout.lockoutMinutes,
+      // Registrar el intento fallido en audit_log via runWithContext
+      // para que la mutacion registerFailedLogin quede con el actor
+      // correcto (el propio usuario que intento entrar).
+      await this.auditRepo.runWithContext(
+        {
+          actorUserId: user.id,
+          action: 'AUTH.LOGIN_FAILED',
+          ipAddress: context.ipAddress,
+          userAgent: context.userAgent,
+          device: context.device,
+          metadata: {
+            username: usernameOrEmail,
+            reason: 'invalid_credentials',
+          },
+        },
+        async (tx) => {
+          await this.userRepo.registerFailedLogin(
+            user.id,
+            this.authConfig.lockout.maxFailedAttempts,
+            this.authConfig.lockout.lockoutMinutes,
+            tx,
+          );
+        },
       );
+      await this.logService.loginFailed({
+        username: usernameOrEmail,
+        reason: 'invalid_credentials',
+        userId: user.id,
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+        device: context.device,
+      });
       throw new UnauthorizedException({
         code: 'AUTH.INVALID_CREDENTIALS',
         message: 'Credenciales invalidas.',
@@ -205,13 +267,56 @@ export class AuthService {
       mustChangePassword: user.mustChangePassword,
     });
 
-    return {
+    const response: TokenResponseDto = {
       accessToken,
       refreshToken: session.refreshToken,
       expiresIn: this.tokenService.accessTtlSeconds(),
       tokenType: 'Bearer',
       user: this.toAuthUserResponse(user, permissions),
     };
+    // Fire-and-forget: el log no debe retrasar la respuesta al cliente.
+    void this.emitLoginSuccess(user, session, context, rememberMe);
+    return response;
+  }
+
+  /**
+   * Registra el evento de login exitoso en `app.audit_log` y
+   * `app."log"`. Pensado para llamarse justo antes de retornar la
+   * respuesta del login, en fire-and-forget, para que la latencia
+   * del INSERT no retrase al cliente. La insercion es best-effort
+   * (no aborta la operacion si falla).
+   *
+   * @param user - Usuario autenticado.
+   * @param session - Sesion creada.
+   * @param context - Contexto de la peticion (IP, UA, device).
+   * @param rememberMe - Flag de sesion extendida.
+   */
+  private async emitLoginSuccess(
+    user: { id: string; username: string | null; email: string },
+    session: { sessionId: string },
+    context: LoginContext,
+    rememberMe: boolean,
+  ): Promise<void> {
+    await this.auditRepo.logEvent({
+      action: 'AUTH.LOGIN',
+      actorUserId: user.id,
+      targetUserId: user.id,
+      tableName: 'refresh_token',
+      recordId: session.sessionId,
+      metadata: { rememberMe, sessionId: session.sessionId },
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+      device: context.device,
+    });
+    await this.logService.loginSuccess({
+      userId: user.id,
+      username: user.username ?? user.email,
+      sessionId: session.sessionId,
+      rememberMe,
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+      device: context.device,
+    });
   }
 
   /**
@@ -283,13 +388,33 @@ export class AuthService {
       mustChangePassword: user.mustChangePassword,
     });
 
-    return {
+    const response: TokenResponseDto = {
       accessToken,
       refreshToken: rotation.newRefreshToken,
       expiresIn: this.tokenService.accessTtlSeconds(),
       tokenType: 'Bearer',
       user: this.toAuthUserResponse(user, permissions),
     };
+    // Fire-and-forget: el log no debe retrasar la respuesta.
+    void this.auditRepo.logEvent({
+      action: 'AUTH.TOKEN_REFRESHED',
+      actorUserId: user.id,
+      targetUserId: user.id,
+      tableName: 'refresh_token',
+      recordId: rotation.newSessionId,
+      metadata: { sessionId: rotation.newSessionId },
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+      device: context.device,
+    });
+    void this.logService.tokenRefreshed({
+      userId: user.id,
+      sessionId: rotation.newSessionId,
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+      device: context.device,
+    });
+    return response;
   }
 
   /**
@@ -307,15 +432,31 @@ export class AuthService {
     sessionId: string,
     refreshToken?: string,
   ): Promise<void> {
+    let revokedSessionId: string = sessionId;
     if (refreshToken) {
       const hashed = await this.passwordService.hash(refreshToken);
       const existing = await this.refreshRepo.findActiveByTokenHash(hashed);
       if (existing && existing.userId === userId) {
         await this.sessionService.revokeSession(existing.id, userId);
-        return;
+        revokedSessionId = existing.id;
+      } else {
+        await this.sessionService.revokeCurrentSession(sessionId);
       }
+    } else {
+      await this.sessionService.revokeCurrentSession(sessionId);
     }
-    await this.sessionService.revokeCurrentSession(sessionId);
+    // Fire-and-forget audit del logout.
+    void this.auditRepo.logEvent({
+      action: 'AUTH.LOGOUT',
+      actorUserId: userId,
+      targetUserId: userId,
+      tableName: 'refresh_token',
+      recordId: revokedSessionId,
+    });
+    void this.logService.logout({
+      userId,
+      sessionId: revokedSessionId,
+    });
   }
 
   /**
@@ -414,13 +555,30 @@ export class AuthService {
     // El usuario esta eligiendo su propia contrasena, asi que no
     // forzamos un cambio posterior. Esto desactiva mustChangePassword
     // tanto si venia del alta administrativa como del reset.
-    const updated = await this.userRepo.setPassword(user.id, newHash, false);
-    if (!updated) {
-      throw new UnauthorizedException({
-        code: 'AUTH.USER_NOT_FOUND',
-        message: 'Usuario no encontrado.',
-      });
-    }
+    // Envolvemos el setPassword en runWithContext(AUTH.PASSWORD_CHANGE)
+    // para que la mutacion quede registrada con actor = el propio usuario.
+    const updated = await this.auditRepo.runWithContext(
+      {
+        actorUserId: user.id,
+        action: 'AUTH.PASSWORD_CHANGE',
+        metadata: { source: 'self' },
+      },
+      async (tx) => {
+        const row = await this.userRepo.setPassword(
+          user.id,
+          newHash,
+          false,
+          tx,
+        );
+        if (!row) {
+          throw new UnauthorizedException({
+            code: 'AUTH.USER_NOT_FOUND',
+            message: 'Usuario no encontrado.',
+          });
+        }
+        return row;
+      },
+    );
 
     await this.sessionService.revokeOthersForUser(user.id, sessionId);
 
@@ -489,6 +647,15 @@ export class AuthService {
     const result = await this.mfaService.verify(userId, code);
     if (!result.valid) {
       this.logger.warn(`MFA challenge fallido para usuario ${userId}`);
+      void this.auditRepo.logEvent({
+        action: 'AUTH.MFA_FAILED',
+        actorUserId: userId,
+        targetUserId: userId,
+        metadata: { code },
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+        device: context.device,
+      });
       throw new UnauthorizedException({
         code: 'AUTH.MFA_INVALID_CODE',
         message: 'el código MFA proporcionado es inválido',
@@ -528,13 +695,26 @@ export class AuthService {
 
     this.logger.log(`MFA challenge completado para usuario ${userId}`);
 
-    return {
+    const response: TokenResponseDto = {
       accessToken,
       refreshToken: session.refreshToken,
       expiresIn: this.tokenService.accessTtlSeconds(),
       tokenType: 'Bearer',
       user: this.toAuthUserResponse(user, permissions),
     };
+    // Fire-and-forget audit del MFA completado.
+    void this.auditRepo.logEvent({
+      action: 'AUTH.MFA_COMPLETED',
+      actorUserId: user.id,
+      targetUserId: user.id,
+      tableName: 'refresh_token',
+      recordId: session.sessionId,
+      metadata: { consumedBackupCode: result.consumedBackupCode },
+      ipAddress: context.ipAddress,
+      userAgent: context.userAgent,
+      device: context.device,
+    });
+    return response;
   }
 
   /**
