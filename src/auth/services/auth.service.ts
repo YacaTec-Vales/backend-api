@@ -80,9 +80,15 @@ export class AuthService {
    *  4. Verifica contrasena con Argon2; si falla, registra
    *     intento fallido y lanza `AUTH.INVALID_CREDENTIALS`.
    *  5. Registra login exitoso.
-   *  6. Carga permisos efectivos.
-   *  7. Crea sesion (con TTL remember si aplica).
-   *  8. Firma access JWT con `sub, username, role, branchId,
+   *  6. Revoca TODAS las sesiones activas previas del usuario
+   *     (`single-session`): cada login nuevo cierra cualquier
+   *     sesion viva en otros dispositivos. Esto evita acumulacion
+   *     de refresh tokens expirados/no expirados en `app.refresh_token`
+   *     y aplica logout implicito de equipos donde el usuario
+   *     pudiera seguir autenticado.
+   *  7. Carga permisos efectivos.
+   *  8. Crea sesion (con TTL remember si aplica).
+   *  9. Firma access JWT con `sub, username, role, branchId,
    *     tokenVersion, sessionId`.
    *
    * @param usernameOrEmail - Usuario o correo.
@@ -184,6 +190,8 @@ export class AuthService {
       user.id,
       user.tokenVersion,
     );
+
+    await this.sessionService.revokeAllForUser(user.id, 'login_new_session');
 
     const session = await this.sessionService.createSession(
       {
@@ -454,9 +462,12 @@ export class AuthService {
    * Pasos:
    *  1. Carga el usuario desde la BD.
    *  2. Verifica el codigo TOTP o backup code via `MfaService`.
-   *  3. Crea la sesion real (con TTL normal).
-   *  4. Firma el access JWT completo (sin `mfaPending`).
-   *  5. Carga permisos efectivos.
+   *  3. Carga permisos efectivos.
+   *  4. Revoca TODAS las sesiones activas previas (`single-session`,
+   *     mismo motivo que `login`): un usuario solo puede tener una
+   *     sesion viva, las demas se cierran en cada login.
+   *  5. Crea la sesion real (con TTL normal).
+   *  6. Firma el access JWT completo (sin `mfaPending`).
    *
    * @param userId - UUID del usuario (extraido del JWT parcial).
    * @param code - Codigo TOTP de 6 digitos o backup code.
@@ -505,6 +516,8 @@ export class AuthService {
       user.id,
       user.tokenVersion,
     );
+
+    await this.sessionService.revokeAllForUser(user.id, 'login_new_session');
 
     const session = await this.sessionService.createSession(
       {
