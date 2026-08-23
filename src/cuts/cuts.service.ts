@@ -59,6 +59,7 @@ import {
 import { RelationsRepository } from '../database/repositories/relations.repository';
 import { BusinessConfigService } from '../business-config/business-config.service';
 import { CutRepository } from '../database/repositories/cut.repository';
+import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 import type { RequestUser } from '../shared/guards/auth.guards';
 import type { RelationEntity } from '../database/schema';
 import { CutResultDto, CutRelationSummaryDto } from './dto/cut-result.dto';
@@ -85,6 +86,7 @@ export class CutService {
     private readonly cutRepo: CutRepository,
     private readonly relationsRepo: RelationsRepository,
     private readonly businessConfig: BusinessConfigService,
+    private readonly auditRepo: AuditLogRepository,
   ) {}
 
   /**
@@ -389,6 +391,21 @@ export class CutService {
       `Cut ejecutado por ${actor.id}: branch=${branchId} cut=${cutDate} ` +
         `relations=${relationSummaries.length} total=${totalToPayCents}`,
     );
+    // Fire-and-forget: registrar la ejecucion del cut en audit_log via
+    // logEvent (ALS-aware; propaga actor, IP y device del interceptor).
+    // NOTA: las mutaciones SQL crudo sobre relation / relation_detail
+    // no quedan con contexto de actor via trigger; este logEvent
+    // compensa registrando la operacion de negocio a nivel cut.
+    void this.auditRepo.logEvent({
+      action: 'CUT.EXECUTED',
+      actorUserId: actor.id,
+      metadata: {
+        branchId,
+        cutDate,
+        relations: relationSummaries.length,
+        totalToPayCents,
+      },
+    });
     return result;
   }
 
