@@ -100,10 +100,7 @@ export class PasswordResetTokenRepository {
    * @param userId - UUID del usuario.
    * @param tx - Cliente Drizzle opcional dentro de una TX de auditoria.
    */
-  async invalidateForUser(
-    userId: string,
-    tx?: DrizzleWrite,
-  ): Promise<void> {
+  async invalidateForUser(userId: string, tx?: DrizzleWrite): Promise<void> {
     const db = tx ?? this.writeDb;
     await db
       .update(passwordResetTokens)

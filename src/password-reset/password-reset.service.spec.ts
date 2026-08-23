@@ -78,10 +78,7 @@ describe('PasswordResetService', () => {
         runWithContext: jest
           .fn()
           .mockImplementation(
-            async <T>(
-              _ctx: unknown,
-              work: (tx: unknown) => Promise<T>,
-            ) =>
+            async <T>(_ctx: unknown, work: (tx: unknown) => Promise<T>) =>
               work({ __isTx: true }),
           ),
         logEvent: jest.fn().mockResolvedValue(undefined),
@@ -184,10 +181,9 @@ describe('PasswordResetService', () => {
         false,
         { __isTx: true },
       );
-      expect(resetRepo.markUsed).toHaveBeenCalledWith(
-        record.id,
-        { __isTx: true },
-      );
+      expect(resetRepo.markUsed).toHaveBeenCalledWith(record.id, {
+        __isTx: true,
+      });
       expect(resetRepo.invalidateForUser).toHaveBeenCalledWith('u1', {
         __isTx: true,
       });

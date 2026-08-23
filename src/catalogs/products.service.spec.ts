@@ -27,10 +27,7 @@ describe('ProductsService', () => {
             runWithContext: jest
               .fn()
               .mockImplementation(
-                async <T>(
-                  _ctx: unknown,
-                  work: (tx: unknown) => Promise<T>,
-                ) =>
+                async <T>(_ctx: unknown, work: (tx: unknown) => Promise<T>) =>
                   work({ __isTx: true }),
               ),
             logEvent: jest.fn().mockResolvedValue(undefined),

@@ -32,6 +32,8 @@ import {
 } from '@nestjs/common';
 import { RelationsService } from './relations.service';
 import { AuditLogRepository } from '../database/repositories/audit-log.repository';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+type _AuditRepoUsed = AuditLogRepository;
 import type { RelationEntity } from '../database/schema';
 import type { DistributorEntity } from '../database/schema';
 

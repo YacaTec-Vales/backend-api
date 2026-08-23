@@ -30,6 +30,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { CreditRaiseService } from './credit-raise.service';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import type { AuditLogRepository as AuditLogRepositoryUnused } from '../database/repositories/audit-log.repository';
 import type { CreditRaiseRequestEntity } from '../database/schema';
 import type { DistributorEntity } from '../database/schema';
 
@@ -189,7 +191,15 @@ function buildService(
 ) {
   const repo = opts.repo ?? buildRepo();
   const distRepo = opts.distRepo ?? buildDistRepo();
-  const service = new CreditRaiseService(repo as never, distRepo as never);
+  const service = new CreditRaiseService(repo as never, distRepo as never, {
+    runWithContext: jest
+      .fn()
+      .mockImplementation(
+        async <T>(_ctx: unknown, work: (tx: unknown) => Promise<T>) =>
+          work({ __isTx: true }),
+      ),
+    logEvent: jest.fn().mockResolvedValue(undefined),
+  } as never);
   return { service, repo, distRepo };
 }
 

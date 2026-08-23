@@ -83,8 +83,7 @@ export class ProductsService {
     try {
       created = await this.auditRepo.runWithContext(
         {
-          actorUserId:
-            '00000000-0000-0000-0000-000000000000',
+          actorUserId: '00000000-0000-0000-0000-000000000000',
           action: 'PRODUCT.CREATED',
           metadata: { code, variant },
         },

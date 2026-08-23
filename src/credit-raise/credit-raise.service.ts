@@ -60,6 +60,7 @@ export class CreditRaiseService {
   constructor(
     private readonly creditRaiseRepo: CreditRaiseRepository,
     private readonly distributorRepo: DistributorRepository,
+    private readonly auditRepo: AuditLogRepository,
   ) {}
 
   /**
@@ -263,6 +264,19 @@ export class CreditRaiseService {
         `monto=${effectiveAmount} (solicitado=${request.requestedAmountCents}) ` +
         `nuevo_limite=${updated.toCreditLimitCents}`,
     );
+    void this.auditRepo.logEvent({
+      action: 'CREDIT_RAISE.APPROVED',
+      actorUserId: actor.id,
+      targetUserId: request.distributorId,
+      tableName: 'credit_raise_request',
+      recordId: id,
+      metadata: {
+        distributorId: request.distributorId,
+        approvedAmountCents: effectiveAmount,
+        requestedAmountCents: request.requestedAmountCents,
+        newLimitCents: updated.toCreditLimitCents,
+      },
+    });
     return this.toDto(updated);
   }
 
@@ -296,6 +310,17 @@ export class CreditRaiseService {
       decisionNotes: decisionNotes ?? undefined,
     });
     this.logger.log(`Credit raise rechazado: request=${id} actor=${actor.id}`);
+    void this.auditRepo.logEvent({
+      action: 'CREDIT_RAISE.REJECTED',
+      actorUserId: actor.id,
+      targetUserId: request.distributorId,
+      tableName: 'credit_raise_request',
+      recordId: id,
+      metadata: {
+        distributorId: request.distributorId,
+        decisionNotes,
+      },
+    });
     return this.toDto(updated);
   }
 
