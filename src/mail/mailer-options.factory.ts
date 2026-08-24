@@ -1,0 +1,99 @@
+/**
+ * @fileoverview Factory puro de opciones para `MailerModule`.
+ *
+ * Extraido de `mail.module.ts` para que sea testeable: la spec
+ * `mailer-options.factory.spec.ts` usa el `HandlebarsAdapter` REAL
+ * contra los `.hbs` del repo y valida que las plantillas rendericen.
+ *
+ * Historia: los partials (`header`, `footer`) nunca se registraban
+ * porque `@nestjs-modules/mailer` solo los carga si existe la key
+ * `options.partials.dir` al nivel SUPERIOR del config (ver
+ * `handlebars.adapter.js`: `get(mailerOptions, 'options', ...)`).
+ * Con solo `template.options.strict` el render de cualquier
+ * plantilla lanzaba "The partial header could not be found" y el
+ * envio fallaba silenciosamente (`sent: false`) en todos los
+ * entornos.
+ */
+
+import { join } from 'path';
+
+/**
+ * Config cruda leida desde `ConfigService` (keys de `mail.config`).
+ */
+export interface MailerConfigInput {
+  driver: 'smtp' | 'noop';
+  host: string;
+  port: number;
+  secure: boolean;
+  user: string;
+  password: string;
+  from: string;
+}
+
+/**
+ * Directorio base de plantillas HBS. Resuelve por `__dirname` para
+ * funcionar identico en dev (`src/mail/`) y produccion
+ * (`dist/mail/`, donde `nest-cli.json` copia los `.hbs` via assets).
+ */
+export const MAIL_TEMPLATES_DIR = join(__dirname, 'templates');
+
+/**
+ * Runtime options del HandlebarsAdapter. La key `partials` es la
+ * que dispara el registro de partials en el adapter: hace un glob
+ * recursivo de archivos HBS bajo `partials.dir` y llama
+ * `registerPartial(nombre, fuente)` con el nombre relativo
+ * (`header`, `footer`, o `sub/name` si anidamos carpetas despues).
+ */
+export const MAILER_RUNTIME_OPTIONS = {
+  strict: true,
+  partials: {
+    dir: join(MAIL_TEMPLATES_DIR, 'partials'),
+    options: { strict: true },
+  },
+};
+
+/**
+ * Opciones completas para `MailerModule.forRootAsync`.
+ *
+ *  - Sin SMTP (`driver !== 'smtp'` o host vacio): transport
+ *    placeholder local; el modulo queda en modo degradado y el
+ *    renderer corta antes de intentar enviar.
+ *  - Con SMTP: transport real con auth.
+ *
+ * En ambos casos se registran `template` (compile opts) y
+ * `options` (runtime opts con partials).
+ */
+export function createMailerOptions(
+  input: MailerConfigInput,
+): Record<string, unknown> {
+  const enabled = input.driver === 'smtp' && input.host.length > 0;
+  const defaults = {
+    from: input.from || 'no-reply@yacatec.demo',
+  };
+  const template = {
+    dir: MAIL_TEMPLATES_DIR,
+    options: { strict: true },
+  };
+  if (!enabled) {
+    return {
+      transport: { host: 'localhost', port: 2525, secure: false },
+      defaults,
+      template,
+      options: MAILER_RUNTIME_OPTIONS,
+    };
+  }
+  return {
+    transport: {
+      host: input.host,
+      port: input.port,
+      secure: input.secure,
+      auth: {
+        user: input.user,
+        pass: input.password,
+      },
+    },
+    defaults,
+    template,
+    options: MAILER_RUNTIME_OPTIONS,
+  };
+}
