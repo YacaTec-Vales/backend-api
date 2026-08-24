@@ -231,4 +231,145 @@ describe('ProductsService', () => {
       });
     });
   });
+
+  describe('update', () => {
+    const PRODUCT_ID = '11111111-1111-1111-1111-111111111111';
+    const existingProduct = {
+      id: PRODUCT_ID,
+      code: '5/10',
+      variant: 'NORMAL' as const,
+      costCents: 500000,
+      totalPeriods: 10,
+      commissionBps: 0,
+      insuranceCents: 0,
+      interestPerPeriodBps: 500,
+      isActive: true,
+      deletedAt: null,
+      createdAt: new Date('2026-08-03T18:30:00Z'),
+      updatedAt: new Date('2026-08-03T18:30:00Z'),
+    };
+
+    it('rechaza con 404 PRODUCT.NOT_FOUND si el producto no existe', async () => {
+      productRepo.findActiveById.mockResolvedValue(null);
+      await expect(
+        service.update(PRODUCT_ID, { costCents: 600000 }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+      await expect(
+        service.update(PRODUCT_ID, { costCents: 600000 }),
+      ).rejects.toMatchObject({ response: { code: 'PRODUCT.NOT_FOUND' } });
+      expect(productRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('actualiza solo los campos enviados (PATCH genuino)', async () => {
+      productRepo.findActiveById.mockResolvedValue(existingProduct);
+      productRepo.findActiveByCode.mockResolvedValue(null);
+      const updated = { ...existingProduct, interestPerPeriodBps: 750 };
+      productRepo.update.mockResolvedValue(updated);
+      const result = await service.update(PRODUCT_ID, {
+        interestPerPeriodBps: 750,
+      });
+      expect(result.interestPerPeriodBps).toBe(750);
+      // El patch enviado al repo solo debe contener el campo cambiado.
+      expect(productRepo.update).toHaveBeenCalledWith(PRODUCT_ID, {
+        interestPerPeriodBps: 750,
+      });
+    });
+
+    it('permite desactivar con isActive=false (baja logica sin DELETE)', async () => {
+      productRepo.findActiveById.mockResolvedValue(existingProduct);
+      productRepo.update.mockResolvedValue({
+        ...existingProduct,
+        isActive: false,
+      });
+      const result = await service.update(PRODUCT_ID, { isActive: false });
+      expect(result.isActive).toBe(false);
+      expect(productRepo.update).toHaveBeenCalledWith(PRODUCT_ID, {
+        isActive: false,
+      });
+    });
+
+    it('normaliza code a MAYUSCULAS antes de validar duplicado', async () => {
+      productRepo.findActiveById.mockResolvedValue(existingProduct);
+      productRepo.findActiveByCode.mockResolvedValue(null);
+      productRepo.update.mockResolvedValue({
+        ...existingProduct,
+        code: '10/20',
+      });
+      await service.update(PRODUCT_ID, { code: '  10/20  ' });
+      expect(productRepo.findActiveByCode).toHaveBeenCalledWith(
+        '10/20',
+        'NORMAL',
+      );
+    });
+
+    it('rechaza con 409 PRODUCT.ALREADY_EXISTS si code+variant ya pertenece a OTRO producto', async () => {
+      productRepo.findActiveById.mockResolvedValue(existingProduct);
+      productRepo.findActiveByCode.mockResolvedValue({
+        id: 'otro-id',
+        code: '10/20',
+        variant: 'NORMAL',
+      } as never);
+      await expect(
+        service.update(PRODUCT_ID, { code: '10/20' }),
+      ).rejects.toBeInstanceOf(ConflictException);
+      await expect(
+        service.update(PRODUCT_ID, { code: '10/20' }),
+      ).rejects.toMatchObject({ response: { code: 'PRODUCT.ALREADY_EXISTS' } });
+      expect(productRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('no consulta duplicado si code y variant no cambian', async () => {
+      productRepo.findActiveById.mockResolvedValue(existingProduct);
+      productRepo.update.mockResolvedValue(existingProduct);
+      await service.update(PRODUCT_ID, {
+        code: '5/10',
+        commissionBps: 100,
+      });
+      expect(productRepo.findActiveByCode).not.toHaveBeenCalled();
+      expect(productRepo.update).toHaveBeenCalledWith(PRODUCT_ID, {
+        code: '5/10',
+        commissionBps: 100,
+      });
+    });
+
+    it('traduce CHECK violation (23514) a 400 PRODUCT.CHECK_VIOLATION', async () => {
+      productRepo.findActiveById.mockResolvedValue(existingProduct);
+      const pgError = Object.assign(new Error('check'), {
+        code: '23514',
+        constraint: 'cost_cents_multiple',
+      });
+      productRepo.update.mockRejectedValue(pgError);
+      await expect(
+        service.update(PRODUCT_ID, { costCents: 500001 }),
+      ).rejects.toMatchObject({
+        response: {
+          code: 'PRODUCT.CHECK_VIOLATION',
+          details: { constraint: 'cost_cents_multiple' },
+        },
+      });
+    });
+
+    it('traduce UNIQUE violation (23505) a 409 PRODUCT.ALREADY_EXISTS (carrera)', async () => {
+      productRepo.findActiveById.mockResolvedValue(existingProduct);
+      productRepo.findActiveByCode.mockResolvedValue(null);
+      const pgError = Object.assign(new Error('unique'), {
+        code: '23505',
+        constraint: 'uq_product_code_variant',
+      });
+      productRepo.update.mockRejectedValue(pgError);
+      await expect(
+        service.update(PRODUCT_ID, { code: '10/20' }),
+      ).rejects.toMatchObject({
+        response: { code: 'PRODUCT.ALREADY_EXISTS' },
+      });
+    });
+
+    it('rechaza con 404 si el repo devuelve null (borrado concurrente)', async () => {
+      productRepo.findActiveById.mockResolvedValue(existingProduct);
+      productRepo.update.mockResolvedValue(null);
+      await expect(
+        service.update(PRODUCT_ID, { costCents: 600000 }),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
 });

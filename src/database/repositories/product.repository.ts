@@ -184,6 +184,43 @@ export class ProductRepository {
   }
 
   /**
+   * Actualizacion parcial (PATCH) del producto. Solo persiste los
+   * campos presentes en `data`; los `undefined` se ignoran (Drizzle
+   * no sobreescribe con NULL). Esto permite PATCH genuinamente
+   * parcial: el caller envia solo lo que quiere cambiar.
+   *
+   * Si se cambia `code` o `variant`, la BD enforce `UNIQUE(code,
+   * variant)` (devuelve 23505) y el service lo traduce a 409
+   * `PRODUCT.ALREADY_EXISTS`. Los CHECKs (`cost_cents` > 0 y
+   * multiplo de 10000, `total_periods` 1..60) devuelven 23514 que
+   * el service traduce a 400 `PRODUCT.CHECK_VIOLATION`.
+   *
+   * No toca `deletedAt` ni `createdAt`. Bump `updatedAt = now()`
+   * siempre para mantener audit trail consistente.
+   *
+   * Conexion: `DRIZZLE_WRITE`.
+   *
+   * @param id - UUID del producto a actualizar.
+   * @param data - Campos a modificar (parcial).
+   * @returns Entidad actualizada, o `null` si el id no existe o
+   *   esta soft-deleted.
+   */
+  async update(
+    id: string,
+    data: Partial<Omit<NewProductEntity, 'id' | 'createdAt'>>,
+  ): Promise<ProductEntity | null> {
+    const [row] = await this.writeDb
+      .update(products)
+      .set({
+        ...data,
+        updatedAt: sql`now()`,
+      })
+      .where(and(eq(products.id, id), isNull(products.deletedAt)))
+      .returning();
+    return row ?? null;
+  }
+
+  /**
    * Cuenta cuantos vales ACTIVOS (status = 'ACTIVO') estan
    * referenciando este producto. Usado por el service antes
    * de hacer soft-delete para evitar desactivar un producto
@@ -195,9 +232,7 @@ export class ProductRepository {
    * @returns Cantidad de vales activos (0 si ninguno).
    */
   async countActiveVouchersByProduct(productId: string): Promise<number> {
-    const result = await this.writeDb.execute<{
-      count: string;
-    }>(sql`
+    const result = await this.writeDb.execute<{ count: string }>(sql`
       SELECT COUNT(*)::text AS count
       FROM app.voucher
       WHERE product_id = ${productId}

@@ -1,19 +1,21 @@
 #!/usr/bin/env ts-node
 /**
- * @fileoverview Seed CLI: sincroniza el permiso `catalog.delete` en
- * `app.permission` y sus asignaciones por rol.
+ * @fileoverview Seed CLI: sincroniza los permisos `catalog.update` y
+ * `catalog.delete` en `app.permission` y sus asignaciones por rol.
  *
- * Contexto: el endpoint `DELETE /api/v1/products/:id` (soft delete del
- * catalogo de productos) requiere el permiso `catalog.delete`. Los
- * permisos existentes del modulo catalog (`catalog.read` y
- * `catalog.write`) se asignan por seeds canonicos en otra parte del
- * sistema, pero `catalog.delete` no existia todavia.
+ * Contexto: el modulo catalogs expone endpoints de escritura
+ * (POST/PATCH/DELETE sobre `/products`) que requieren permisos finos.
+ * Los permisos existentes (`catalog.read` y `catalog.write`) se
+ * asignan por seeds canonicos en otra parte del sistema; este seed
+ * registra los permisos que faltaban para los endpoints mas nuevos:
  *
- * Este seed lo inserta de forma idempotente y lo asigna a los dos roles
- * que el endpoint habilita:
- *
+ *  - `catalog.update` -> GERENTE_GENERAL.
+ *    Usado por `PATCH /api/v1/products/:id` (actualizacion parcial).
+ *    Solo GERENTE_GENERAL puede editar el catalogo (consistente con
+ *    `branch.update` que si ampla a GERENTE_SUCURSAL con scope).
  *  - `catalog.delete` -> GERENTE_GENERAL y GERENTE_SUCURSAL.
- *    Ambos pueden desactivar productos del catalogo siempre que:
+ *    Usado por `DELETE /api/v1/products/:id` (soft delete). Ambos
+ *    pueden desactivar productos del catalogo siempre que:
  *     * el producto no tenga vales activos en circulacion
  *       (regla enforced en `ProductsService.softDelete`).
  *     * la peticion venga de VPN Tecu (`@RequireVpnOrigin('Tecu')`).
@@ -53,6 +55,18 @@ interface PermissionSeed {
 }
 
 const SEED_PERMISSIONS: PermissionSeed[] = [
+  {
+    code: 'catalog.update',
+    module: 'catalog',
+    action: 'update',
+    name: 'Actualizar producto del catalogo',
+    description:
+      'Actualizacion parcial de un producto del catalogo ' +
+      '(PATCH /products/:id). Disponible para GERENTE_GENERAL desde ' +
+      'VPN Tecu. Acepta cualquier subconjunto de los campos del ' +
+      'CreateProductDto + isActive.',
+    roles: ['GERENTE_GENERAL'],
+  },
   {
     code: 'catalog.delete',
     module: 'catalog',

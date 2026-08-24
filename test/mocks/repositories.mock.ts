@@ -202,7 +202,8 @@ export function createDocumentRepositoryMock(): jest.Mocked<DocumentRepository> 
 /**
  * Mock tipado de `ProductRepository`. Cubre los metodos publicos
  * del modulo catalogs: `findActiveById`, `findActiveByCode`,
- * `listActive`, `create`, `softDelete`, `countActiveVouchersByProduct`.
+ * `listActive`, `create`, `update`, `softDelete`,
+ * `countActiveVouchersByProduct`.
  */
 export function createProductRepositoryMock(): jest.Mocked<ProductRepository> {
   return {
@@ -210,6 +211,7 @@ export function createProductRepositoryMock(): jest.Mocked<ProductRepository> {
     findActiveByCode: jest.fn(),
     listActive: jest.fn(),
     create: jest.fn(),
+    update: jest.fn(),
     softDelete: jest.fn(),
     countActiveVouchersByProduct: jest.fn(),
   } as unknown as jest.Mocked<ProductRepository>;
