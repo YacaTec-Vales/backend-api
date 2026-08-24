@@ -6,7 +6,8 @@
  *  - GET  /relations                        bandeja del actor
  *  - GET  /relations/:id                    detalle
  *  - GET  /relations/:id/payment-window     ventana de pago actual
- *  - POST /relations/:id/pay                registrar pago
+ *  - POST /relations/:id/pay                registrar pago (legacy)
+ *  - POST /relations/:id/payments           registrar pago con historial
  *
  * Reglas de scope (regla 2.0 §6.1.2):
  *  - DISTRIBUIDOR solo ve y paga sus relaciones.
@@ -17,6 +18,13 @@
  * 2.0 §6.1.2 confirmada por Sebas el 2026-08-05). El Distribuidor
  * paga el total acumulado de la quincena (o un parcial, o un
  * excedente que queda a favor de la Sucursal).
+ *
+ * `POST /relations/:id/payments` es la version CONTABilidad:
+ * ademas de actualizar el saldo y el status, persiste una fila en
+ * `app.relation_payment` (historial inmutable) y devuelve el credito
+ * a `app.distributor.credit_available_cents`. Es lo que usa el
+ * frontend de caja (calpix) y distribuidor (poch) para reflejar el
+ * pago del cliente final sin recargar.
  *
  * @module relations
  * @author Equipo de desarrollo Mis Vales
@@ -47,7 +55,12 @@ import { RelationsService } from './relations.service';
 import { RelationResponseDto } from './dto/relation-response.dto';
 import { PaymentWindowDto } from './dto/payment-window.dto';
 import { PayRelationDto } from './dto/pay-relation.dto';
-import { ApiEnvelopeOkResponse } from '../shared/decorators/api-envelope-response.decorator';
+import { RegisterRelationPaymentDto } from './dto/register-relation-payment.dto';
+import { RelationPaymentResponseDto } from './dto/relation-payment-response.dto';
+import {
+  ApiEnvelopeCreatedResponse,
+  ApiEnvelopeOkResponse,
+} from '../shared/decorators/api-envelope-response.decorator';
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import { JwtAuthGuard } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
@@ -249,5 +262,76 @@ export class RelationsController {
     @Body() dto: PayRelationDto,
   ): Promise<RelationResponseDto> {
     return this.service.pay(actor, id, dto);
+  }
+
+  /**
+   * `POST /relations/:id/payments` — Registrar pago contra la relacion
+   * CON historial y devolucion de credito a la distribuidora.
+   *
+   * A diferencia de `/pay` (legacy), este endpoint:
+   *  - Acepta el monto en PESOS (con 2 decimales) en vez de centavos.
+   *  - Inserta una fila inmutable en `app.relation_payment` con
+   *    snapshots antes/despues del saldo y del `reconciliation_status`.
+   *  - Incrementa `app.distributor.credit_available_cents` por el monto
+   *    pagado (regla 2.0 §6.1.2).
+   *  - Devuelve `paymentId` + `newOutstandingBalance` +
+   *    `newAvailableCredit` para refrescar la UI sin recargar.
+   *
+   * Valida que `amount > 0` y `amount <= outstandingBalance`. Si el
+   * pago excede el saldo, se rechaza con 400
+   * `RELATION.PAYMENT.AMOUNT_EXCEEDS_BALANCE`.
+   *
+   * La ventana de pago se valida igual que en `/pay` (rechaza con 409
+   * `RELATION.PAYMENT_WINDOW_CLOSED` si esta CLOSED).
+   */
+  @Post(':id/payments')
+  @HttpCode(HttpStatus.CREATED)
+  @RequireVpnOrigin('Tecu')
+  @RequirePermissions('relation.pay')
+  @ApiOperation({
+    summary:
+      'Registrar pago contra la relacion (con historial y devolucion de credito)',
+    description:
+      'Aplica el pago a `app.relation.total_paid_cents`, inserta una ' +
+      'fila inmutable en `app.relation_payment` para auditoria, y suma ' +
+      'el monto a `app.distributor.credit_available_cents` (regla 2.0 ' +
+      '§6.1.2: el pago del cliente final devuelve el credito a la ' +
+      'distribuidora). El monto se envia en PESOS y se convierte a ' +
+      'centavos en backend. Devuelve `paymentId`, ' +
+      '`newOutstandingBalance`, `newAvailableCredit` y `newStatus`.',
+  })
+  @ApiEnvelopeCreatedResponse({
+    message: 'Pago registrado correctamente',
+    type: RelationPaymentResponseDto,
+  })
+  @ApiUnauthorizedResponse({ description: 'AUTH.*', type: ErrorResponseDto })
+  @ApiForbiddenResponse({
+    description:
+      'RELATION.NOT_OWNED | RELATION.WRONG_BRANCH | ' +
+      'RELATION.NOT_A_DISTRIBUTOR | AUTH.PERMISSION_DENIED.',
+    type: ErrorResponseDto,
+  })
+  @ApiNotFoundResponse({
+    description: 'RELATION.NOT_FOUND.',
+    type: ErrorResponseDto,
+  })
+  @ApiConflictResponse({
+    description:
+      'RELATION.PAYMENT_WINDOW_CLOSED (morosa) | ' +
+      'RELATION.ALREADY_PAID (LIQUIDADO/SALDO_FAVOR_SUCURSAL).',
+    type: ErrorResponseDto,
+  })
+  @ApiBadRequestResponse({
+    description:
+      'RELATION.PAYMENT.INVALID_AMOUNT (monto <= 0) | ' +
+      'RELATION.PAYMENT.AMOUNT_EXCEEDS_BALANCE (monto > saldo).',
+    type: ErrorResponseDto,
+  })
+  registerPayment(
+    @CurrentUser() actor: RequestUser,
+    @Param('id') id: string,
+    @Body() dto: RegisterRelationPaymentDto,
+  ): Promise<RelationPaymentResponseDto> {
+    return this.service.registerPayment(actor, id, dto);
   }
 }

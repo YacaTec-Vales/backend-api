@@ -22,10 +22,16 @@ import { RelationsController } from './relations.controller';
 import { RelationsService } from './relations.service';
 import { RelationsRepository } from '../database/repositories/relations.repository';
 import { DistributorRepository } from '../database/repositories/distributor.repository';
+import { RelationPaymentRepository } from '../database/repositories/relation-payment.repository';
 
 @Module({
   imports: [AuthModule, DatabaseModule],
   controllers: [RelationsController],
-  providers: [RelationsService, RelationsRepository, DistributorRepository],
+  providers: [
+    RelationsService,
+    RelationsRepository,
+    DistributorRepository,
+    RelationPaymentRepository,
+  ],
 })
 export class RelationsModule {}
