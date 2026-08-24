@@ -138,6 +138,7 @@ describe('ProductsService', () => {
       await service.create({ ...validDto, penaltyCents: 5000 });
       expect(productRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({ penaltyCents: 5000 }),
+        expect.anything(),
       );
     });
 
@@ -171,6 +172,7 @@ describe('ProductsService', () => {
       await service.create(dtoSinPenalty);
       expect(productRepo.create).toHaveBeenCalledWith(
         expect.objectContaining({ penaltyCents: 0 }),
+        expect.anything(),
       );
     });
   });
