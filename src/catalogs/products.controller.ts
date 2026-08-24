@@ -5,8 +5,14 @@
  *  - `GET    /products`        listar catalog (cualquier actor con `catalog.read`).
  *  - `GET    /products/:id`    detalle.
  *  - `POST   /products`        alta (solo `catalog.write`: GERENTE_GENERAL).
+ *  - `DELETE /products/:id`    desactivar (soft delete) un producto del
+ *                              catalogo (`catalog.delete`: GERENTE_GENERAL
+ *                              y GERENTE_SUCURSAL).
  *
- * Aplica `JwtAuthGuard` y `PermissionsGuard` a nivel de clase.
+ * Aplica `JwtAuthGuard`, `PermissionsGuard` y `VpnOriginGuard` a nivel
+ * de clase. El guard `VpnOriginGuard` es no-op para endpoints sin
+ * `@RequireVpnOrigin`; los mutantes que requieren VPN Tecu lo declaran
+ * explicitamente.
  *
  * @module catalogs
  */
@@ -14,7 +20,10 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   NotFoundException,
   Param,
   ParseUUIDPipe,
@@ -26,6 +35,7 @@ import {
   ApiBearerAuth,
   ApiConflictResponse,
   ApiForbiddenResponse,
+  ApiNoContentResponse,
   ApiNotFoundResponse,
   ApiOperation,
   ApiPropertyOptional,
@@ -196,5 +206,67 @@ export class ProductsController {
   })
   create(@Body() dto: CreateProductDto): Promise<ProductResponseDto> {
     return this.productsService.create(dto);
+  }
+
+  /**
+   * @api {delete} /products/:id Desactivar producto del catalogo (soft delete)
+   * @apiName DeactivateProduct
+   * @apiGroup Catalogs
+   * @apiVersion 1.0.0
+   * @apiPermission catalog.delete (GERENTE_GENERAL y GERENTE_SUCURSAL)
+   *
+   * Marca `isActive=false` y `deletedAt=now()` en el producto. El
+   * producto deja de aparecer en `GET /products` y `GET /products/:id`,
+   * pero la fila permanece en la BD para preservar la integridad
+   * referencial de los vales historicos que tienen snapshot de los
+   * campos financieros al momento de emision.
+   *
+   * Restricciones:
+   *  - Solo accesible desde VPN (`@RequireVpnOrigin('Tecu')`) con
+   *    permiso `catalog.delete` (asignado a GERENTE_GENERAL y
+   *    GERENTE_SUCURSAL por `seed-catalog-permissions.ts`).
+   *  - 409 `PRODUCT.IN_USE_BY_ACTIVE_VOUCHERS` si hay vales con
+   *    `status='ACTIVO'` referenciando el producto.
+   *  - 404 `PRODUCT.NOT_FOUND` si el id no existe o ya estaba desactivado.
+   *  - 204 No Content en exito (DELETE REST idempotente).
+   */
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @RequireVpnOrigin('Tecu')
+  @RequirePermissions('catalog.delete')
+  @ApiOperation({
+    summary: 'Desactivar producto (soft delete)',
+    description:
+      'Desactiva un producto del catalogo (soft delete: `isActive=false` ' +
+      'y `deletedAt=now()`). Solo accesible desde VPN Tecu para usuarios ' +
+      'con `catalog.delete` (GERENTE_GENERAL y GERENTE_SUCURSAL). ' +
+      'Devuelve 409 si el producto tiene vales activos en circulacion.',
+  })
+  @ApiNoContentResponse({
+    description: 'Producto desactivado correctamente.',
+  })
+  @ApiNotFoundResponse({
+    description: 'PRODUCT.NOT_FOUND (id no existe o ya estaba desactivado).',
+    type: ErrorResponseDto,
+  })
+  @ApiConflictResponse({
+    description:
+      'PRODUCT.IN_USE_BY_ACTIVE_VOUCHERS (hay vales activos usando este producto).',
+    type: ErrorResponseDto,
+  })
+  @ApiUnauthorizedResponse({
+    description: 'AUTH.* — token invalido, sesion revocada o expirada.',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description:
+      'AUTH.PERMISSION_DENIED (sin catalog.delete) o VPN_ORIGIN_REQUIRED ' +
+      '(peticion no viene de VPN+Tecu).',
+    type: ErrorResponseDto,
+  })
+  async deactivate(
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<void> {
+    await this.productsService.softDelete(id);
   }
 }

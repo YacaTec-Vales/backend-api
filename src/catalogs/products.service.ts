@@ -22,6 +22,7 @@ import {
   ConflictException,
   Injectable,
   Logger,
+  NotFoundException,
 } from '@nestjs/common';
 import {
   ProductRepository,
@@ -142,5 +143,66 @@ export class ProductsService {
    */
   static variantOrDefault(variant?: ProductVariant): ProductVariant {
     return variant ?? 'NORMAL';
+  }
+
+  /**
+   * Soft delete del producto (desactivacion logica). El producto deja
+   * de aparecer en `GET /products` pero la fila permanece en la BD
+   * para preservar la integridad referencial de los vales historicos
+   * (que tienen snapshot de los campos financieros al momento de
+   * emision; ver `app.voucher` en `schema.ts`).
+   *
+   * Reglas:
+   *  - 404 `PRODUCT.NOT_FOUND` si el id no existe o ya estaba borrado.
+   *  - 409 `PRODUCT.IN_USE_BY_ACTIVE_VOUCHERS` si hay vales con
+   *    `status = 'ACTIVO'` referenciando este producto. No se puede
+   *    desactivar un producto con vales en circulacion para no romper
+   *    el flujo de caja ni la consulta de saldo del distribuidor.
+   *  - OK: `deleted_at = now()`, `is_active = false`, `updated_at = now()`.
+   *
+   * Idempotencia: la segunda llamada devuelve 404 (ya esta borrado),
+   * comportamiento consistente con `DELETE` REST.
+   *
+   * @param id - UUID del producto a desactivar.
+   * @throws {NotFoundException} `PRODUCT.NOT_FOUND`.
+   * @throws {ConflictException} `PRODUCT.IN_USE_BY_ACTIVE_VOUCHERS`.
+   */
+  async softDelete(id: string): Promise<void> {
+    // 1. Verificar que existe y esta activo.
+    const existing = await this.productRepo.findActiveById(id);
+    if (!existing) {
+      throw new NotFoundException({
+        code: 'PRODUCT.NOT_FOUND',
+        message: 'producto no encontrado o ya fue desactivado',
+      });
+    }
+
+    // 2. Validar que no haya vales ACTIVOS referenciando este producto.
+    const activeVoucherCount =
+      await this.productRepo.countActiveVouchersByProduct(id);
+    if (activeVoucherCount > 0) {
+      throw new ConflictException({
+        code: 'PRODUCT.IN_USE_BY_ACTIVE_VOUCHERS',
+        message:
+          'No se puede desactivar el producto porque tiene vales activos en circulacion.',
+        details: { activeVouchers: activeVoucherCount },
+      });
+    }
+
+    // 3. Soft delete.
+    const updated = await this.productRepo.softDelete(id);
+    if (!updated) {
+      // Doble check: la fila existia en el paso 1 pero fue borrada
+      // concurrentemente entre el findActiveById y el softDelete.
+      // Devolvemos 404 por consistencia.
+      throw new NotFoundException({
+        code: 'PRODUCT.NOT_FOUND',
+        message: 'producto no encontrado o ya fue desactivado',
+      });
+    }
+
+    this.logger.log(
+      `Producto desactivado: id=${id} code=${existing.code} variant=${existing.variant}`,
+    );
   }
 }
