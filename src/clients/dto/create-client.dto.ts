@@ -30,6 +30,7 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  IsUUID,
   Length,
   Matches,
 } from 'class-validator';
@@ -220,4 +221,38 @@ export class CreateClientDto {
   @IsOptional()
   @IsObject()
   bankAccount?: Record<string, unknown>;
+
+  /**
+   * UUID del documento del INE en `app.document`. El backend
+   * valida que el documento exista y este activo; si no, devuelve
+   * 400 `CLIENT.INE_DOCUMENT_NOT_FOUND`. Tras persistir, el flujo
+   * de caja (`findVoucher`) puede leer la URL firmada para mostrar
+   * la INE en liberacion.
+   */
+  @ApiPropertyOptional({
+    description:
+      'UUID del documento del INE subido previamente via POST /uploads. ' +
+      'Si llega, el backend valida que el documento exista y este activo.',
+    example: '550e8400-e29b-41d4-a716-446655440000',
+  })
+  @IsOptional()
+  @IsUUID('4', {
+    message: 'ineDocumentId debe ser un UUID v4 valido.',
+  })
+  ineDocumentId?: string;
+
+  /**
+   * UUID del comprobante de domicilio en `app.document`. Misma
+   * validacion que `ineDocumentId`.
+   */
+  @ApiPropertyOptional({
+    description:
+      'UUID del comprobante de domicilio subido previamente via POST /uploads.',
+    example: '550e8400-e29b-41d4-a716-446655440001',
+  })
+  @IsOptional()
+  @IsUUID('4', {
+    message: 'addressProofDocumentId debe ser un UUID v4 valido.',
+  })
+  addressProofDocumentId?: string;
 }

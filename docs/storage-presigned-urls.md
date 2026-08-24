@@ -1,9 +1,57 @@
-# Storage de documentos — URLs firmadas (GET /uploads/:id)
+# Storage de documentos — URLs firmadas
 
 > Configuración y flujo de lectura de documentos subidos a object storage,
 > compatible con **MinIO (desarrollo)** y **DigitalOcean Spaces (producción)**.
 > El bucket es **privado**: nadie accede al archivo sin una URL firmada y
 > expirable.
+
+## Endpoints (prefijo global `api/v1`)
+
+| Método | Ruta | Permiso | Notas |
+| --- | --- | --- | --- |
+| `POST` | `/uploads` | `document.upload` | Subir archivo generico (multipart). Devuelve `{id, publicUrl, ...}` |
+| `POST` | `/uploads/verification/:solicitationId` | `document.upload` | Subir foto de verificacion. El backend inyecta `metadata.solicitationId` |
+| `GET` | `/uploads/:id` | `document.read` | Metadata + URL firmada (15 min) de **un** documento |
+| `GET` | `/uploads` | `document.read` | Lista paginada (`?limit&offset`, default 50/0) |
+| `GET` | `/uploads/client/:clientId` | `document.read` | Documentos de un cliente (metadata.clientId o FKs `client.ine_document_id` / `address_proof_document_id`) |
+| `GET` | `/uploads/verification/:solicitationId` | `document.read` | Documentos subidos para una verificacion (filtra por `metadata.solicitationId`) |
+| `GET` | `/uploads/type/:documentType` | `document.read` | Documentos filtrados por tipo (`ine`, `address_proof`, `voucher_evidence`, `other`) |
+
+Todas las respuestas de listado y de `GET /:id` vienen en el envelope estandar
+`{ message, data }` (ver `docs/backend/estilos/respuestas-api.md`). Cada
+documento incluye una `publicUrl` firmada SigV4 con TTL de 15 minutos
+(`DEFAULT_SIGNED_URL_TTL = 900`). Pasado ese tiempo la URL devuelve
+`403 SignatureDoesNotMatch` o `403 AccessDenied` y el frontend debe volver
+a llamar al endpoint para obtener una URL fresca (re-fetch por `id`).
+
+### Ejemplo: traer fotos de una verificacion
+
+```bash
+curl -s http://localhost:45000/api/v1/uploads/verification/<SOLICITUD_UUID> \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+```json
+{
+  "message": "Documentos de verificacion consultados correctamente",
+  "data": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "documentType": "ine",
+      "fileName": "ine.png",
+      "storagePath": "documents/ine/550e8400-e29b-41d4-a716-446655440000.png",
+      "publicUrl": "http://localhost:9000/misvales-storage/documents/ine/550e8400-e29b-41d4-a716-446655440000.png?X-Amz-...",
+      "mimeType": "image/png",
+      "sizeBytes": 184231,
+      "sha256Hash": "f2ca1bb6c7e907d06dafe4687e879f9c...",
+      "uploadedBy": "4f7e3b8a-...",
+      "metadata": { "solicitationId": "11111111-..." },
+      "isActive": true,
+      "createdAt": "2026-08-23T18:30:00.000Z"
+    }
+  ]
+}
+```
 
 ## Resumen
 

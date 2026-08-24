@@ -29,6 +29,7 @@
  */
 
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Inject,
@@ -41,6 +42,7 @@ import { ClientRepository } from '../database/repositories/client.repository';
 import { VoucherRepository } from '../database/repositories/voucher.repository';
 import { DRIZZLE_READ, type DrizzleRead } from '../database/drizzle.provider';
 import { distributors, branches, vouchers } from '../database/schema';
+import { DocumentsService } from '../documents/documents.service';
 import type { RequestUser } from '../shared/guards/auth.guards';
 import type { CreateClientDto } from './dto/create-client.dto';
 import type { ClientResponseDto } from './dto/client-response.dto';
@@ -62,6 +64,7 @@ export class ClientsService {
     private readonly clientRepo: ClientRepository,
     private readonly voucherRepo: VoucherRepository,
     @Inject(DRIZZLE_READ) private readonly readDb: DrizzleRead,
+    private readonly documentsService: DocumentsService,
   ) {}
 
   /**
@@ -293,7 +296,41 @@ export class ClientsService {
       });
     }
 
-    // 5. Insertar el cliente. La BD rellena `id`, `created_at`,
+    // 5. Validar documentos (INE / comprobante) si llegaron. El
+    //    `findById` del servicio lanza `NotFoundException` si el doc
+    //    no existe o esta eliminado logicamente; lo atrapamos para
+    //    devolver 400 con un codigo claro y no 404 generico.
+    if (dto.ineDocumentId) {
+      try {
+        await this.documentsService.findById(dto.ineDocumentId);
+      } catch (err) {
+        this.logger.warn(
+          `ineDocumentId invalido en alta de cliente: ${dto.ineDocumentId} (${(err as Error).message})`,
+        );
+        throw new BadRequestException({
+          code: 'CLIENT.INE_DOCUMENT_NOT_FOUND',
+          message: 'El documento del INE no existe o esta eliminado.',
+          details: { ineDocumentId: dto.ineDocumentId },
+        });
+      }
+    }
+    if (dto.addressProofDocumentId) {
+      try {
+        await this.documentsService.findById(dto.addressProofDocumentId);
+      } catch (err) {
+        this.logger.warn(
+          `addressProofDocumentId invalido en alta de cliente: ${dto.addressProofDocumentId} (${(err as Error).message})`,
+        );
+        throw new BadRequestException({
+          code: 'CLIENT.ADDRESS_PROOF_DOCUMENT_NOT_FOUND',
+          message:
+            'El documento del comprobante de domicilio no existe o esta eliminado.',
+          details: { addressProofDocumentId: dto.addressProofDocumentId },
+        });
+      }
+    }
+
+    // 6. Insertar el cliente. La BD rellena `id`, `created_at`,
     //    `updated_at`. `is_active = true`. `bankAccount` se
     //    normaliza a {} si no llega.
     const created = await this.clientRepo.create({
@@ -310,8 +347,8 @@ export class ClientsService {
       birthPlace: dto.birthPlace ?? null,
       state: dto.state ?? null,
       city: dto.city ?? null,
-      ineDocumentId: null,
-      addressProofDocumentId: null,
+      ineDocumentId: dto.ineDocumentId ?? null,
+      addressProofDocumentId: dto.addressProofDocumentId ?? null,
       bankAccount: dto.bankAccount ?? {},
       currentDistributorId: distributorRow.id,
       firstVoucherWithCurrentDistributorId: null,
@@ -324,7 +361,7 @@ export class ClientsService {
         `distributor_id=${distributorRow.id} actor_id=${actor.id}`,
     );
 
-    // 6. Proyeccion publica.
+    // 7. Proyeccion publica.
     return toClientResponseDto(created);
   }
 
