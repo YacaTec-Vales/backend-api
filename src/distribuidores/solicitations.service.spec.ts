@@ -129,11 +129,8 @@ function buildService() {
   const readDb = buildReadDbMock();
   const userRepository = buildUserRepositoryMock();
   const distributorRepo = buildDistributorRepositoryMock();
-  const auditRepo = {
-    runWithContext: jest.fn(async <T>(_ctx: unknown, work: () => Promise<T>) =>
-      work(),
-    ),
-    logEvent: jest.fn().mockResolvedValue(undefined),
+  const documentsService = {
+    findById: jest.fn().mockResolvedValue({ id: 'doc-ok' }),
   };
   const service = new SolicitationsService(
     solicitationRepo,
@@ -142,6 +139,7 @@ function buildService() {
     distributorRepo as never,
     auditRepo as never,
     readDb as never,
+    documentsService as never,
   );
   return {
     service,
@@ -151,6 +149,7 @@ function buildService() {
     distributorRepo,
     auditRepo,
     readDb,
+    documentsService,
   };
 }
 

@@ -29,6 +29,7 @@ import {
 import {
   vouchers,
   voucherFolioSequence,
+  distributors,
   type VoucherEntity,
   type NewVoucherEntity,
 } from '../schema';
@@ -39,6 +40,15 @@ import {
 export interface VoucherListFilters {
   distributorId?: string;
   clientId?: string;
+  status?: 'ACTIVO' | 'LIQUIDADO' | 'CANCELADO';
+  limit?: number;
+}
+
+/**
+ * Filtros para el listado de vales por sucursal.
+ */
+export interface ListVouchersByBranchFilters {
+  voucherType?: 'PREVALE' | 'DIGITAL';
   status?: 'ACTIVO' | 'LIQUIDADO' | 'CANCELADO';
   limit?: number;
 }
@@ -169,6 +179,41 @@ export class VoucherRepository {
       .where(and(...conds))
       .orderBy(desc(vouchers.createdAt))
       .limit(limit);
+  }
+
+  /**
+   * Lista los vales de una sucursal, opcionalmente filtrando por
+   * tipo de vale y estado. Usado por la cajera.
+   *
+   * @param branchId - ID de la sucursal.
+   * @param filters - Filtros de busqueda.
+   */
+  async listByBranch(
+    branchId: string,
+    filters: ListVouchersByBranchFilters = {},
+  ): Promise<VoucherEntity[]> {
+    const conds = [
+      eq(distributors.branchId, branchId),
+      isNull(vouchers.deletedAt),
+    ];
+
+    if (filters.voucherType) {
+      conds.push(eq(vouchers.voucherType, filters.voucherType));
+    }
+    if (filters.status) {
+      conds.push(eq(vouchers.status, filters.status));
+    }
+    const limit = filters.limit ?? 100;
+
+    const rows = await this.readDb
+      .select({ voucher: vouchers })
+      .from(vouchers)
+      .innerJoin(distributors, eq(vouchers.distributorId, distributors.id))
+      .where(and(...conds))
+      .orderBy(desc(vouchers.createdAt))
+      .limit(limit);
+
+    return rows.map((r) => r.voucher);
   }
 
   // ─────────────────────────────────────────────────────────────────────

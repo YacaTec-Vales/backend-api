@@ -157,6 +157,7 @@ export function configureApplication(
       )
       .addTag('MFA', 'Autenticacion multifactor (setup, verify, disable)')
       .addTag('Audit', 'Consulta de bitácoras y registros de auditoría')
+      .addTag('Categories', 'CRUD de Categorías (porcentajes de comision)')
       .addTag('App', 'Smoke tests')
       .build();
 

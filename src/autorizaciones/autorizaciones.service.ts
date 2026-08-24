@@ -40,6 +40,7 @@ import { DRIZZLE_WRITE, type DrizzleWrite } from '../database/drizzle.provider';
 import type { AuthorizationEntity } from '../database/schema';
 import type { RequestUser } from '../shared/guards/auth.guards';
 import { AuthorizationResponseDto } from './dto/authorization-response.dto';
+import type { ApproveClientModificationDto } from './dto/approve-client-modification.dto';
 
 /**
  * Shape del JSONB `affected_entity` para transferencias de cliente.
@@ -48,6 +49,21 @@ interface TransferAffectedEntity {
   clientId: string;
   fromDistributorId: string;
   toDistributorId?: string;
+}
+
+/**
+ * Shape del JSONB `affected_entity` para modificaciones de cliente.
+ */
+interface ClientModificationAffectedEntity {
+  clientId: string;
+  voucherId: string;
+  discrepancyData: {
+    fullName?: string;
+    bankAccount?: {
+      banco?: string;
+      clabe?: string;
+    };
+  };
 }
 
 /**
@@ -206,9 +222,32 @@ export class AutorizacionesService {
       default:
         throw new BadRequestException({
           code: ERROR_CODES.TYPE_NOT_IMPLEMENTED,
-          message: `el tipo ${auth.authorizationType} aun no esta implementado`,
+          message: `el tipo ${auth.authorizationType} aun no esta implementado en este endpoint`,
         });
     }
+  }
+
+  /**
+   * Aprueba una autorizacion de modificacion de cliente.
+   *
+   * Ejecuta la actualizacion en app.client de forma atomica.
+   */
+  async approveClientModification(
+    actor: RequestUser,
+    id: string,
+    dto: ApproveClientModificationDto,
+  ): Promise<AuthorizationResponseDto> {
+    const auth = await this.assertPending(id);
+
+    if (auth.authorizationType !== 'MODIFICACION_CLIENTE') {
+      throw new BadRequestException({
+        code: ERROR_CODES.TYPE_NOT_IMPLEMENTED,
+        message:
+          'Endpoint exclusivo para autorizaciones de MODIFICACION_CLIENTE',
+      });
+    }
+
+    return this.approveClientMod(actor, auth, dto);
   }
 
   /**
@@ -381,6 +420,127 @@ export class AutorizacionesService {
     return this.toResponseDtoAsync(updated!);
   }
 
+  /**
+   * Aprueba una modificacion de cliente (tipo MODIFICACION_CLIENTE).
+   */
+  private async approveClientMod(
+    actor: RequestUser,
+    auth: AuthorizationEntity,
+    dto: ApproveClientModificationDto,
+  ): Promise<AuthorizationResponseDto> {
+    const entity = auth.affectedEntity as ClientModificationAffectedEntity;
+
+    const client = await this.clientRepo.findById(entity.clientId);
+    if (!client) {
+      throw new NotFoundException({
+        code: 'CLIENT.NOT_FOUND',
+        message: 'el cliente no existe',
+      });
+    }
+
+    // Validar autoridad: solo Gerente General o Gerente de la misma sucursal
+    if (actor.role === 'GERENTE_SUCURSAL') {
+      const distributor = await this.distributorRepo.findById(
+        client.currentDistributorId!,
+      );
+      if (!distributor || distributor.branchId !== actor.branchId) {
+        throw new ForbiddenException({
+          code: ERROR_CODES.NOT_AUTHORIZED_TO_APPROVE,
+          message: 'el gerente solo puede modificar clientes de su sucursal',
+        });
+      }
+    } else if (actor.role !== 'GERENTE_GENERAL') {
+      throw new ForbiddenException({
+        code: 'AUTH.ROLE_NOT_ALLOWED',
+        message: 'rol no autorizado para modificar clientes',
+      });
+    }
+
+    const proposedData = entity.discrepancyData;
+    const finalData = dto.updateClientData ?? proposedData;
+
+    // Parse name naive implementation (since we just get a single string for fullName)
+    let newFirstName = client.firstName;
+    let newPaternal = client.lastNamePaternal;
+    let newMaternal = client.lastNameMaternal;
+
+    if (finalData.fullName) {
+      const parts = finalData.fullName.split(' ').filter(Boolean);
+      if (parts.length > 0) {
+        newFirstName = parts[0];
+        newPaternal = parts.length > 1 ? parts[1] : '';
+        newMaternal = parts.length > 2 ? parts.slice(2).join(' ') : '';
+      }
+    }
+
+    let finalBankAccount: Record<string, unknown> = client.bankAccount;
+    if (finalData.bankAccount) {
+      const bank = finalData.bankAccount.banco ?? '';
+      const clabe = finalData.bankAccount.clabe ?? '';
+      finalBankAccount = { banco: bank, clabe: clabe };
+    }
+
+    const pool = (
+      this.writeDb as unknown as {
+        $client: {
+          query: (
+            sql: string,
+            params: unknown[],
+          ) => Promise<{ rows: unknown[] }>;
+        };
+      }
+    ).$client;
+
+    await pool.query('BEGIN', []);
+    try {
+      await pool.query(
+        `UPDATE app.client
+            SET first_name = $1,
+                last_name_paternal = $2,
+                last_name_maternal = $3,
+                bank_account = $4,
+                updated_at = NOW()
+          WHERE id = $5`,
+        [
+          newFirstName,
+          newPaternal,
+          newMaternal,
+          JSON.stringify(finalBankAccount),
+          entity.clientId,
+        ],
+      );
+
+      const updatedEntity = {
+        ...entity,
+        appliedData: finalData,
+      };
+
+      await pool.query(
+        `UPDATE app.authorization
+            SET status = 'APROBADA',
+                affected_entity = $1,
+                authorizer_id = $2,
+                decision_notes = $3,
+                decided_at = NOW(),
+                updated_at = NOW()
+          WHERE id = $4`,
+        [JSON.stringify(updatedEntity), actor.id, dto.notes ?? null, auth.id],
+      );
+
+      await pool.query('COMMIT', []);
+    } catch (err) {
+      await pool.query('ROLLBACK', []);
+      throw err;
+    }
+
+    this.logger.log(
+      `client modification approved: auth=${auth.id} client=${entity.clientId} actor=${actor.id}`,
+    );
+
+    const updated = await this.authRepo.findById(auth.id);
+    return this.toResponseDtoAsync(updated!);
+  }
+
   // =========================================================================
   // Helpers privados
   // =========================================================================
@@ -500,6 +660,16 @@ export class AutorizacionesService {
             resolvedNames.toDistributorName =
               `${user.firstName} ${user.lastNamePaternal} ${user.lastNameMaternal}`.trim();
           }
+        }
+      }
+    } else if (auth.authorizationType === 'MODIFICACION_CLIENTE') {
+      const entity =
+        affectedEntity as unknown as ClientModificationAffectedEntity;
+      if (entity.clientId) {
+        const client = await this.clientRepo.findById(entity.clientId);
+        if (client) {
+          resolvedNames.clientName =
+            `${client.firstName} ${client.lastNamePaternal} ${client.lastNameMaternal}`.trim();
         }
       }
     }

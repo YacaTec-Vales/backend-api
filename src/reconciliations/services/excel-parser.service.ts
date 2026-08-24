@@ -66,7 +66,7 @@ export class ExcelParserService {
         paymentFolio: parseString(folioRaw),
         paymentDate: this.normalizeDate(dateRaw),
         paymentTime: this.normalizeTime(timeRaw),
-        paymentType: parseString(typeRaw),
+        paymentType: this.normalizePaymentType(parseString(typeRaw)),
         rawRow: row,
       };
     });
@@ -156,5 +156,30 @@ export class ExcelParserService {
       : typeof val === 'number'
         ? String(val)
         : '';
+  }
+
+  /**
+   * Normaliza la columna 'Tipo de Pago' (Columna H) a los valores del enum
+   * bank_movement_payment_type: 'TRANSFERENCIA', 'BANCA_EN_LINEA', 'PAGO_EN_VENTANILLA'
+   */
+  private normalizePaymentType(val: string): string {
+    const normalized = val.toUpperCase().trim();
+
+    // Mapeos para tolerar errores ortográficos (como "Tranferencia")
+    if (
+      normalized.includes('TRANFERENCIA') ||
+      normalized.includes('TRANSFERENCIA')
+    ) {
+      return 'TRANSFERENCIA';
+    }
+    if (normalized.includes('BANCA EN LINEA') || normalized.includes('LINEA')) {
+      return 'BANCA_EN_LINEA';
+    }
+    if (normalized.includes('VENTANILLA')) {
+      return 'PAGO_EN_VENTANILLA';
+    }
+
+    // Fallback: si no coincide con los mappings predeterminados, devolver string limpio.
+    return normalized;
   }
 }

@@ -134,6 +134,14 @@ export const envValidationSchema = Joi.object({
   //   false → fuerza desactivacion (incluido production, rollback rapido)
   VPN_ORIGIN_GUARD_ENABLED: Joi.string().valid('true', 'false').optional(),
 
+  // Identificador unico del backend instance para logging per-server.
+  // Cada droplet (app-02, app-03) debe exportar SERVER_ID con un valor
+  // distinto. Default 'unknown' en dev (un solo process) para no romper
+  // tests existentes.
+  SERVER_ID: Joi.string()
+    .pattern(/^[a-z0-9-]{1,32}$/)
+    .default('unknown'),
+
   // Object storage (MinIO local o DigitalOcean Spaces en produccion)
   STORAGE_ENDPOINT: Joi.string().uri().required(),
   STORAGE_REGION: Joi.string().default('us-east-1'),

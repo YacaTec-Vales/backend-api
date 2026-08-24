@@ -65,6 +65,12 @@ export interface AuthorizeResult {
   distributorNumber: string;
   userId: string;
   welcomeEmailSent: boolean;
+  /**
+   * Clasificacion del fallo del correo, si lo hubo. `null` cuando
+   * el correo se envio OK o no se intento.
+   */
+  welcomeEmailError?:
+    'smtp_error' | 'template_missing' | 'mailer_disabled' | 'unexpected' | null;
 }
 
 /**
@@ -267,8 +273,10 @@ export class SolicitationsAuthorizeService {
       throw err;
     }
 
-    // 4. Correo de bienvenida (no aborta).
+    // 4. Correo de bienvenida (no aborta). Clasificamos el fallo para
+    //    que el frontend pueda mostrar un mensaje claro al gerente.
     let welcomeEmailSent = false;
+    let welcomeEmailError: AuthorizeResult['welcomeEmailError'] = null;
     try {
       const loginUrl = this.config.get<string>('app.appPublicUrl') ?? '';
       const mailResult = await this.mailService.sendUserWelcome({
@@ -280,8 +288,14 @@ export class SolicitationsAuthorizeService {
       });
       welcomeEmailSent = mailResult.sent;
     } catch (err) {
-      this.logger.warn(
-        `Fallo al enviar correo bienvenida a distribuidor ${distributorId}: ${(err as Error).message}`,
+      welcomeEmailError = 'unexpected';
+      // El correo de bienvenida es la unica forma en que el
+      // distribuidor conoce su contrasena temporal. Si falla,
+      // dejamos log a nivel error para que operacion/QA pueda
+      // enterarse y reenviarlo. La distribuidora YA fue creada
+      // (commit previo), asi que no abortamos el flujo.
+      this.logger.error(
+        `Fallo al enviar correo bienvenida a distribuidor ${distributorId} user=${userId} email=${userEmail}: ${(err as Error).message}`,
       );
     }
 
@@ -306,6 +320,7 @@ export class SolicitationsAuthorizeService {
       distributorNumber,
       userId,
       welcomeEmailSent,
+      welcomeEmailError,
     };
   }
 

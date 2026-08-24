@@ -19,6 +19,7 @@
 import { MailerService } from '@nestjs-modules/mailer';
 import { TemplateRendererService } from './template-renderer.service';
 import type { MailConfigShape } from '../mail.module';
+import * as manifestModule from '../templates/manifest';
 
 describe('TemplateRendererService', () => {
   let renderer: TemplateRendererService;
@@ -101,5 +102,32 @@ describe('TemplateRendererService', () => {
 
     expect(result).toEqual({ sent: false });
     expect(mailer.sendMail).toHaveBeenCalledTimes(1);
+  });
+
+  it('manifest desincronizado: si getTemplateEntry lanza, devuelve { sent: false } sin propagar', async () => {
+    // Simulamos que alguien agrego un slug al union TemplateKey pero
+    // olvido meterlo en TEMPLATE_MANIFEST. El renderer NO debe
+    // propagar el error: lo traga, loggea y devuelve { sent: false }
+    // para que el caller (authorize, password reset, etc.) siga su
+    // flujo normal.
+    const spy = jest
+      .spyOn(manifestModule, 'getTemplateEntry')
+      .mockImplementation(() => {
+        throw new Error('Plantilla de mail no registrada: ghost');
+      });
+
+    renderer = new TemplateRendererService(mailer, baseConfig);
+
+    // El `TemplateKey` union no permite 'ghost' en compile-time,
+    // pero en runtime podemos colarlo con un cast.
+    const result = await renderer.render(
+      'ghost' as unknown as 'user-welcome',
+      'a@yacatec.demo',
+      {},
+    );
+
+    expect(result).toEqual({ sent: false });
+    expect(mailer.sendMail).not.toHaveBeenCalled();
+    spy.mockRestore();
   });
 });

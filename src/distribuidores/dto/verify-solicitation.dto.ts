@@ -9,7 +9,11 @@
  *    por el Gerente (fraude evidente: casa inexistente, INE falsa,
  *    vehiculo fantasma). Si false, la solicitud va a DICTAMINADA
  *    para decision del Gerente.
- *  - `fotos_verificacion` (array de URLs `app.document`).
+ *  - `ineDocumentId`, `addressProofDocumentId`, `fachadaDocumentId`
+ *    (UUIDs de `app.document`): el Verificador sube cada foto via
+ *    `POST /uploads/verification/:solicitationId` (que inyecta
+ *    `metadata.solicitationId`) y manda el id resultante. Esto evita
+ *    el problema de las URLs firmadas que expiraban a los 15 min.
  *  - `comentarios_verificador` (texto libre, max 2000 chars).
  *
  * El Verificador NO edita los datos del Coordinador (regla 2.0
@@ -17,19 +21,17 @@
  *
  * @module distribuidores/dto
  * @author Equipo de desarrollo Mis Vales
- * @since 2.1.0
+ * @since 2.2.0
  */
 
 import { ApiProperty, ApiPropertyOptional, ApiSchema } from '@nestjs/swagger';
 import {
-  ArrayMaxSize,
-  IsArray,
   IsBoolean,
   IsIn,
   IsNotEmpty,
   IsOptional,
   IsString,
-  IsUrl,
+  IsUUID,
   MaxLength,
 } from 'class-validator';
 
@@ -58,15 +60,42 @@ export class VerifySolicitationDto {
   kill_switch!: boolean;
 
   @ApiPropertyOptional({
-    description: 'URLs de fotos tomadas durante la visita.',
-    type: [String],
-    example: ['https://cdn.example.com/photos/abc123.jpg'],
+    description:
+      'UUID del documento de la INE (`app.document`). El verificador ' +
+      'lo sube previamente con `POST /uploads/verification/:solicitationId` ' +
+      'y manda el id resultante. Si llega, el backend valida que el ' +
+      'documento exista y este activo.',
+    example: '550e8400-e29b-41d4-a716-446655440000',
   })
   @IsOptional()
-  @IsArray()
-  @ArrayMaxSize(20)
-  @IsUrl({}, { each: true })
-  fotos_verificacion?: string[];
+  @IsUUID('4', {
+    message: 'ineDocumentId debe ser un UUID v4 valido.',
+  })
+  ineDocumentId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'UUID del comprobante de domicilio (`app.document`). Misma ' +
+      'validacion que `ineDocumentId`.',
+    example: '550e8400-e29b-41d4-a716-446655440001',
+  })
+  @IsOptional()
+  @IsUUID('4', {
+    message: 'addressProofDocumentId debe ser un UUID v4 valido.',
+  })
+  addressProofDocumentId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'UUID de la foto de fachada del domicilio (`app.document`). ' +
+      'Misma validacion que `ineDocumentId`.',
+    example: '550e8400-e29b-41d4-a716-446655440002',
+  })
+  @IsOptional()
+  @IsUUID('4', {
+    message: 'fachadaDocumentId debe ser un UUID v4 valido.',
+  })
+  fachadaDocumentId?: string;
 
   @ApiPropertyOptional({
     description: 'Comentarios libres del verificador (max 2000 chars).',

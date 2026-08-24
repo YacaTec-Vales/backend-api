@@ -40,6 +40,7 @@ import {
 import { AutorizacionesService } from './autorizaciones.service';
 import { ApproveAuthorizationDto } from './dto/approve-authorization.dto';
 import { RejectAuthorizationDto } from './dto/reject-authorization.dto';
+import { ApproveClientModificationDto } from './dto/approve-client-modification.dto';
 import { AuthorizationResponseDto } from './dto/authorization-response.dto';
 import { ApiEnvelopeOkResponse } from '../shared/decorators/api-envelope-response.decorator';
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
@@ -57,9 +58,12 @@ import type { RequestUser } from '../shared/guards/auth.guards';
  * @classdesc Gestiona la bandeja, detalle, aceptacion por destino,
  * aprobacion y rechazo de autorizaciones.
  *
- * Los endpoints de escritura (aprobar, rechazar) requieren VPN+Tecu
- * (ver `@RequireVpnOrigin('Tecu')`). Los GET (bandeja, detalle)
- * siguen funcionando desde cualquier frontend.
+ * Las operaciones de "aprobar" y "rechazar" son invocadas TANTO por
+ * gerente (Tecu, VPN) como por coordinador de sucursal (Calipx). El
+ * gating por VPN aplica solo al endpoint `aprobar-modificacion-cliente`
+ * (que es estrictamente gerencial). El resto usa `PermissionsGuard`
+ * para validar que el actor tenga `authorization.approve`. Los GET
+ * (bandeja, detalle) siguen funcionando desde cualquier frontend.
  *
  * @see AutorizacionesService
  * @author Equipo de desarrollo Mis Vales
@@ -161,7 +165,6 @@ export class AutorizacionesController {
    */
   @Post(':id/aprobar')
   @HttpCode(HttpStatus.OK)
-  @RequireVpnOrigin('Tecu')
   @RequirePermissions('authorization.approve')
   @ApiOperation({
     summary: 'Aprobar autorizacion pendiente',
@@ -215,7 +218,6 @@ export class AutorizacionesController {
    */
   @Post(':id/rechazar')
   @HttpCode(HttpStatus.OK)
-  @RequireVpnOrigin('Tecu')
   @RequirePermissions('authorization.approve')
   @ApiOperation({
     summary: 'Rechazar autorizacion pendiente',
@@ -245,5 +247,55 @@ export class AutorizacionesController {
     @Body() dto: RejectAuthorizationDto,
   ): Promise<AuthorizationResponseDto> {
     return this.service.reject(actor, id, dto.reason);
+  }
+
+  /**
+   * @api {post} /autorizaciones/:id/aprobar-modificacion-cliente Aprobar modificacion de cliente
+   * @apiName ApproveClientModification
+   * @apiGroup Autorizaciones
+   * @apiVersion 1.0.0
+   * @apiPermission authorization.approve
+   */
+  @Post(':id/aprobar-modificacion-cliente')
+  @HttpCode(HttpStatus.OK)
+  @RequireVpnOrigin('Tecu')
+  @RequirePermissions('authorization.approve')
+  @ApiOperation({
+    summary: 'Aprobar autorizacion de modificacion de cliente',
+    description:
+      'Aprueba una autorizacion de discrepancia de datos del cliente ' +
+      'y actualiza la informacion del cliente de forma atomica.',
+  })
+  @ApiEnvelopeOkResponse({
+    message: 'Modificacion de cliente aprobada correctamente',
+    type: AuthorizationResponseDto,
+  })
+  @ApiUnauthorizedResponse({
+    description: 'AUTH.* — token invalido.',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description:
+      'AUTHORIZATION.NOT_AUTHORIZED_TO_APPROVE o AUTH.ROLE_NOT_ALLOWED.',
+    type: ErrorResponseDto,
+  })
+  @ApiNotFoundResponse({
+    description: 'AUTHORIZATION.NOT_FOUND.',
+    type: ErrorResponseDto,
+  })
+  @ApiConflictResponse({
+    description: 'AUTHORIZATION.NOT_PENDING.',
+    type: ErrorResponseDto,
+  })
+  @ApiBadRequestResponse({
+    description: 'AUTHORIZATION.TYPE_NOT_IMPLEMENTED.',
+    type: ErrorResponseDto,
+  })
+  approveClientModification(
+    @CurrentUser() actor: RequestUser,
+    @Param('id') id: string,
+    @Body() dto: ApproveClientModificationDto,
+  ): Promise<AuthorizationResponseDto> {
+    return this.service.approveClientModification(actor, id, dto);
   }
 }

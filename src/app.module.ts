@@ -63,6 +63,7 @@ import { DocumentsModule } from './documents/documents.module';
 import { AutorizacionesModule } from './autorizaciones/autorizaciones.module';
 import { ReconciliationsModule } from './reconciliations/reconciliations.module';
 import { AuditModule } from './audit/audit.module';
+import { CategoriesModule } from './categories/categories.module';
 
 import { JwtAuthGuard, RolesGuard } from './shared/guards/auth.guards';
 import { PermissionsGuard } from './shared/guards/permissions.guard';
@@ -143,8 +144,7 @@ import { AuditContextModule } from './shared/context/audit-context.module';
     ReconciliationsModule,
     AuditModule,
     RecaptchaModule,
-    LogModule,
-    AuditContextModule,
+    CategoriesModule,
   ],
   controllers: [AppController],
   providers: [

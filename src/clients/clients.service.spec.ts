@@ -20,6 +20,7 @@ import { ClientRepository } from '../database/repositories/client.repository';
 import { VoucherRepository } from '../database/repositories/voucher.repository';
 import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 import { DRIZZLE_READ } from '../database/drizzle.provider';
+import { DocumentsService } from '../documents/documents.service';
 import { requestUserFactory } from '../../test/factories/auth.factory';
 import {
   createClientRepositoryMock,
@@ -31,6 +32,7 @@ describe('ClientsService', () => {
   let service: ClientsService;
   let clientRepo: jest.Mocked<ClientRepository>;
   let voucherRepo: jest.Mocked<VoucherRepository>;
+  let documentsService: jest.Mocked<Pick<DocumentsService, 'findById'>>;
   let readDb: ReturnType<
     typeof createOneRowDrizzleStub<Record<string, unknown>>
   >;
@@ -38,6 +40,12 @@ describe('ClientsService', () => {
   beforeEach(async () => {
     clientRepo = createClientRepositoryMock();
     voucherRepo = createVoucherRepositoryMock();
+    documentsService = {
+      findById: jest.fn().mockResolvedValue({
+        id: 'doc-ok',
+        publicUrl: 'https://example.com/doc',
+      }),
+    };
     readDb = createOneRowDrizzleStub<Record<string, unknown>>([]);
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -57,6 +65,7 @@ describe('ClientsService', () => {
           },
         },
         { provide: DRIZZLE_READ, useValue: readDb },
+        { provide: DocumentsService, useValue: documentsService },
       ],
     }).compile();
     service = module.get(ClientsService);
@@ -134,6 +143,7 @@ describe('ClientsService', () => {
           },
         },
         { provide: DRIZZLE_READ, useValue: stub },
+        { provide: DocumentsService, useValue: documentsService },
       ],
     }).compile();
     const svc = module.get(ClientsService);
@@ -203,6 +213,7 @@ describe('ClientsService', () => {
           },
         },
         { provide: DRIZZLE_READ, useValue: stub },
+        { provide: DocumentsService, useValue: documentsService },
       ],
     }).compile();
     const svc = module.get(ClientsService);
@@ -252,6 +263,7 @@ describe('ClientsService', () => {
           },
         },
         { provide: DRIZZLE_READ, useValue: stub },
+        { provide: DocumentsService, useValue: documentsService },
       ],
     }).compile();
     const svc = module.get(ClientsService);
@@ -341,5 +353,139 @@ describe('ClientsService', () => {
     });
     // El `create` se invoca exactamente UNA vez (la 1era llamada).
     expect(clientRepo.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('rechaza con 400 si el ineDocumentId no existe en app.document', async () => {
+    const stub = createOneRowDrizzleStub([
+      {
+        id: 'd1',
+        distributorNumber: 'D-TEST-0001',
+        branchId: 'b1',
+        isActive: true,
+        deletedAt: null,
+        status: 'ACTIVA',
+        branchName: 'TEST Sucursal Lerdo',
+      },
+    ]);
+    clientRepo.findByCurp.mockResolvedValue(null);
+    documentsService.findById.mockRejectedValueOnce(new Error('no existe'));
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ClientsService,
+        { provide: ClientRepository, useValue: clientRepo },
+        { provide: VoucherRepository, useValue: voucherRepo },
+        { provide: DRIZZLE_READ, useValue: stub },
+        { provide: DocumentsService, useValue: documentsService },
+      ],
+    }).compile();
+    const svc = module.get(ClientsService);
+    await expect(
+      svc.create(requestUserFactory({ role: 'DISTRIBUIDOR' }), {
+        ...validDto,
+        ineDocumentId: '11111111-1111-4111-8111-111111111111',
+      }),
+    ).rejects.toMatchObject({
+      response: { code: 'CLIENT.INE_DOCUMENT_NOT_FOUND' },
+    });
+    expect(clientRepo.create).not.toHaveBeenCalled();
+  });
+
+  it('rechaza con 400 si el addressProofDocumentId no existe en app.document', async () => {
+    const stub = createOneRowDrizzleStub([
+      {
+        id: 'd1',
+        distributorNumber: 'D-TEST-0001',
+        branchId: 'b1',
+        isActive: true,
+        deletedAt: null,
+        status: 'ACTIVA',
+        branchName: 'TEST Sucursal Lerdo',
+      },
+    ]);
+    clientRepo.findByCurp.mockResolvedValue(null);
+    documentsService.findById
+      .mockResolvedValueOnce({ id: 'ok' } as never) // ineDocumentId OK
+      .mockRejectedValueOnce(new Error('no existe')); // comprobante falla
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ClientsService,
+        { provide: ClientRepository, useValue: clientRepo },
+        { provide: VoucherRepository, useValue: voucherRepo },
+        { provide: DRIZZLE_READ, useValue: stub },
+        { provide: DocumentsService, useValue: documentsService },
+      ],
+    }).compile();
+    const svc = module.get(ClientsService);
+    await expect(
+      svc.create(requestUserFactory({ role: 'DISTRIBUIDOR' }), {
+        ...validDto,
+        ineDocumentId: '11111111-1111-4111-8111-111111111111',
+        addressProofDocumentId: '22222222-2222-4222-8222-222222222222',
+      }),
+    ).rejects.toMatchObject({
+      response: { code: 'CLIENT.ADDRESS_PROOF_DOCUMENT_NOT_FOUND' },
+    });
+    expect(clientRepo.create).not.toHaveBeenCalled();
+  });
+
+  it('persiste los IDs de documento cuando son validos', async () => {
+    const stub = createOneRowDrizzleStub([
+      {
+        id: 'd1',
+        distributorNumber: 'D-TEST-0001',
+        branchId: 'b1',
+        isActive: true,
+        deletedAt: null,
+        status: 'ACTIVA',
+        branchName: 'TEST Sucursal Lerdo',
+      },
+    ]);
+    clientRepo.findByCurp.mockResolvedValue(null);
+    clientRepo.create.mockResolvedValue({
+      id: 'c1',
+      curp: 'LOHE000512MGTRRA01',
+      firstName: 'Ana Maria',
+      lastNamePaternal: 'Lopez',
+      lastNameMaternal: 'Hernandez',
+      rfc: null,
+      birthDate: null,
+      street: null,
+      streetNumber: null,
+      colonia: null,
+      postalCode: null,
+      birthPlace: null,
+      state: null,
+      city: null,
+      ineDocumentId: '11111111-1111-4111-8111-111111111111',
+      addressProofDocumentId: '22222222-2222-4222-8222-222222222222',
+      bankAccount: {},
+      currentDistributorId: 'd1',
+      firstVoucherWithCurrentDistributorId: null,
+      isActive: true,
+      deletedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ClientsService,
+        { provide: ClientRepository, useValue: clientRepo },
+        { provide: VoucherRepository, useValue: voucherRepo },
+        { provide: DRIZZLE_READ, useValue: stub },
+        { provide: DocumentsService, useValue: documentsService },
+      ],
+    }).compile();
+    const svc = module.get(ClientsService);
+    await svc.create(requestUserFactory({ role: 'DISTRIBUIDOR' }), {
+      ...validDto,
+      ineDocumentId: '11111111-1111-4111-8111-111111111111',
+      addressProofDocumentId: '22222222-2222-4222-8222-222222222222',
+    });
+    expect(clientRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ineDocumentId: '11111111-1111-4111-8111-111111111111',
+        addressProofDocumentId: '22222222-2222-4222-8222-222222222222',
+      }),
+    );
   });
 });

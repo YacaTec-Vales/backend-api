@@ -37,6 +37,12 @@ import {
   FindVoucherResponseDto,
   ClientSummaryDto,
 } from './dto/find-voucher-response.dto';
+import type { ListVouchersQueryDto } from './dto/list-vouchers.dto';
+import type { ListVouchersResponseDto } from './dto/list-vouchers-response.dto';
+import type {
+  ReportClientDiscrepancyDto,
+  ReportClientDiscrepancyResponseDto,
+} from './dto/report-client-discrepancy.dto';
 import { toVoucherResponseDto } from '../shared/mappers';
 import { DocumentsService } from '../documents/documents.service';
 
@@ -183,6 +189,39 @@ export class CashierService {
     this.logger.log(`cashier.findVoucher folio=${folio} actor=${actor.id}`);
 
     return response;
+  }
+
+  /**
+   * Lista los vales pertenecientes a la sucursal de la cajera,
+   * opcionalmente filtrados por tipo y estado.
+   *
+   * @param actor - Usuario autenticado (CAJERO).
+   * @param dto - Filtros de busqueda.
+   */
+  async listVouchers(
+    actor: RequestUser,
+    dto: ListVouchersQueryDto,
+  ): Promise<ListVouchersResponseDto> {
+    if (!actor.branchId) {
+      throw new ForbiddenException({
+        code: CASHIER_ERROR_CODES.USER_NO_BRANCH,
+        message: 'El usuario autenticado no tiene una sucursal asignada.',
+      });
+    }
+
+    const vouchers = await this.voucherRepo.listByBranch(actor.branchId, {
+      voucherType: dto.voucherType,
+      status: dto.status,
+      limit: dto.limit,
+    });
+
+    this.logger.log(
+      `cashier.listVouchers branch=${actor.branchId} actor=${actor.id} count=${vouchers.length}`,
+    );
+
+    return {
+      vouchers: vouchers.map(toVoucherResponseDto),
+    };
   }
 
   /**
@@ -349,5 +388,75 @@ export class CashierService {
     });
 
     return complaintId;
+  }
+
+  /**
+   * Reporta una discrepancia en los datos del cliente (nombre, CLABE, etc.)
+   * al intentar feriar un vale. Levanta una autorizacion de tipo MODIFICACION_CLIENTE.
+   */
+  async reportClientDiscrepancy(
+    actor: RequestUser,
+    folio: string,
+    dto: ReportClientDiscrepancyDto,
+  ): Promise<ReportClientDiscrepancyResponseDto> {
+    if (!actor.branchId) {
+      throw new ForbiddenException({
+        code: CASHIER_ERROR_CODES.USER_NO_BRANCH,
+        message: 'El usuario autenticado no tiene una sucursal asignada.',
+      });
+    }
+
+    const voucher = await this.voucherRepo.findByFolio(folio);
+    if (!voucher) {
+      throw new NotFoundException({
+        code: CASHIER_ERROR_CODES.VOUCHER_NOT_FOUND,
+        message: 'El vale no existe.',
+        details: { folio },
+      });
+    }
+
+    if (voucher.status !== 'ACTIVO') {
+      throw new ConflictException({
+        code: CASHIER_ERROR_CODES.VOUCHER_NOT_ACTIVE,
+        message: 'El vale no esta activo, no se puede proceder.',
+        details: { folio, currentStatus: voucher.status },
+      });
+    }
+
+    const distributor = await this.distributorRepo.findById(
+      voucher.distributorId,
+    );
+    if (!distributor || distributor.branchId !== actor.branchId) {
+      throw new ForbiddenException({
+        code: CASHIER_ERROR_CODES.BRANCH_MISMATCH,
+        message: 'El cajero no pertenece a la sucursal del vale.',
+      });
+    }
+
+    const affectedEntity = {
+      clientId: voucher.clientId,
+      voucherId: voucher.id,
+      discrepancyData: dto.discrepancyData ?? {},
+    };
+
+    const insertSql = `
+      INSERT INTO app.authorization
+        (authorization_type, requester_id, affected_entity, justification, status, is_active, created_at, updated_at)
+      VALUES ($1, $2, $3, $4, 'PENDIENTE', true, NOW(), NOW())
+      RETURNING id
+    `;
+    const rows = await this.voucherRepo.rawQuery(insertSql, [
+      'MODIFICACION_CLIENTE',
+      actor.id,
+      JSON.stringify(affectedEntity),
+      dto.discrepancyDescription,
+    ]);
+    const authorizationId = (rows[0] as { id: string }).id;
+
+    this.logger.log(
+      `cashier.reportClientDiscrepancy folio=${folio} authorizationId=${authorizationId} actor=${actor.id}`,
+    );
+
+    return { authorizationId };
   }
 }

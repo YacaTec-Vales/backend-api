@@ -4,9 +4,12 @@
  * Mide la duracion de cada peticion con `Date.now()` y registra una
  * linea estructurada en el logger `HTTP` con el formato:
  *
- * `METHOD ORIGINAL_URL STATUS_CODE elapsedMs user=X session=Y device=Z origin=O ip=I realIp=R ua="..."`
+ * `server=ID METHOD ORIGINAL_URL STATUS_CODE elapsedMs user=X session=Y device=Z origin=O ip=I realIp=R ua="..."`
  *
  * Campos clave para auditoria y operacion:
+ *  - `server`: `SERVER_ID` del proceso (app-02/app-03 en staging,
+ *    `unknown` en dev). Permite correlacionar logs con la instancia
+ *    backend que atendio la peticion.
  *  - `user`: UUID del usuario autenticado (del JwtAuthGuard), o "-" si anonimo.
  *  - `session`: UUID de la sesion (refresh token) del usuario.
  *  - `device`: 'Tecu' | 'Calipx' | 'Poch' | 'unknown' (header `x-client-app`).
@@ -50,6 +53,13 @@ interface RequestUser {
 @Injectable()
 export class RequestLoggingInterceptor implements NestInterceptor {
   private readonly logger = new Logger('HTTP');
+  /**
+   * Identificador del proceso backend. Se lee una sola vez al
+   * cargar el modulo (el valor de `process.env.SERVER_ID` es fijo
+   * durante la vida del proceso). Default `'unknown'` para dev/test
+   * donde no se setea.
+   */
+  private readonly serverId: string = process.env.SERVER_ID ?? 'unknown';
 
   /**
    * Punto de entrada del interceptor. Captura el timestamp antes
@@ -67,6 +77,14 @@ export class RequestLoggingInterceptor implements NestInterceptor {
     const startMs = Date.now();
     const ctx = contextFromRequest(request);
 
+    // Expone el `SERVER_ID` en cada respuesta para que el frontend
+    // pueda ver que instancia del backend atendio la peticion (util
+    // para debug de routing, especialmente con VPN->app-03 dedicado).
+    // Solo si la cabecera no fue ya fijada por nginx/proxy.
+    if (!response.getHeader('X-Server-Id')) {
+      response.setHeader('X-Server-Id', this.serverId);
+    }
+
     return next.handle().pipe(
       tap({
         next: () => this.logSuccess(request, response, startMs, ctx),
@@ -76,8 +94,8 @@ export class RequestLoggingInterceptor implements NestInterceptor {
   }
 
   /**
-   * Log exitoso. Formato: METHOD URL STATUS elapsedMs user=X session=Y
-   * device=Z origin=O ip=I realIp=R ua="..."
+   * Log exitoso. Formato: `server=ID METHOD URL STATUS elapsedMs user=X
+   * session=Y device=Z origin=O ip=I realIp=R ua="..."`
    */
   private logSuccess(
     request: Request & { user?: RequestUser },
@@ -88,7 +106,8 @@ export class RequestLoggingInterceptor implements NestInterceptor {
     const elapsedMs = Date.now() - startMs;
     const user = request.user;
     this.logger.log(
-      `${request.method} ${request.originalUrl} ${response.statusCode} ` +
+      `server=${this.serverId} ` +
+        `${request.method} ${request.originalUrl} ${response.statusCode} ` +
         `${elapsedMs.toFixed(1)}ms ` +
         `user=${user?.id ?? '-'} session=${user?.sessionId ?? '-'} ` +
         `device=${ctx.device} origin=${ctx.origin} ` +
@@ -98,8 +117,8 @@ export class RequestLoggingInterceptor implements NestInterceptor {
   }
 
   /**
-   * Log de error. Formato: METHOD URL ERR elapsedMs user=X device=Z
-   * origin=O code=C msg="..."
+   * Log de error. Formato: `server=ID METHOD URL ERR elapsedMs user=X
+   * device=Z origin=O code=C msg="..."`
    */
   private logError(
     request: Request & { user?: RequestUser },
@@ -111,7 +130,8 @@ export class RequestLoggingInterceptor implements NestInterceptor {
     const user = request.user;
     const e = err as { code?: string; message?: string };
     this.logger.error(
-      `${request.method} ${request.originalUrl} ERR ${elapsedMs.toFixed(1)}ms ` +
+      `server=${this.serverId} ` +
+        `${request.method} ${request.originalUrl} ERR ${elapsedMs.toFixed(1)}ms ` +
         `user=${user?.id ?? '-'} device=${ctx.device} origin=${ctx.origin} ` +
         `code=${e?.code ?? '-'} msg="${e?.message ?? String(err)}"`,
     );

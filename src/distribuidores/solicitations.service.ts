@@ -58,6 +58,7 @@ import { BranchRepository } from '../database/repositories/branch.repository';
 import { UserRepository } from '../database/repositories/user.repository';
 import { DistributorRepository } from '../database/repositories/distributor.repository';
 import { DRIZZLE_READ, type DrizzleRead } from '../database/drizzle.provider';
+import { DocumentsService } from '../documents/documents.service';
 import type { RequestUser } from '../shared/guards/auth.guards';
 import { SOLICITUD_ERROR_CODES } from './solicitations.errors';
 import { CreateSolicitationDto } from './dto/create-solicitation.dto';
@@ -116,6 +117,7 @@ export class SolicitationsService {
     // de branch del actor vs. branch de la solicitud. Toda escritura
     // pasa por SolicitationRepository (DRIZZLE_WRITE).
     @Inject(DRIZZLE_READ) private readonly readDb: DrizzleRead,
+    private readonly documentsService: DocumentsService,
   ) {}
 
   /**
@@ -267,36 +269,47 @@ export class SolicitationsService {
       });
     }
 
-    const created = await this.auditRepo.runWithContext(
-      {
-        actorUserId: actor.id,
-        action: 'SOLICITATION.CREATED',
-        metadata: {
-          branchId: dto.branchId,
-          curp: dto.generalData.curp,
-          correo: dto.generalData.correo,
-        },
-      },
-      async () =>
-        this.solicitationRepo.create({
-          coordinatorId: actor.id,
-          verifierId: null,
-          branchId: dto.branchId,
-          generalData: dto.generalData,
-          additionalData: dto.additionalData,
-          verificationPhotos: [],
-          verdict: 'PENDIENTE',
-          verifierComments: null,
-          verifiedAt: null,
-          status: 'EN_VERIFICACION',
-          distributorId: null,
-          rejectionReason: null,
-          solicitationStatusAt: new Date(),
-          deletedAt: null,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        }),
-    );
+    // Validar el documento de la INE si llego en generalData.
+    // El coordinador sube la INE via POST /uploads y manda el id
+    // para que quede registro en general_data.ine_document_id.
+    if (
+      typeof dto.generalData.ine_document_id === 'string' &&
+      dto.generalData.ine_document_id.length > 0
+    ) {
+      try {
+        await this.documentsService.findById(dto.generalData.ine_document_id);
+      } catch (err) {
+        this.logger.warn(
+          `ine_document_id invalido en alta de solicitud: ${dto.generalData.ine_document_id} (${(err as Error).message})`,
+        );
+        throw new BadRequestException({
+          code: SOLICITUD_ERROR_CODES.INE_DOCUMENT_NOT_FOUND,
+          message: 'El documento de la INE no existe o esta eliminado.',
+          details: {
+            ineDocumentId: dto.generalData.ine_document_id,
+          },
+        });
+      }
+    }
+
+    const created = await this.solicitationRepo.create({
+      coordinatorId: actor.id,
+      verifierId: null,
+      branchId: dto.branchId,
+      generalData: dto.generalData,
+      additionalData: dto.additionalData,
+      verificationPhotos: [],
+      verdict: 'PENDIENTE',
+      verifierComments: null,
+      verifiedAt: null,
+      status: 'EN_VERIFICACION',
+      distributorId: null,
+      rejectionReason: null,
+      solicitationStatusAt: new Date(),
+      deletedAt: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
     this.logger.log(
       `Solicitud creada: id=${created.id} coord=${actor.id} branch=${dto.branchId}`,
     );
@@ -376,9 +389,16 @@ export class SolicitationsService {
    * En ambos casos se actualizan `verdict`, `verifierComments`,
    * `verificationPhotos` y `verifiedAt`.
    *
+   * Los IDs de documento se validan contra `app.document` (el
+   * verificador subio cada foto via `POST /uploads/verification/:id`
+   * que inyecto `metadata.solicitationId` automaticamente). Se
+   * persisten como array de UUIDs en `verificationPhotos` (JSONB).
+   * Esto evita las URLs firmadas que morian a los 15 min y elimina
+   * el hack nip.io del frontend.
+   *
    * @param actor - Verificador autenticado.
    * @param solicitationId - UUID de la solicitud.
-   * @param dto - dictamen + kill_switch + fotos + comentarios.
+   * @param dto - dictamen + kill_switch + ids de fotos + comentarios.
    * @returns DTO publico actualizado.
    */
   async verify(
@@ -419,49 +439,50 @@ export class SolicitationsService {
         details: { currentVerifierId: current.verifierId },
       });
     }
+
+    // Validar que cada id de documento exista y este activo. Si
+    // alguno falla, devolvemos 400 antes de tocar la BD.
+    const documentIds: string[] = [];
+    for (const [field, value] of [
+      ['ineDocumentId', dto.ineDocumentId],
+      ['addressProofDocumentId', dto.addressProofDocumentId],
+      ['fachadaDocumentId', dto.fachadaDocumentId],
+    ] as const) {
+      if (value) {
+        try {
+          await this.documentsService.findById(value);
+          documentIds.push(value);
+        } catch (err) {
+          this.logger.warn(
+            `${field} invalido en dictamen: ${value} (${(err as Error).message})`,
+          );
+          throw new BadRequestException({
+            code: SOLICITUD_ERROR_CODES.INE_DOCUMENT_NOT_FOUND,
+            message: `El documento (${field}) no existe o esta eliminado.`,
+            details: { [field]: value },
+          });
+        }
+      }
+    }
+
     const killSwitchClose =
       dto.dictamen === 'NO_CUMPLE' && dto.kill_switch === true;
     const nextStatus: 'DICTAMINADA' | 'RECHAZADA' = killSwitchClose
       ? 'RECHAZADA'
       : 'DICTAMINADA';
-    const updated = await this.auditRepo.runWithContext(
-      {
-        actorUserId: actor.id,
-        action: 'SOLICITATION.VERIFIED',
-        metadata: {
-          solicitationId,
-          branchId: current.branchId,
-          dictamen: dto.dictamen,
-          killSwitch: dto.kill_switch,
-          nextStatus,
-          photosCount: dto.fotos_verificacion?.length ?? 0,
-        },
-      },
-      async () =>
-        this.solicitationRepo.update(solicitationId, {
-          verifierId: actor.id,
-          verdict: dto.dictamen,
-          verifierComments: dto.comentarios_verificador ?? null,
-          verificationPhotos: dto.fotos_verificacion ?? [],
-          verifiedAt: new Date(),
-          rejectionReason: killSwitchClose
-            ? (dto.comentarios_verificador ?? 'kill switch: dictamen NO_CUMPLE')
-            : null,
-        }),
-    );
-    const statusUpdated = await this.auditRepo.runWithContext(
-      {
-        actorUserId: actor.id,
-        action: 'SOLICITATION.VERIFIED',
-        metadata: {
-          solicitationId,
-          branchId: current.branchId,
-          nextStatus,
-          fromStatus: current.status,
-        },
-      },
-      async () =>
-        this.solicitationRepo.updateStatus(solicitationId, nextStatus),
+    const updated = await this.solicitationRepo.update(solicitationId, {
+      verifierId: actor.id,
+      verdict: dto.dictamen,
+      verifierComments: dto.comentarios_verificador ?? null,
+      verificationPhotos: documentIds,
+      verifiedAt: new Date(),
+      rejectionReason: killSwitchClose
+        ? (dto.comentarios_verificador ?? 'kill switch: dictamen NO_CUMPLE')
+        : null,
+    });
+    const statusUpdated = await this.solicitationRepo.updateStatus(
+      solicitationId,
+      nextStatus,
     );
     this.logger.log(
       `Solicitud verificada: id=${solicitationId} dictamen=${dto.dictamen} ` +

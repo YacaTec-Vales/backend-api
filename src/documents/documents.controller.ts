@@ -2,8 +2,16 @@
  * @fileoverview Controlador del modulo `documents`.
  *
  * Endpoints (prefijo global `api/v1`):
- *  - `POST /uploads`  subir un archivo (multipart/form-data).
- *  - `GET /uploads/:id` obtener metadata + URL firmada de un documento.
+ *  - `POST  /uploads`                          subir un archivo (multipart/form-data).
+ *  - `POST  /uploads/verification/:solicitationId`  subir foto asociada a una verificacion.
+ *  - `GET   /uploads/:id`                       metadata + URL firmada de un documento.
+ *  - `GET   /uploads`                           lista paginada de todos los documentos.
+ *  - `GET   /uploads/client/:clientId`          documentos de un cliente.
+ *  - `GET   /uploads/verification/:solicitationId`  documentos de una verificacion.
+ *  - `GET   /uploads/type/:documentType`        documentos por tipo.
+ *
+ * Guia de consumo para frontends: ver `docs/uploads-api-frontends.md`.
+ * Detalle de URLs firmadas y storage: `docs/storage-presigned-urls.md`.
  *
  * @module documents
  * @author Equipo de desarrollo Mis Vales
@@ -45,28 +53,29 @@ import {
 } from '../shared/decorators/api-envelope-response.decorator';
 import { JwtAuthGuard } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
-import { VpnOriginGuard } from '../shared/guards/vpn-origin.guard';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';
-import { RequireVpnOrigin } from '../shared/decorators/require-vpn-origin.decorator';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
 import type { RequestUser } from '../shared/guards/auth.guards';
 
 @ApiTags('Documents')
 @ApiBearerAuth('bearer')
 @Controller('uploads')
-@UseGuards(JwtAuthGuard, PermissionsGuard, VpnOriginGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class DocumentsController {
   constructor(private readonly documentsService: DocumentsService) {}
 
   @Post()
-  @RequireVpnOrigin('Tecu')
   @RequirePermissions('document.upload')
   @UseInterceptors(FileInterceptor('file'))
   @ApiOperation({
     summary: 'Subir un archivo al storage',
     description:
       'Sube un archivo al bucket (MinIO/DO Spaces) y registra la metadata ' +
-      'en app.document. Devuelve id, publicUrl, sha256.',
+      'en app.document. Devuelve id, publicUrl, sha256. ' +
+      '**Acceso libre** desde cualquier frontend (Tecu/Calipx/Poch): ' +
+      'gerente sube desde VPN/Tecu; cajera/coord/verif suben desde ' +
+      'calpix.xx; distribuidor sube desde poch.xx. La firma de upload ' +
+      'queda registrada en audit_log con user_id y metadata.',
   })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -222,7 +231,6 @@ export class DocumentsController {
   }
 
   @Post('verification/:solicitationId')
-  @RequireVpnOrigin('Tecu')
   @RequirePermissions('document.upload')
   @UseInterceptors(FileInterceptor('file'))
   @ApiOperation({
