@@ -157,6 +157,31 @@ export function configureApplication(
 
     const document = SwaggerModule.createDocument(app, swaggerConfig);
 
+    // FIX cache CDN: la spec OpenAPI y la UI Scalar no deben quedar cacheadas
+    // en CDNs (Cloudflare cachea 4h por defecto si la respuesta no trae
+    // Cache-Control explicito, lo que retrasa la visibilidad de cada merge a
+    // develop en `apiv2.taquizaschavez.com.mx/api/v1/docs`). Registramos el
+    // handler de no-cache ANTES de Swagger/apiReference para que Nest +
+    // Express lo apliquen en orden de middleware (Express corre los handlers
+    // en orden de registro, asi que si va DESPUES del que ya respondio,
+    // nunca se ejecuta).
+    const docsNoCacheHandler: import('express').RequestHandler = (
+      _req,
+      res,
+      next,
+    ) => {
+      res.setHeader(
+        'Cache-Control',
+        'no-store, no-cache, must-revalidate, private',
+      );
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+      next();
+    };
+    app.use(`/${appCfg.apiPrefix}/docs`, docsNoCacheHandler);
+    app.use(`/${appCfg.apiPrefix}/docs-json`, docsNoCacheHandler);
+    app.use(`/${appCfg.apiPrefix}/docs-json.yaml`, docsNoCacheHandler);
+
     SwaggerModule.setup('docs', app, document, {
       useGlobalPrefix: true,
       ui: false,
