@@ -5,6 +5,9 @@
  *  - `GET    /products`        listar catalog (cualquier actor con `catalog.read`).
  *  - `GET    /products/:id`    detalle.
  *  - `POST   /products`        alta (solo `catalog.write`: GERENTE_GENERAL).
+ *  - `PATCH  /products/:id`    actualizacion parcial (solo `catalog.update`:
+ *                              GERENTE_GENERAL). Acepta todos los campos
+ *                              del `CreateProductDto` como opcionales + `isActive`.
  *  - `DELETE /products/:id`    desactivar (soft delete) un producto del
  *                              catalogo (`catalog.delete`: GERENTE_GENERAL
  *                              y GERENTE_SUCURSAL).
@@ -27,12 +30,14 @@ import {
   NotFoundException,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiBadRequestResponse,
   ApiConflictResponse,
   ApiForbiddenResponse,
   ApiNoContentResponse,
@@ -44,6 +49,7 @@ import {
 } from '@nestjs/swagger';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
+import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductResponseDto } from './dto/product-response.dto';
 import {
   ApiEnvelopeCreatedResponse,
@@ -206,6 +212,91 @@ export class ProductsController {
   })
   create(@Body() dto: CreateProductDto): Promise<ProductResponseDto> {
     return this.productsService.create(dto);
+  }
+
+  /**
+   * @api {patch} /products/:id Actualizacion parcial de producto
+   * @apiName UpdateProduct
+   * @apiGroup Catalogs
+   * @apiVersion 1.0.0
+   * @apiPermission catalog.update (GERENTE_GENERAL)
+   *
+   * PATCH parcial: solo se persisten los campos enviados en el body.
+   * Pensado para corregir errores de captura o ajustar condiciones
+   * comerciales (montos, comision, interes, activo/inactivo) sin
+   * necesidad de recrear el registro.
+   *
+   * Campos aceptados (todos opcionales, mismos tipos que `POST /products`):
+   *  - `code` (string, formato X/Y)
+   *  - `variant` ('NORMAL' | 'PLUS')
+   *  - `costCents` (int, multiplo de 10000)
+   *  - `totalPeriods` (int, 1..60)
+   *  - `commissionBps` (int, >= 0)
+   *  - `insuranceCents` (int, >= 0)
+   *  - `interestPerPeriodBps` (int, >= 0)
+   *  - `isActive` (bool) - baja logica sin eliminar la fila
+   *
+   * Restricciones:
+   *  - Solo accesible desde VPN (`@RequireVpnOrigin('Tecu')`) con
+   *    permiso `catalog.update` (asignado a GERENTE_GENERAL por
+   *    `seed-catalog-permissions.ts`).
+   *  - 404 `PRODUCT.NOT_FOUND` si el id no existe o esta soft-deleted.
+   *  - 409 `PRODUCT.ALREADY_EXISTS` si se cambia `code`+`variant` y
+   *    la combinacion ya pertenece a OTRO producto activo.
+   *  - 400 `PRODUCT.CHECK_VIOLATION` si algun campo viola un CHECK
+   *    de la BD (cubierto por class-validator en la mayoria de casos).
+   *
+   * Note: para dar de baja un producto que tiene vales activos en
+   * circulacion, usar `DELETE /products/:id` (que si enforce esa
+   * validacion con 409 `PRODUCT.IN_USE_BY_ACTIVE_VOUCHERS`).
+   */
+  @Patch(':id')
+  @RequireVpnOrigin('Tecu')
+  @RequirePermissions('catalog.update')
+  @ApiOperation({
+    summary: 'Actualizar producto (PATCH parcial)',
+    description:
+      'Actualiza parcialmente un producto del catalogo. Todos los ' +
+      'campos son opcionales; solo se persisten los enviados. ' +
+      'Acepta `isActive` para baja logica sin eliminar el registro. ' +
+      'Solo accesible desde VPN Tecu para usuarios con `catalog.update` ' +
+      '(GERENTE_GENERAL). Devuelve 409 si `code`+`variant` ya ' +
+      'pertenecen a otro producto.',
+  })
+  @ApiEnvelopeOkResponse({
+    message: 'Producto actualizado correctamente',
+    type: ProductResponseDto,
+  })
+  @ApiNotFoundResponse({
+    description: 'PRODUCT.NOT_FOUND (id no existe o esta soft-deleted).',
+    type: ErrorResponseDto,
+  })
+  @ApiConflictResponse({
+    description:
+      'PRODUCT.ALREADY_EXISTS (code+variant ya pertenece a otro producto activo).',
+    type: ErrorResponseDto,
+  })
+  @ApiBadRequestResponse({
+    description:
+      'PRODUCT.CHECK_VIOLATION (un campo viola un CHECK de BD, ej. ' +
+      'costCents no multiplo de 10000 o totalPeriods fuera de 1..60).',
+    type: ErrorResponseDto,
+  })
+  @ApiUnauthorizedResponse({
+    description: 'AUTH.* — token invalido, sesion revocada o expirada.',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description:
+      'AUTH.PERMISSION_DENIED (sin catalog.update) o VPN_ORIGIN_REQUIRED ' +
+      '(peticion no viene de VPN+Tecu).',
+    type: ErrorResponseDto,
+  })
+  update(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: UpdateProductDto,
+  ): Promise<ProductResponseDto> {
+    return this.productsService.update(id, dto);
   }
 
   /**
