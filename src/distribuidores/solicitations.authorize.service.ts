@@ -51,7 +51,7 @@ import { ConfigService } from '@nestjs/config';
 import { AuthorizeSolicitationDto } from './dto/authorize-solicitation.dto';
 import { RejectSolicitationDto } from './dto/reject-solicitation.dto';
 import { SolicitationResponseDto } from '../branches/dto/solicitation-response.dto';
-import { toSolicitationResponseDtoFromEntity } from '../shared/mappers/solicitation.mapper';
+import { SolicitationResponseMapper } from '../shared/mappers/solicitation.mapper';
 import { SOLICITUD_ERROR_CODES } from './solicitations.errors';
 
 /**
@@ -87,6 +87,7 @@ export class SolicitationsAuthorizeService {
     private readonly passwordService: PasswordService,
     private readonly mailService: MailService,
     private readonly config: ConfigService,
+    private readonly mapper: SolicitationResponseMapper,
   ) {}
 
   /**
@@ -256,9 +257,9 @@ export class SolicitationsAuthorizeService {
       );
       const solRow = solResult.rows[0];
       if (solRow) {
-        updatedSolicitation = toSolicitationResponseDtoFromEntity(
+        updatedSolicitation = await this.mapper.fromEntity(
           solRow as unknown as Parameters<
-            typeof toSolicitationResponseDtoFromEntity
+            SolicitationResponseMapper['fromEntity']
           >[0],
         );
       }
@@ -384,9 +385,7 @@ export class SolicitationsAuthorizeService {
       `Solicitud rechazada: id=${solicitationId} actor=${actor.id} ` +
         `razon=${dto.razon.slice(0, 80)}`,
     );
-    return toSolicitationResponseDtoFromEntity(
-      statusUpdated ?? updated ?? current,
-    );
+    return this.mapper.fromEntity(statusUpdated ?? updated ?? current);
   }
 
   // ===========================================================================

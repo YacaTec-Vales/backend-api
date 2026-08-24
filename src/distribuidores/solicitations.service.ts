@@ -64,7 +64,7 @@ import { CreateSolicitationDto } from './dto/create-solicitation.dto';
 import { UpdateSolicitationDto } from './dto/update-solicitation.dto';
 import { VerifySolicitationDto } from './dto/verify-solicitation.dto';
 import { SolicitationResponseDto } from '../branches/dto/solicitation-response.dto';
-import { toSolicitationResponseDtoFromEntity } from '../shared/mappers/solicitation.mapper';
+import { SolicitationResponseMapper } from '../shared/mappers/solicitation.mapper';
 
 /**
  * Lanza `FORBIDDEN` cuando el actor (Coordinador o Verificador)
@@ -116,6 +116,7 @@ export class SolicitationsService {
     // pasa por SolicitationRepository (DRIZZLE_WRITE).
     @Inject(DRIZZLE_READ) private readonly readDb: DrizzleRead,
     private readonly documentsService: DocumentsService,
+    private readonly mapper: SolicitationResponseMapper,
   ) {}
 
   /**
@@ -311,7 +312,7 @@ export class SolicitationsService {
     this.logger.log(
       `Solicitud creada: id=${created.id} coord=${actor.id} branch=${dto.branchId}`,
     );
-    return toSolicitationResponseDtoFromEntity(created);
+    return this.mapper.fromEntity(created);
   }
 
   /**
@@ -362,7 +363,7 @@ export class SolicitationsService {
       actor.id,
     );
     this.logger.log(`Solicitud tomada: id=${solicitationId} verif=${actor.id}`);
-    return toSolicitationResponseDtoFromEntity(updated ?? current);
+    return this.mapper.fromEntity(updated ?? current);
   }
 
   /**
@@ -478,9 +479,7 @@ export class SolicitationsService {
       `Solicitud verificada: id=${solicitationId} dictamen=${dto.dictamen} ` +
         `kill_switch=${dto.kill_switch} next=${nextStatus}`,
     );
-    return toSolicitationResponseDtoFromEntity(
-      statusUpdated ?? updated ?? current,
-    );
+    return this.mapper.fromEntity(statusUpdated ?? updated ?? current);
   }
 
   /**
@@ -627,7 +626,7 @@ export class SolicitationsService {
       };
     }
     if (Object.keys(patch).length === 0) {
-      return toSolicitationResponseDtoFromEntity(current);
+      return this.mapper.fromEntity(current);
     }
     const updated = await this.solicitationRepo.update(solicitationId, patch);
     if (current.status === 'DICTAMINADA') {
@@ -639,12 +638,10 @@ export class SolicitationsService {
         `Solicitud corregida por coord y vuelta a EN_VERIFICACION: ` +
           `id=${solicitationId}`,
       );
-      return toSolicitationResponseDtoFromEntity(
-        statusBack ?? updated ?? current,
-      );
+      return this.mapper.fromEntity(statusBack ?? updated ?? current);
     }
     this.logger.log(`Solicitud editada por coord: id=${solicitationId}`);
-    return toSolicitationResponseDtoFromEntity(updated ?? current);
+    return this.mapper.fromEntity(updated ?? current);
   }
 
   /**
@@ -714,6 +711,6 @@ export class SolicitationsService {
         message: 'la solicitud pertenece a otra sucursal',
       });
     }
-    return toSolicitationResponseDtoFromEntity(current);
+    return this.mapper.fromEntity(current);
   }
 }

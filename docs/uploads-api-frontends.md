@@ -162,3 +162,111 @@ function asDocId(entry: string): boolean {
 8. Cualquier frontend puede re-mostrar las fotos llamando a
    `GET /uploads/verification/:solicitudId` (URLs firmadas frescas
    cada vez)
+
+## Flujo Gerente General: ver fotos en la bandeja de aprobaciones
+
+El Gerente General (y el Gerente de Sucursal) revisan solicitudes
+`DICTAMINADAS` desde su bandeja. Para ver las fotos del verificador, **no
+necesitan llamar a `GET /uploads/:id` por cada UUID**: el backend ya resuelve
+los UUIDs de `app.solicitation.verification_photos` y devuelve URLs firmadas
+frescas (TTL 15 min) en cada respuesta de `Solicitation`.
+
+### Permisos requeridos
+
+| Endpoint | Permiso | Roles asignados (seed) |
+| --- | --- | --- |
+| `GET /api/v1/solicitudes` | `distribuidor.solicitud.read` | GERENTE_GENERAL, GERENTE_SUCURSAL, COORDINADOR, VERIFICADOR, ADMINISTRADOR |
+| `GET /api/v1/solicitudes/:id` | `distribuidor.solicitud.read` | mismos |
+| `GET /api/v1/uploads/verification/:solicitationId` | `document.read` | GERENTE_GENERAL, GERENTE_SUCURSAL, COORDINADOR, VERIFICADOR, DISTRIBUIDOR, CAJERO |
+
+> **GERENTE_GENERAL tiene acceso a ambos** sin excepciones — verificado en
+> `src/scripts/seed-document-upload-permissions.ts`.
+
+### Respuesta real
+
+```json
+GET /api/v1/solicitudes/<UUID>
+Authorization: Bearer <token GG>
+{
+  "message": "Solicitud consultada correctamente",
+  "data": {
+    "id": "a0000000-0000-4000-8000-000000000001",
+    "status": "DICTAMINADA",
+    "verifierComments": "Cumple con todos los requisitos",
+    "verificationPhotos": [
+      "http://localhost:9000/misvales-storage/documents/photo_verification/550e8400-e29b-41d4-a716-446655440000.png?X-Amz-Signature=...",
+      "http://localhost:9000/misvales-storage/documents/photo_verification/660e8400-e29b-41d4-a716-446655440001.png?X-Amz-Signature=..."
+    ],
+    "generalData": { ... },
+    "additionalData": { ... }
+  }
+}
+```
+
+El campo `verificationPhotos` siempre viene como **array de URLs listas para
+`<img [src]="...">`** — el mapper `SolicitationResponseMapper` hace la
+resolución UUID→URL firmada en cada request.
+
+### Manejo de URLs expiradas (15 min)
+
+Si el Gerente abre la solicitud, ve las fotos, espera más de 15 minutos y
+las URLs mueren (`403 SignatureDoesNotMatch`):
+
+**Opción A (recomendada):** re-lanzar la consulta a la solicitud.
+
+```ts
+this.solicitudService.getSolicitud(id).subscribe(sol => {
+  sol.verificationPhotos.forEach(url => { /* <img [src]="url"> */ });
+});
+```
+
+**Opción B:** pedir todas las fotos de la solicitud en una sola llamada.
+
+```ts
+this.documentService.getDocumentsByVerification(solicitationId).subscribe(docs => {
+  docs.forEach(d => { /* <img [src]="d.publicUrl"> */ });
+});
+```
+
+**Opción C (frontend):** handler `(error)` en el `<img>` que re-fetchea.
+
+```html
+<img [src]="photoUrl" (error)="refreshPhoto(i)">
+```
+
+### Compatibilidad legacy
+
+Si la BD tiene registros previos al 2026-08-23 con `verificationPhotos` que
+contienen URLs firmadas en lugar de UUIDs, el mapper las deja pasar tal cual.
+Si esa URL ya expiró, el frontend debe re-fetchear usando cualquiera de las
+opciones A/B/C.
+
+### Ejemplo Angular completo (gerente-general)
+
+```ts
+abrirModal(solicitud: Solicitud): void {
+  // El backend ya devuelve URLs frescas; no hace falta llamada extra
+  this.selectedItem = { ...solicitud, photos: solicitud.verificationPhotos };
+}
+
+onPhotoError(photoIndex: number): void {
+  // Fallback: re-fetch todo desde /uploads/verification
+  this.documentService.getDocumentsByVerification(this.selectedItem.id).subscribe(docs => {
+    this.selectedItem.photos = docs.map(d => d.publicUrl);
+  });
+}
+```
+
+```html
+<a *ngFor="let photoUrl of selectedItem.photos; let i = index" [href]="photoUrl" target="_blank">
+  <img [src]="photoUrl" (error)="onPhotoError(i)" loading="lazy" alt="Evidencia">
+</a>
+```
+
+### Documentación Swagger
+
+Todos los endpoints de `/api/v1/uploads/*` aparecen documentados en
+`/api/v1/docs` (Scalar UI) con sus responses (`@ApiEnvelopeOkResponse`,
+`@ApiUnauthorizedResponse`, `@ApiForbiddenResponse`, etc.) y el campo
+`verificationPhotos` del DTO `Solicitation` lleva la descripción completa
+del contrato (TTL, refresh, etc.).

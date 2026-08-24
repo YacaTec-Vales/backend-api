@@ -82,9 +82,21 @@ export class SolicitationResponseDto {
   additionalData!: Record<string, unknown>;
 
   @ApiProperty({
-    description: 'URLs de fotos tomadas por el Verificador.',
+    description:
+      'URLs firmadas (TTL 15 min) de las fotos tomadas por el Verificador. ' +
+      'La BD almacena UUIDs de `app.document` en `app.solicitation.verification_photos`; ' +
+      'el backend los resuelve contra `GET /uploads/:id` y firma una URL nueva en cada ' +
+      'respuesta. Si la imagen falla por URL expirada (15 min), el cliente debe ' +
+      're-lanzar la consulta (`GET /solicitudes/:id` o `GET /solicitudes`) para refrescar. ' +
+      'Para refrescar todas las URLs de una solicitud en una sola llamada, usar ' +
+      '`GET /uploads/verification/:solicitationId`.',
     type: 'array',
-    items: { type: 'string' },
+    items: {
+      type: 'string',
+      format: 'uri',
+      example:
+        'http://localhost:9000/misvales-storage/documents/photo_verification/550e8400-e29b-41d4-a716-446655440000.png?X-Amz-Signature=...',
+    },
   })
   verificationPhotos!: string[];
 
