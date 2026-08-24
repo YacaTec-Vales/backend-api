@@ -56,7 +56,7 @@ import { AuthorizeSolicitationDto } from './dto/authorize-solicitation.dto';
 import { RejectSolicitationDto } from './dto/reject-solicitation.dto';
 import { AuthorizeSolicitationResponseDto } from './dto/authorize-solicitation-response.dto';
 import { SolicitationResponseDto } from '../branches/dto/solicitation-response.dto';
-import { toSolicitationResponseDtoFromEntity } from '../shared/mappers/solicitation.mapper';
+import { SolicitationResponseMapper } from '../shared/mappers/solicitation.mapper';
 import {
   ApiEnvelopeCreatedResponse,
   ApiEnvelopeOkResponse,
@@ -87,6 +87,7 @@ export class SolicitationsController {
   constructor(
     private readonly solicitationsService: SolicitationsService,
     private readonly authorizeService: SolicitationsAuthorizeService,
+    private readonly mapper: SolicitationResponseMapper,
   ) {}
 
   // ===========================================================================
@@ -441,12 +442,11 @@ export class SolicitationsController {
     description: 'AUTH.PERMISSION_DENIED (sin distribuidor.solicitud.read).',
     type: ErrorResponseDto,
   })
-  list(@CurrentUser() actor: RequestUser): Promise<SolicitationResponseDto[]> {
-    return this.solicitationsService
-      .listInbox(actor)
-      .then((rows) =>
-        rows.map((row) => toSolicitationResponseDtoFromEntity(row)),
-      );
+  async list(
+    @CurrentUser() actor: RequestUser,
+  ): Promise<SolicitationResponseDto[]> {
+    const rows = await this.solicitationsService.listInbox(actor);
+    return Promise.all(rows.map((row) => this.mapper.fromEntity(row)));
   }
 
   /**

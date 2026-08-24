@@ -27,6 +27,7 @@ import {
 } from '@nestjs/common';
 import { SolicitationsService } from './solicitations.service';
 import { createSolicitationRepositoryMock } from '../../test/mocks/solicitation.repository.mock';
+import { SolicitationResponseMapper } from '../shared/mappers/solicitation.mapper';
 import type { SolicitationEntity } from '../database/schema';
 
 // ===========================================================================
@@ -130,8 +131,12 @@ function buildService() {
   const userRepository = buildUserRepositoryMock();
   const distributorRepo = buildDistributorRepositoryMock();
   const documentsService = {
-    findById: jest.fn().mockResolvedValue({ id: 'doc-ok' }),
+    findById: jest.fn().mockResolvedValue({
+      id: 'doc-ok',
+      publicUrl: 'https://signed.example/doc-ok',
+    }),
   };
+  const mapper = new SolicitationResponseMapper(documentsService as never);
   const service = new SolicitationsService(
     solicitationRepo,
     branchRepo as never,
@@ -139,6 +144,7 @@ function buildService() {
     distributorRepo as never,
     readDb as never,
     documentsService as never,
+    mapper,
   );
   return {
     service,
@@ -148,6 +154,7 @@ function buildService() {
     distributorRepo,
     readDb,
     documentsService,
+    mapper,
   };
 }
 
