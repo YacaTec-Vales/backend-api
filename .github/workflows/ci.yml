@@ -112,6 +112,19 @@ jobs:
       MFA_SECRET_KEY: ci-mfa-secret-32-chars-min-1234567890
       NODE_ENV: test
       SMTP_HOST: ''
+      # Variables STORAGE_* requeridas por envValidationSchema
+      # (`src/config/env.validation.ts`). Apuntan a valores
+      # placeholder validos (Joi.uri) para que el bootstrap
+      # no rechace el modulo; los tests de integration no
+      # invocan endpoints de storage.
+      STORAGE_ENDPOINT: http://localhost:9000
+      STORAGE_REGION: us-east-1
+      STORAGE_BUCKET: vales-yacatec-test
+      STORAGE_ACCESS_KEY_ID: ci-access-key
+      STORAGE_SECRET_ACCESS_KEY: ci-secret-key
+      STORAGE_FORCE_PATH_STYLE: 'true'
+      STORAGE_PUBLIC_BASE_URL: http://localhost:9000/vales-yacatec-test
+      STORAGE_PUBLIC_ENDPOINT: http://localhost:9000
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -124,13 +137,19 @@ jobs:
       - name: Aplicar schema (placeholder)
         run: echo "Las migraciones las aplica el equipo de infraestructura. Aplicar manualmente antes de habilitar este job."
       - name: Integration tests
-        run: npm run test:integration
+        run: npm run test:integration -- --forceExit
         continue-on-error: true
 
   e2e:
     name: E2E tests
     needs: [lint, quality]
     runs-on: ubuntu-latest
+    # Limite defensivo para evitar el caso conocido de e2e
+    # que se quedaba colgado ~5h por handles abiertos de
+    # ALS/Drizzle. 20 min alcanza para cualquier suite;
+    # si se cuelga, el job termina con `cancelled` y el
+    # agregador `ci-required` lo trata como fallo limpio.
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:16
@@ -160,6 +179,19 @@ jobs:
       MFA_SECRET_KEY: ci-mfa-secret-32-chars-min-1234567890
       NODE_ENV: test
       SMTP_HOST: ''
+      # Variables STORAGE_* requeridas por envValidationSchema.
+      # Los e2e actuales no invocan endpoints de storage, asi
+      # que cualquier URL valida (Joi.uri) alcanza; cualquier
+      # carga real apuntara al MinIO del runner cuando se
+      # agreguen tests de upload.
+      STORAGE_ENDPOINT: http://localhost:9000
+      STORAGE_REGION: us-east-1
+      STORAGE_BUCKET: vales-yacatec-test
+      STORAGE_ACCESS_KEY_ID: ci-access-key
+      STORAGE_SECRET_ACCESS_KEY: ci-secret-key
+      STORAGE_FORCE_PATH_STYLE: 'true'
+      STORAGE_PUBLIC_BASE_URL: http://localhost:9000/vales-yacatec-test
+      STORAGE_PUBLIC_ENDPOINT: http://localhost:9000
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -170,7 +202,12 @@ jobs:
       - name: Instalar dependencias
         run: npm ci
       - name: E2E tests
-        run: npm run test:e2e
+        # --forceExit: evita el cuelgue de Jest por handles
+        # abiertos (pool Drizzle / ALS de auditoria) que
+        # antes dejaba el job corriendo hasta el timeout
+        # del runner (~6h) y disparaba el bug que bloqueaba
+        # la PR del feature.
+        run: npm run test:e2e -- --forceExit
         continue-on-error: true
 
   ci-required:

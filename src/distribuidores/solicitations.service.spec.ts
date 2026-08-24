@@ -29,6 +29,7 @@ import { SolicitationsService } from './solicitations.service';
 import { createSolicitationRepositoryMock } from '../../test/mocks/solicitation.repository.mock';
 import { SolicitationResponseMapper } from '../shared/mappers/solicitation.mapper';
 import type { SolicitationEntity } from '../database/schema';
+import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 
 // ===========================================================================
 // Fixtures
@@ -136,12 +137,22 @@ function buildService() {
       publicUrl: 'https://signed.example/doc-ok',
     }),
   };
+  const auditRepo = {
+    runWithContext: jest
+      .fn()
+      .mockImplementation(
+        async <T>(_ctx: unknown, work: (tx: unknown) => Promise<T>) =>
+          work({ __isTx: true }),
+      ),
+    logEvent: jest.fn().mockResolvedValue(undefined),
+  } as unknown as AuditLogRepository;
   const mapper = new SolicitationResponseMapper(documentsService as never);
   const service = new SolicitationsService(
     solicitationRepo,
     branchRepo as never,
     userRepository as never,
     distributorRepo as never,
+    auditRepo,
     readDb as never,
     documentsService as never,
     mapper,
@@ -152,6 +163,7 @@ function buildService() {
     branchRepo,
     userRepository,
     distributorRepo,
+    auditRepo,
     readDb,
     documentsService,
     mapper,

@@ -91,8 +91,10 @@ export class BusinessConfigRepository {
    */
   async applyPatch(
     changes: BusinessConfigChange[],
+    tx?: DrizzleWrite,
   ): Promise<BusinessConfigEntity[]> {
     if (changes.length === 0) return [];
+    const writeDb = tx ?? this.writeDb;
     const updated: BusinessConfigEntity[] = [];
     for (const change of changes) {
       // Valida forma: una clave "cents" no acepta `valueBps` y
@@ -122,7 +124,7 @@ export class BusinessConfigRepository {
           `business_config: ${change.key} es porcentual (bps), no acepta cents`,
         );
       }
-      const [row] = await this.writeDb
+      const [row] = await writeDb
         .update(businessConfig)
         .set({
           valueCents:

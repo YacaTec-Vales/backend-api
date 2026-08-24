@@ -159,7 +159,7 @@ export class UserCreationService {
       },
     };
 
-    const entity = await this.auditRepo.runWithContext(auditCtx, async () => {
+    const entity = await this.auditRepo.runWithContext(auditCtx, async (tx) => {
       const conflicts = await this.userRepo.findIdentityConflicts(
         input.email,
         input.username ?? null,
@@ -176,26 +176,41 @@ export class UserCreationService {
           message: 'el nombre de usuario ya esta registrado',
         });
       }
-      return this.userRepo.create({
-        roleCode: input.roleCode,
-        branchId: input.branchId,
-        firstName: input.firstName,
-        lastNamePaternal: input.lastNamePaternal,
-        lastNameMaternal: input.lastNameMaternal ?? '',
-        email: input.email,
-        phone: input.phone ?? null,
-        username: input.username ?? null,
-        passwordHash,
-        mustChangePassword: true,
-        userStatus: 'ACTIVO',
-        isActive: true,
-        personalData: input.personalData ?? {},
-      });
+      return this.userRepo.create(
+        {
+          roleCode: input.roleCode,
+          branchId: input.branchId,
+          firstName: input.firstName,
+          lastNamePaternal: input.lastNamePaternal,
+          lastNameMaternal: input.lastNameMaternal ?? '',
+          email: input.email,
+          phone: input.phone ?? null,
+          username: input.username ?? null,
+          passwordHash,
+          mustChangePassword: true,
+          userStatus: 'ACTIVO',
+          isActive: true,
+          personalData: input.personalData ?? {},
+        },
+        tx,
+      );
     });
 
     // Sincronizar el manager de la sucursal si el nuevo usuario es GS.
     if (entity.roleCode === 'GERENTE_SUCURSAL' && entity.branchId) {
-      await this.branchRepo.setManagerUserId(entity.branchId, entity.id);
+      await this.auditRepo.runWithContext(
+        {
+          actorUserId: input.actorUserId ?? entity.id,
+          action: 'USER.CREATE',
+          metadata: {
+            roleCode: entity.roleCode,
+            branchId: entity.branchId,
+            syncBranchManager: true,
+          },
+        },
+        async (tx) =>
+          this.branchRepo.setManagerUserId(entity.branchId!, entity.id, tx),
+      );
     }
 
     // Envio del correo despues del commit. Si falla SMTP, no

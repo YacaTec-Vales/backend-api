@@ -3,6 +3,9 @@
   "rootDir": "..",
   "testEnvironment": "node",
   "testMatch": ["<rootDir>/test/e2e/**/*.e2e-spec.ts"],
+  "moduleNameMapper": {
+    "^@scalar/nestjs-api-reference$": "<rootDir>/test/mocks/scalar-api-reference.mock.ts"
+  },
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"
   },

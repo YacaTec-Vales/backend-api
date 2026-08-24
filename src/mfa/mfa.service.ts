@@ -36,6 +36,7 @@ import {
 } from '../database/drizzle.provider';
 import { mfaCredentials, users } from '../database/schema';
 import { PasswordService } from '../auth/services/password.service';
+import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 import { MFA_CONFIG } from '../database/tokens';
 import type { MfaConfig } from '../config/mfa.config';
 
@@ -74,6 +75,7 @@ export class MfaService {
     @Inject(DRIZZLE_READ) private readonly readDb: DrizzleRead,
     @Inject(MFA_CONFIG) private readonly mfaConfig: MfaConfig,
     private readonly passwordService: PasswordService,
+    private readonly auditRepo: AuditLogRepository,
   ) {
     this.encryptionKey = this.deriveKey();
   }
@@ -193,16 +195,26 @@ export class MfaService {
       });
     }
 
-    // Activar: pending_setup=false + mfa_enabled=true
-    await this.writeDb
-      .update(mfaCredentials)
-      .set({ pendingSetup: false, lastUsedCounter: 1 })
-      .where(eq(mfaCredentials.userId, userId));
-
-    await this.writeDb
-      .update(users)
-      .set({ mfaEnabled: true, updatedAt: new Date() })
-      .where(eq(users.id, userId));
+    // Activar: pending_setup=false + mfa_enabled=true (envuelto en
+    // runWithContext para que el trigger registre actor, IP, device).
+    await this.auditRepo.runWithContext(
+      {
+        actorUserId: userId,
+        action: 'MFA.SETUP_ACTIVATED',
+        targetUserId: userId,
+        metadata: { source: 'self' },
+      },
+      async (tx) => {
+        await tx
+          .update(mfaCredentials)
+          .set({ pendingSetup: false, lastUsedCounter: 1 })
+          .where(eq(mfaCredentials.userId, userId));
+        await tx
+          .update(users)
+          .set({ mfaEnabled: true, updatedAt: new Date() })
+          .where(eq(users.id, userId));
+      },
+    );
 
     this.logger.log(
       `MFA activado correctamente para usuario ${userId} (verify-setup OK)`,
@@ -275,13 +287,23 @@ export class MfaService {
    * @param userId - UUID del usuario.
    */
   async disable(userId: string): Promise<void> {
-    await this.writeDb
-      .delete(mfaCredentials)
-      .where(eq(mfaCredentials.userId, userId));
-    await this.writeDb
-      .update(users)
-      .set({ mfaEnabled: false, updatedAt: new Date() })
-      .where(eq(users.id, userId));
+    await this.auditRepo.runWithContext(
+      {
+        actorUserId: userId,
+        action: 'MFA.DISABLED',
+        targetUserId: userId,
+        metadata: { source: 'self' },
+      },
+      async (tx) => {
+        await tx
+          .delete(mfaCredentials)
+          .where(eq(mfaCredentials.userId, userId));
+        await tx
+          .update(users)
+          .set({ mfaEnabled: false, updatedAt: new Date() })
+          .where(eq(users.id, userId));
+      },
+    );
   }
 
   /**
@@ -302,14 +324,24 @@ export class MfaService {
    * @param userId - UUID del usuario.
    */
   async adminReset(userId: string): Promise<void> {
-    await this.writeDb
-      .update(mfaCredentials)
-      .set({ pendingSetup: true })
-      .where(eq(mfaCredentials.userId, userId));
-    await this.writeDb
-      .update(users)
-      .set({ mfaEnabled: false, updatedAt: new Date() })
-      .where(eq(users.id, userId));
+    await this.auditRepo.runWithContext(
+      {
+        actorUserId: userId,
+        action: 'MFA.ADMIN_RESET',
+        targetUserId: userId,
+        metadata: { source: 'admin' },
+      },
+      async (tx) => {
+        await tx
+          .update(mfaCredentials)
+          .set({ pendingSetup: true })
+          .where(eq(mfaCredentials.userId, userId));
+        await tx
+          .update(users)
+          .set({ mfaEnabled: false, updatedAt: new Date() })
+          .where(eq(users.id, userId));
+      },
+    );
   }
 
   /**

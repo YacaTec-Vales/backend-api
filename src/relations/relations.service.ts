@@ -46,6 +46,7 @@ import {
 } from '@nestjs/common';
 import { RelationsRepository } from '../database/repositories/relations.repository';
 import { DistributorRepository } from '../database/repositories/distributor.repository';
+import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 import { RelationPaymentRepository } from '../database/repositories/relation-payment.repository';
 import { DRIZZLE_WRITE, type DrizzleWrite } from '../database/drizzle.provider';
 import type { RequestUser } from '../shared/guards/auth.guards';
@@ -83,6 +84,7 @@ export class RelationsService {
   constructor(
     private readonly relationsRepo: RelationsRepository,
     private readonly distributorRepo: DistributorRepository,
+    private readonly auditRepo: AuditLogRepository,
     private readonly relationPaymentRepo: RelationPaymentRepository,
     @Inject(DRIZZLE_WRITE) private readonly writeDb: DrizzleWrite,
   ) {}
@@ -291,7 +293,24 @@ export class RelationsService {
         message: 'el monto no puede superar 10,000,000,000,000 centavos',
       });
     }
-    const updated = await this.relationsRepo.applyPayment(relationId, amount);
+    const qualifiesAsEarly = window.state === 'EARLY';
+    // Envolver el pago en runWithContext para que el trigger de
+    // app.relation vea actor + action. El logEvent compensatorio
+    // ya no es necesario una vez que el UPDATE va en la TX.
+    const updated = await this.auditRepo.runWithContext(
+      {
+        actorUserId: actor.id,
+        action: 'RELATION.PAID',
+        metadata: {
+          amountCents: amount,
+          earlyPayment: qualifiesAsEarly,
+          paymentMethod: dto.paymentMethod ?? null,
+          previousStatus: rel.reconciliationStatus,
+          remainingCentsBefore: remainingCents,
+        },
+      },
+      async (tx) => this.relationsRepo.applyPayment(relationId, amount, tx),
+    );
     if (!updated) {
       throw new NotFoundException({
         code: RELATION_ERROR_CODES.NOT_FOUND,
@@ -299,7 +318,6 @@ export class RelationsService {
           'la relacion desaparecio despues del pago (estado inconsistente)',
       });
     }
-    const qualifiesAsEarly = window.state === 'EARLY';
     this.logger.log(
       `Pago de relacion: id=${relationId} monto=${amount} ` +
         `saldoAntes=${remainingCents} saldoDespues=${

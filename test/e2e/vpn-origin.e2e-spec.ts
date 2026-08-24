@@ -18,31 +18,57 @@
  *   - Endpoints publicos (login) no requieren X-Origin.
  *   - GET endpoints funcionan sin X-Origin.
  */
-import { Test, type TestingModule } from '@nestjs/testing';
-import { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
-import { AppModule } from '../../src/app.module';
 
+import { PermissionsGuard } from '../../src/shared/guards/permissions.guard';
+import {
+  createTestApp,
+  type CreateTestAppHandle,
+} from '../helpers/create-test-app';
+
+/**
+ * Esta suite prueba el `VpnOriginGuard`, NO la matriz de permisos
+ * (eso vive en specs unitarios de PermissionsGuard). El admin seed
+ * es solo-lectura por R7, asi que desactivamos PermissionsGuard
+ * via spy prototipal para que las rutas de mutacion lleguen al
+ * VpnOriginGuard (que corre DESPUES en la cadena
+ * Jwt -> Permissions -> VpnOrigin). JwtAuthGuard y VpnOriginGuard
+ * siguen REALES.
+ *
+ * Nota: `createTestApp.overrides` NO alcanza aqui porque los
+ * guards globales se registran con `{provide: APP_GUARD,
+ * useClass}` y Nest instancia la clase directamente, ignorando el
+ * override del token; el spy sobre el prototipo si aplica a esas
+ * instancias.
+ */
 describe('VpnOriginGuard (e2e)', () => {
+  let permissionsSpy: jest.SpyInstance;
+
+  beforeAll(() => {
+    permissionsSpy = jest
+      .spyOn(PermissionsGuard.prototype, 'canActivate')
+      .mockImplementation(async () => true);
+  });
+
+  afterAll(() => {
+    permissionsSpy.mockRestore();
+  });
   // ============ MODO INACTIVO (default NODE_ENV=test, sin override) ============
 
   describe('modo INACTIVO (default dev/test)', () => {
-    let app: NestExpressApplication;
+    let handle: CreateTestAppHandle;
 
     beforeAll(async () => {
       delete process.env.VPN_ORIGIN_GUARD_ENABLED;
-      const m: TestingModule = await Test.createTestingModule({
-        imports: [AppModule],
-      }).compile();
-      app = m.createNestApplication<NestExpressApplication>({
-        bodyParser: true,
+      // mockThrottler: las rafagas de requests de esta suite
+      // superarian el limite corto (10 req/s) y recibirian 429.
+      handle = await createTestApp({
+        mockThrottler: true,
       });
-      app.set('trust proxy', 1);
-      await app.init();
     });
 
     afterAll(async () => {
-      await app.close();
+      if (handle) await handle.close();
     });
 
     it.each([
@@ -53,7 +79,7 @@ describe('VpnOriginGuard (e2e)', () => {
     ])(
       'POST %s SIN headers VPN responde sin 403 (guard inactivo)',
       async (path) => {
-        const r = await request(app.getHttpServer()).post(path).send({});
+        const r = await request(handle.httpServer).post(path).send({});
         expect(r.status).not.toBe(403);
       },
     );
@@ -69,31 +95,29 @@ describe('VpnOriginGuard (e2e)', () => {
   // ============ MODO ACTIVO (forzado por VPN_ORIGIN_GUARD_ENABLED=true) ============
 
   describe('modo ACTIVO (VPN_ORIGIN_GUARD_ENABLED=true)', () => {
-    let app: NestExpressApplication;
+    let handle: CreateTestAppHandle;
     let jwt: string;
 
     beforeAll(async () => {
       process.env.VPN_ORIGIN_GUARD_ENABLED = 'true';
-      const m: TestingModule = await Test.createTestingModule({
-        imports: [AppModule],
-      }).compile();
-      app = m.createNestApplication<NestExpressApplication>({
-        bodyParser: true,
+      handle = await createTestApp({
+        mockThrottler: true,
       });
-      app.set('trust proxy', 1);
-      await app.init();
 
-      const login = await request(app.getHttpServer())
+      const login = await request(handle.httpServer)
         .post('/api/v1/auth/login')
         .set('X-Origin', 'vpn')
         .set('X-Client-App', 'Tecu')
-        .send({ usernameOrEmail: 'admin@yacatec.demo', password: 'test1234' });
+        .send({
+          usernameOrEmail: 'admin@yacatec.demo',
+          password: 'Demo123!utete.2026',
+        });
       jwt = login.body?.data?.accessToken ?? '';
     });
 
     afterAll(async () => {
       delete process.env.VPN_ORIGIN_GUARD_ENABLED;
-      await app.close();
+      if (handle) await handle.close();
     });
 
     // ---------- Tests positivos: Tecu+VPN acepta ----------
@@ -120,7 +144,7 @@ describe('VpnOriginGuard (e2e)', () => {
       '/api/v1/cashier/vouchers/find/abc',
       '/api/v1/cashier/vouchers/confirm/abc',
     ])('Tecu+VPN → POST %s responde 2xx/4xx (NUNCA 403)', async (path) => {
-      const r = await request(app.getHttpServer())
+      const r = await request(handle.httpServer)
         .post(path)
         .set('Authorization', `Bearer ${jwt}`)
         .set('X-Origin', 'vpn')
@@ -137,7 +161,7 @@ describe('VpnOriginGuard (e2e)', () => {
       '/api/v1/cuts/run',
       '/api/v1/cashier/vouchers/confirm/abc',
     ])('Tecu+public → POST %s responde 403 NOT_VPN_ORIGIN', async (path) => {
-      const r = await request(app.getHttpServer())
+      const r = await request(handle.httpServer)
         .post(path)
         .set('Authorization', `Bearer ${jwt}`)
         .set('X-Origin', 'public')
@@ -157,7 +181,7 @@ describe('VpnOriginGuard (e2e)', () => {
     ])(
       '%s+VPN con X-Client-App=%s → 403 WRONG_CLIENT_APP',
       async (path, clientApp) => {
-        const r = await request(app.getHttpServer())
+        const r = await request(handle.httpServer)
           .post(path)
           .set('Authorization', `Bearer ${jwt}`)
           .set('X-Origin', 'vpn')
@@ -171,7 +195,7 @@ describe('VpnOriginGuard (e2e)', () => {
     // ---------- Tests negativos: sin X-Origin → 403 NOT_VPN_ORIGIN ----------
 
     it('Sin X-Origin → 403 NOT_VPN_ORIGIN', async () => {
-      const r = await request(app.getHttpServer())
+      const r = await request(handle.httpServer)
         .post('/api/v1/autorizaciones/abc/aprobar')
         .set('Authorization', `Bearer ${jwt}`)
         .set('X-Client-App', 'Tecu')
@@ -183,7 +207,7 @@ describe('VpnOriginGuard (e2e)', () => {
     // ---------- Tests negativos: sin JWT → 401 (orden de guards) ----------
 
     it('Sin JWT → 401 (orden: JwtAuth primero)', async () => {
-      const r = await request(app.getHttpServer())
+      const r = await request(handle.httpServer)
         .post('/api/v1/autorizaciones/abc/aprobar')
         .set('X-Origin', 'vpn')
         .set('X-Client-App', 'Tecu')
@@ -193,11 +217,16 @@ describe('VpnOriginGuard (e2e)', () => {
 
     // ---------- Tests positivos: login (publico) no requiere X-Origin ----------
 
-    it('Login (publico) no requiere X-Origin → 401 por credenciales', async () => {
-      const r = await request(app.getHttpServer())
+    it('Login (publico) no requiere X-Origin → 400/401 sin 403', async () => {
+      const r = await request(handle.httpServer)
         .post('/api/v1/auth/login')
         .send({ usernameOrEmail: 'x', password: 'y' });
-      expect(r.status).toBe(401);
+      // Con el pipeline global activo, el ValidationPipe rechaza
+      // credenciales mal formadas con 400 ANTES del check de
+      // credenciales (401). Lo relevante: ruta publica alcanzable
+      // sin X-Origin (NUNCA 403).
+      expect(r.status).not.toBe(403);
+      expect([400, 401]).toContain(r.status);
     });
 
     // ---------- Tests positivos: GET endpoints no requieren VPN ----------
@@ -207,7 +236,7 @@ describe('VpnOriginGuard (e2e)', () => {
       '/api/v1/solicitudes',
       '/api/v1/distribuidores',
     ])('GET %s responde 2xx/4xx sin X-Origin (NUNCA 403)', async (path) => {
-      const r = await request(app.getHttpServer())
+      const r = await request(handle.httpServer)
         .get(path)
         .set('Authorization', `Bearer ${jwt}`)
         .send();

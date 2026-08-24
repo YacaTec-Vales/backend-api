@@ -31,6 +31,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { AuthorizationRepository } from '../database/repositories/authorization.repository';
+import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 import { ClientRepository } from '../database/repositories/client.repository';
 import { ClientDistributorHistoryRepository } from '../database/repositories/client-distributor-history.repository';
 import { DistributorRepository } from '../database/repositories/distributor.repository';
@@ -95,6 +96,7 @@ export class AutorizacionesService {
 
   constructor(
     private readonly authRepo: AuthorizationRepository,
+    private readonly auditRepo: AuditLogRepository,
     private readonly clientRepo: ClientRepository,
     private readonly historyRepo: ClientDistributorHistoryRepository,
     private readonly distributorRepo: DistributorRepository,
@@ -394,6 +396,24 @@ export class AutorizacionesService {
         `from=${entity.fromDistributorId} to=${dto.newDistributorId} ` +
         `actor=${actor.id}`,
     );
+
+    // Compensacion audit: el SQL crudo anterior dispara el trigger
+    // sin actor (otra conexion). Registramos el evento con el actor
+    // correcto para que el admin vea quien aprobo la transferencia.
+    void this.auditRepo.logEvent({
+      action: 'CLIENT.TRANSFERRED',
+      actorUserId: actor.id,
+      targetUserId: null,
+      tableName: 'client',
+      recordId: entity.clientId,
+      metadata: {
+        fromDistributorId: entity.fromDistributorId,
+        toDistributorId: dto.newDistributorId,
+        authorizationId: auth.id,
+        reason: auth.justification ?? null,
+        notes: dto.notes ?? null,
+      },
+    });
 
     // Leer el registro actualizado.
     const updated = await this.authRepo.findById(auth.id);

@@ -28,6 +28,7 @@ import {
   ProductRepository,
   type ProductListFilters,
 } from '../database/repositories/product.repository';
+import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 import type { CreateProductDto } from './dto/create-product.dto';
 import type { UpdateProductDto } from './dto/update-product.dto';
 import type { ProductResponseDto } from './dto/product-response.dto';
@@ -44,7 +45,10 @@ import type { ProductVariant } from '../database/schema';
 export class ProductsService {
   private readonly logger = new Logger(ProductsService.name);
 
-  constructor(private readonly productRepo: ProductRepository) {}
+  constructor(
+    private readonly productRepo: ProductRepository,
+    private readonly auditRepo: AuditLogRepository,
+  ) {}
 
   /**
    * Da de alta un producto en el catalogo. Valida unicidad por
@@ -75,21 +79,33 @@ export class ProductsService {
       });
     }
 
-    // 3. INSERT
+    // 3. INSERT (envuelto en runWithContext para registrar el alta
+    // en audit_log con actor, IP, device).
     let created;
     try {
-      created = await this.productRepo.create({
-        code,
-        variant,
-        costCents: dto.costCents,
-        totalPeriods: dto.totalPeriods,
-        commissionBps: dto.commissionBps ?? 0,
-        insuranceCents: dto.insuranceCents ?? 0,
-        interestPerPeriodBps: dto.interestPerPeriodBps ?? 0,
-        penaltyCents: dto.penaltyCents ?? 0,
-        isActive: true,
-        deletedAt: null,
-      });
+      created = await this.auditRepo.runWithContext(
+        {
+          actorUserId: '00000000-0000-0000-0000-000000000000',
+          action: 'PRODUCT.CREATED',
+          metadata: { code, variant },
+        },
+        async (tx) =>
+          this.productRepo.create(
+            {
+              code,
+              variant,
+              costCents: dto.costCents,
+              totalPeriods: dto.totalPeriods,
+              commissionBps: dto.commissionBps ?? 0,
+              insuranceCents: dto.insuranceCents ?? 0,
+              interestPerPeriodBps: dto.interestPerPeriodBps ?? 0,
+              penaltyCents: dto.penaltyCents ?? 0,
+              isActive: true,
+              deletedAt: null,
+            },
+            tx,
+          ),
+      );
     } catch (err: unknown) {
       // La BD enforce CHECKs que class-validator no cubre (R5 multiplo
       // de 10000, total_periods <= 60). Lo capturamos y devolvemos 400

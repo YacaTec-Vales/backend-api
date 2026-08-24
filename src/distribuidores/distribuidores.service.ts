@@ -53,6 +53,7 @@ import {
   type DrizzleWrite,
   type DrizzleRead,
 } from '../database/drizzle.provider';
+import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 import { DistributorRepository } from '../database/repositories/distributor.repository';
 import type { RequestUser } from '../shared/guards/auth.guards';
 import { DistribuidorResponseDto } from './dto/distribuidor-response.dto';
@@ -122,6 +123,7 @@ export class DistribuidoresService {
     private readonly distributorRepo: DistributorRepository,
     private readonly branchRepo: BranchRepository,
     private readonly branchCutoffRepo: BranchCutoffRepository,
+    private readonly auditRepo: AuditLogRepository,
     @Inject(DRIZZLE_WRITE) private readonly writeDb: DrizzleWrite,
     @Inject(DRIZZLE_READ) private readonly readDb: DrizzleRead,
   ) {}
@@ -450,6 +452,28 @@ export class DistribuidoresService {
     this.logger.log(
       `Incremento credito: dist=${distributorId} +${input.montoCentavos} actor=${actor.id}`,
     );
+
+    // Compensacion audit: el UPDATE via updateDistributor usa SQL
+    // crudo sobre el pool (conexion distinta del interceptor). El
+    // trigger dispara sin actor; este logEvent registra la accion
+    // con actor, IP y device para que el admin la vea.
+    void this.auditRepo.logEvent({
+      action: 'DISTRIBUTOR.CREDIT_RAISED',
+      actorUserId: actor.id,
+      targetUserId: null,
+      tableName: 'distributor',
+      recordId: distributorId,
+      metadata: {
+        distributorId,
+        distributorNumber: distributor.distributorNumber,
+        branchId: distributor.branchId,
+        oldLimitCents: distributor.creditLimitCents,
+        newLimitCents: newLimit,
+        montoCentavos: input.montoCentavos,
+        motivo: input.motivo ?? null,
+      },
+    });
+
     const updated = await this.distributorRepo.findById(distributorId);
     if (!updated) {
       throw new NotFoundException({
@@ -493,6 +517,24 @@ export class DistribuidoresService {
     this.logger.log(
       `Cambio categoria: dist=${distributorId} cat=${input.categoryId} actor=${actor.id} motivo=${input.motivo.slice(0, 80)}`,
     );
+
+    // Compensacion audit (ver nota en incrementCredit).
+    void this.auditRepo.logEvent({
+      action: 'DISTRIBUTOR.CATEGORY_CHANGED',
+      actorUserId: actor.id,
+      targetUserId: null,
+      tableName: 'distributor',
+      recordId: distributorId,
+      metadata: {
+        distributorId,
+        distributorNumber: distributor.distributorNumber,
+        branchId: distributor.branchId,
+        oldCategoryId: distributor.categoryId,
+        newCategoryId: input.categoryId,
+        motivo: input.motivo,
+      },
+    });
+
     const updated = await this.distributorRepo.findById(distributorId);
     if (!updated) {
       throw new NotFoundException({
@@ -541,6 +583,24 @@ export class DistribuidoresService {
     this.logger.log(
       `Cambio coordinador: dist=${distributorId} coord=${input.coordinatorId} actor=${actor.id}`,
     );
+
+    // Compensacion audit (ver nota en incrementCredit).
+    void this.auditRepo.logEvent({
+      action: 'DISTRIBUTOR.COORDINATOR_CHANGED',
+      actorUserId: actor.id,
+      targetUserId: null,
+      tableName: 'distributor',
+      recordId: distributorId,
+      metadata: {
+        distributorId,
+        distributorNumber: distributor.distributorNumber,
+        branchId: distributor.branchId,
+        oldCoordinatorId: distributor.coordinatorId,
+        newCoordinatorId: input.coordinatorId,
+        motivo: input.motivo ?? null,
+      },
+    });
+
     const updated = await this.distributorRepo.findById(distributorId);
     if (!updated) {
       throw new NotFoundException({

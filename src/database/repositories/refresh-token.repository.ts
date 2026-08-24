@@ -173,8 +173,13 @@ export class RefreshTokenRepository {
    * @param userId - UUID del usuario.
    * @param reason - Razon de revocacion.
    */
-  async revokeAllForUser(userId: string, reason: string): Promise<void> {
-    await this.writeDb
+  async revokeAllForUser(
+    userId: string,
+    reason: string,
+    tx?: DrizzleWrite,
+  ): Promise<void> {
+    const db = tx ?? this.writeDb;
+    await db
       .update(refreshTokens)
       .set({ revokedAt: sql`now()`, revokedReason: reason })
       .where(

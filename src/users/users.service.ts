@@ -315,7 +315,7 @@ export class UsersService {
       },
     };
 
-    const entity = await this.auditRepo.runWithContext(auditCtx, async () => {
+    const entity = await this.auditRepo.runWithContext(auditCtx, async (tx) => {
       // Verificar conflictos de identidad dentro del contexto
       // de auditoria para reducir la ventana de carrera. La
       // captura de SQLSTATE 23505 cubre concurrencia: ver
@@ -336,26 +336,37 @@ export class UsersService {
           message: 'el nombre de usuario ya esta registrado',
         });
       }
-      return this.userRepo.create({
-        roleCode: dto.roleCode,
-        branchId: dto.branchId ?? null,
-        firstName: dto.firstName,
-        lastNamePaternal: dto.lastNamePaternal,
-        lastNameMaternal: dto.lastNameMaternal,
-        email: dto.email,
-        phone: dto.phone ?? null,
-        username: dto.username,
-        passwordHash,
-        mustChangePassword: true,
-        userStatus: 'ACTIVO',
-        isActive: true,
-        personalData: dto.personalData ?? {},
-      });
+      return this.userRepo.create(
+        {
+          roleCode: dto.roleCode,
+          branchId: dto.branchId ?? null,
+          firstName: dto.firstName,
+          lastNamePaternal: dto.lastNamePaternal,
+          lastNameMaternal: dto.lastNameMaternal,
+          email: dto.email,
+          phone: dto.phone ?? null,
+          username: dto.username,
+          passwordHash,
+          mustChangePassword: true,
+          userStatus: 'ACTIVO',
+          isActive: true,
+          personalData: dto.personalData ?? {},
+        },
+        tx,
+      );
     });
 
     // Si el nuevo usuario es un GS, sincronizamos branch.manager_user_id.
     if (entity.roleCode === 'GERENTE_SUCURSAL' && entity.branchId) {
-      await this.branchRepo.setManagerUserId(entity.branchId, entity.id);
+      await this.auditRepo.runWithContext(
+        {
+          actorUserId: actor.id,
+          action: 'USER.CREATE',
+          metadata: { syncBranchManager: true, branchId: entity.branchId },
+        },
+        async (tx) =>
+          this.branchRepo.setManagerUserId(entity.branchId!, entity.id, tx),
+      );
     }
 
     // Envio de correo despues del commit. Si falla SMTP, no
@@ -541,9 +552,9 @@ export class UsersService {
       },
     };
 
-    const updated = await this.auditRepo.runWithContext(auditCtx, async () => {
-      return this.userRepo.update(userId, patch);
-    });
+    const updated = await this.auditRepo.runWithContext(auditCtx, async (tx) =>
+      this.userRepo.update(userId, patch, tx),
+    );
     if (!updated) {
       throw new NotFoundException({
         code: 'USERS.NOT_FOUND',
@@ -643,9 +654,9 @@ export class UsersService {
         branchId: target.branchId,
       },
     };
-    await this.auditRepo.runWithContext(auditCtx, async () => {
-      return this.userRepo.softDelete(userId);
-    });
+    await this.auditRepo.runWithContext(auditCtx, async (tx) =>
+      this.userRepo.softDelete(userId, tx),
+    );
 
     await this.sessionService.revokeAllForUser(userId, 'user_deleted');
     this.permissionCache.invalidate(userId);
@@ -713,8 +724,8 @@ export class UsersService {
       device: ctx.device,
       metadata: { reason: dto.reason },
     };
-    await this.auditRepo.runWithContext(auditCtx, async () => {
-      await this.userRepo.setPassword(userId, passwordHash, true);
+    await this.auditRepo.runWithContext(auditCtx, async (tx) => {
+      await this.userRepo.setPassword(userId, passwordHash, true, tx);
     });
     await this.sessionService.revokeAllForUser(userId, 'admin_password_reset');
     this.permissionCache.invalidate(userId);
@@ -791,10 +802,9 @@ export class UsersService {
       device: ctx.device,
       metadata: { reason },
     };
-    await this.auditRepo.runWithContext(auditCtx, async () => {
+    await this.auditRepo.runWithContext(auditCtx, async (tx) => {
       await this.sessionService.revokeAllForUser(userId, reason);
-      // bumpTokenVersion via writeDb directo
-      await this.userRepo.bumpTokenVersion(userId);
+      await this.userRepo.bumpTokenVersion(userId, tx);
     });
     this.permissionCache.invalidate(userId);
   }
@@ -876,18 +886,21 @@ export class UsersService {
       },
     };
 
-    const row = await this.auditRepo.runWithContext(auditCtx, async () => {
-      return this.permissionRepo.grantOverride({
-        userId,
-        permissionId: permission.id,
-        isGrant: dto.isGrant,
-        authorizedBy: actor.id,
-        authorizationId: dto.authorizationId ?? null,
-        validFrom,
-        validUntil,
-        reason: dto.reason,
-      });
-    });
+    const row = await this.auditRepo.runWithContext(auditCtx, async (tx) =>
+      this.permissionRepo.grantOverride(
+        {
+          userId,
+          permissionId: permission.id,
+          isGrant: dto.isGrant,
+          authorizedBy: actor.id,
+          authorizationId: dto.authorizationId ?? null,
+          validFrom,
+          validUntil,
+          reason: dto.reason,
+        },
+        tx,
+      ),
+    );
 
     this.permissionCache.invalidate(userId);
     return this.toOverrideResponse(row);
@@ -925,9 +938,9 @@ export class UsersService {
       device: ctx.device,
       metadata: { permissionCode },
     };
-    const row = await this.auditRepo.runWithContext(auditCtx, async () => {
-      return this.permissionRepo.revokeOverride(userId, permissionCode);
-    });
+    const row = await this.auditRepo.runWithContext(auditCtx, async (tx) =>
+      this.permissionRepo.revokeOverride(userId, permissionCode, tx),
+    );
     if (!row) {
       throw new NotFoundException({
         code: 'USERS.PERMISSION_OVERRIDE_NOT_FOUND',

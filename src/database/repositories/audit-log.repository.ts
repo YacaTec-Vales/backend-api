@@ -1,25 +1,32 @@
 /**
  * @fileoverview Repositorio para `app.audit_log` y contexto de auditoria.
  *
- * Encapsula la escritura explicita (para eventos que no dispara un
- * trigger, como el envio o fallo de un mail transaccional) y
- * ofrece `runWithContext` que envuelve una mutacion en una
- * transaccion con `SET LOCAL app.audit_*` para que el trigger
- * `app.audit_trigger()` registre actor, IP, dispositivo, accion
- * y metadata en la misma operacion atomica.
+ * Encapsula la escritura explicita (eventos que NO disparan un trigger
+ * — envio de mail, login, logout, etc.) y ofrece `runWithContext`
+ * que envuelve una mutacion dentro de la TX abierta por
+ * `AuditContextInterceptor` y setea `app.audit_action` +
+ * `app.audit_metadata` para que el trigger `app.audit_trigger()`
+ * registre accion y metadata en la misma operacion atomica.
+ *
+ * Las 4 vars de transporte (`current_user_id`, `request_ip`,
+ * `request_device`, `request_user_agent`) las setea el interceptor
+ * UNA VEZ por request (en la misma TX). Este repo solo setea las
+ * 2 vars que cambian en cada mutacion.
  *
  * Reglas:
- *  - El callback de `runWithContext` se ejecuta en el MISMO
- *    cliente transaccional (no en el cliente fuera de la
- *    transaccion), de modo que el `SET LOCAL` sea visible para
- *    el trigger.
- *  - Si el callback lanza, la transaccion hace rollback y la
- *    excepcion se propaga al caller.
+ *  - El callback de `runWithContext` recibe el `tx` del ALS, NO
+ *    `writeDb`. Cada operacion de mutacion del callback DEBE usar
+ *    este `tx` para que el trigger vea las session vars.
+ *  - `runWithContext` FUERA del `AuditContextInterceptor` lanza
+ *    error claro (no hay TX, no se puede garantizar atomicidad).
+ *  - Si el callback lanza, la TX hace rollback y la excepcion se
+ *    propaga al caller.
  *  - `logEvent` se usa para registrar eventos sin mutacion
  *    (ej. `USER.WELCOME_EMAIL_SENT`).
  *
  * Conexiones:
- *  - `DRIZZLE_WRITE` para `runWithContext` y `logEvent`.
+ *  - `DRIZZLE_WRITE` para `runWithContext` y `logEvent` (cuando no
+ *    hay TX activa, cae a `writeDb`; en Phase 2+ siempre hay TX).
  *  - `DRIZZLE_READ` para `findByTargetUser` y `findByActor`.
  *
  * @module database/repositories
@@ -40,10 +47,21 @@ import {
   type AuditLogEntity,
   type NewAuditLogEntity,
 } from '../schema';
+import { AuditContextStoreService } from '../../shared/context/audit-context.store';
 import type {
   AuditAction,
   AuditWriteContext,
 } from '../../shared/types/audit.types';
+
+/**
+ * Tipo de operacion persistido en `audit_log.operation`. Refleja el
+ * enum `app.audit_operation` de la BD (`INSERT|UPDATE|DELETE`).
+ *
+ * `logEvent` por default escribe `'UPDATE'` (no es una operacion SQL
+ * real, pero es la unica opcion valida del enum de BD). En una
+ * iteracion futura del schema se podria anadir `EVENT` al enum.
+ */
+export type AuditOperation = 'INSERT' | 'UPDATE' | 'DELETE';
 
 /**
  * Acceso de bajo nivel a la auditoria y ejecucion de mutaciones
@@ -57,59 +75,48 @@ export class AuditLogRepository {
   constructor(
     @Inject(DRIZZLE_WRITE) private readonly writeDb: DrizzleWrite,
     @Inject(DRIZZLE_READ) private readonly readDb: DrizzleRead,
+    private readonly auditContext: AuditContextStoreService,
   ) {}
 
   /**
-   * Ejecuta `work` con las variables de sesion `app.audit_*`
-   * configuradas para que el trigger `app.audit_trigger()` las
-   * lea cuando dispare la mutacion.
+   * Ejecuta `work` con `app.audit_action` y `app.audit_metadata`
+   * seteadas en la TX activa del `AuditContextInterceptor`.
    *
-   * Implementacion: usa `set_config(..., false)` (scope de sesion)
-   * en lugar de `set_config(..., true)` (scope de transaccion).
-   * Esto es una decision pragmatica porque los repositorios del
-   * modulo users todavia no aceptan un cliente transaccional `tx`
-   * opcional: ejecutan sus mutaciones contra `this.writeDb`
-   * directamente, por lo que abrir una transaccion aqui seria
-   * inutil.
+   * El callback recibe el `tx` del ALS. **Usalo siempre** en vez
+   * de `this.writeDb` para que las mutaciones queden dentro de la
+   * misma TX que el trigger ve.
    *
-   * Riesgo conocido: las variables quedan activas hasta el fin
-   * de la sesion de la conexion del pool. Si otra peticion
-   * reutiliza esa misma conexion antes de su proximo
-   * `runWithContext`, los claims del trigger seran los de
-   * esta operacion. El riesgo se mitiga porque:
-   *  - Solo NestJS ejecuta mutaciones auditables, todas a
-   *    traves de `runWithContext` o `logEvent`.
-   *  - Cada nueva operacion sobreescribe las variables.
-   *
-   * Cuando los repositorios extiendan sus mutaciones para
-   * aceptar un `tx` opcional, esta funcion debe migrar a
-   * transaccion real con `set_config(..., true)` y el callback
-   * pasara el `tx` a cada operacion.
+   * Si la llamada se hace FUERA del interceptor, lanza error:
+   * las session vars no se podrian setear de forma atomica y
+   * tendriamos el bug original de contaminacion del pool.
    *
    * @param ctx - Contexto de auditoria (actor, IP, device, accion, metadata).
-   * @param work - Callback que ejecuta la mutacion.
+   * @param work - Callback que ejecuta la mutacion; recibe el `tx`.
    * @returns Lo que devuelva `work`.
    */
   async runWithContext<T>(
     ctx: AuditWriteContext,
-    work: (_tx: DrizzleWrite) => Promise<T>,
+    work: (tx: DrizzleWrite) => Promise<T>,
   ): Promise<T> {
-    const ipText = ctx.ipAddress ?? null;
-    const deviceText = ctx.device ?? null;
-    const uaText = ctx.userAgent ?? null;
+    const ctxSnapshot = this.auditContext.get();
+    const tx = ctxSnapshot?.txHandle as DrizzleWrite | undefined;
+    if (!tx) {
+      throw new Error(
+        'AuditLogRepository.runWithContext fue invocado fuera del ' +
+          'AuditContextInterceptor. La TX del interceptor es la unica ' +
+          'forma atomica de setear las session vars de auditoria.',
+      );
+    }
+
     const metadataJson = JSON.stringify(ctx.metadata ?? {});
 
-    await this.writeDb.execute(
+    await tx.execute(
       sql`SELECT
-            set_config('app.current_user_id', ${ctx.actorUserId}, false),
-            set_config('app.audit_action',   ${ctx.action}, false),
-            set_config('app.request_ip',     ${ipText}, false),
-            set_config('app.request_device', ${deviceText}, false),
-            set_config('app.request_user_agent', ${uaText}, false),
-            set_config('app.audit_metadata', ${metadataJson}, false)`,
+            set_config('app.audit_action',   ${ctx.action}, true),
+            set_config('app.audit_metadata', ${metadataJson}, true)`,
     );
 
-    return work(this.writeDb);
+    return work(tx);
   }
 
   /**
@@ -117,14 +124,16 @@ export class AuditLogRepository {
    * trigger). Pensado para registrar resultados que no son una
    * mutacion directa: envio/fallo de mail, intento rechazado, etc.
    *
-   * La fila se inserta con `recorded_at = now()` y `action` igual
-   * a `event.action`. El `table_name` y `record_id` pueden
-   * referenciar el recurso afectado; si no aplica, usar `'system'`
-   * y el UUID del usuario objetivo.
+   * La operacion por default es `'EVENT'` (no es una operacion SQL
+   * real); usar `'INSERT' | 'UPDATE' | 'DELETE'` solo cuando el
+   * evento representa una operacion SQL especifica.
    *
-   * Conexion: `DRIZZLE_WRITE`.
+   * Si la llamada se hace dentro de la TX del
+   * `AuditContextInterceptor`, se hace en esa TX para que cualquier
+   * mutacion posterior la vea. Si no, se hace con `writeDb`
+   * directo (caso normal de eventos sin mutacion asociada).
    *
-   * @param event - Datos minimos del evento.
+   * @param event - Datos del evento.
    * @returns Fila insertada.
    */
   async logEvent(event: {
@@ -133,30 +142,44 @@ export class AuditLogRepository {
     targetUserId?: string | null;
     tableName?: string;
     recordId?: string;
+    operation?: AuditOperation;
     metadata?: Record<string, unknown>;
     ipAddress?: string | null;
     userAgent?: string | null;
     device?: string | null;
   }): Promise<AuditLogEntity> {
+    // Si el caller no paso ip/device/userAgent pero existe ALS activo
+    // (estamos dentro de un request), auto-rellenar desde el contexto.
+    // Asi, llamadas `logEvent` simples (ej. logout) heredan las 4
+    // vars de transporte que el interceptor ya seteo en el TX.
+    const ctx = this.auditContext.get();
+    const ipAddress = event.ipAddress ?? ctx?.ipAddress ?? null;
+    const userAgent = event.userAgent ?? ctx?.userAgent ?? null;
+    const device = event.device ?? ctx?.device ?? null;
+
+    const operation: AuditOperation = event.operation ?? 'UPDATE';
     const values: NewAuditLogEntity = {
       userId: event.actorUserId,
       targetUserId: event.targetUserId ?? null,
       tableName: event.tableName ?? 'system',
       recordId: event.recordId ?? event.targetUserId ?? event.actorUserId,
-      operation: 'UPDATE',
+      operation,
       action: event.action,
       metadata: event.metadata ?? {},
       oldValues: null,
       newValues: null,
       changedFields: null,
-      device: event.device ?? null,
-      ipAddress: event.ipAddress ?? null,
-      userAgent: event.userAgent ?? null,
+      device,
+      ipAddress,
+      userAgent,
     };
-    const [row] = await this.writeDb
-      .insert(auditLog)
-      .values(values)
-      .returning();
+
+    // Si hay TX activa en el ALS, usarla (atomicidad con mutaciones
+    // concurrentes). Si no, escribir directo (eventos sin mutacion).
+    const tx = this.auditContext.get()?.txHandle as DrizzleWrite | undefined;
+    const db = tx ?? this.writeDb;
+
+    const [row] = await db.insert(auditLog).values(values).returning();
     return row;
   }
 

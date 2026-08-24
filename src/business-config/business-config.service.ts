@@ -21,6 +21,7 @@
 
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { BusinessConfigRepository } from '../database/repositories/business-config.repository';
+import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 import { BusinessConfigItemDto } from './dto/business-config-item.dto';
 import { PatchBusinessConfigDto } from './dto/patch-business-config.dto';
 import type { BusinessConfigEntity } from '../database/schema';
@@ -45,7 +46,10 @@ export class BusinessConfigService {
   private cache: Map<string, BusinessConfigEntity> = new Map();
   private cacheInitialized = false;
 
-  constructor(private readonly repo: BusinessConfigRepository) {}
+  constructor(
+    private readonly repo: BusinessConfigRepository,
+    private readonly auditRepo: AuditLogRepository,
+  ) {}
 
   /**
    * Lista todos los items (DTO publico).
@@ -123,7 +127,17 @@ export class BusinessConfigService {
       });
     }
 
-    const updated = await this.repo.applyPatch(validatedChanges);
+    const updated = await this.auditRepo.runWithContext(
+      {
+        actorUserId: actorId,
+        action: 'BUSINESS_CONFIG.UPDATED',
+        metadata: {
+          itemsCount: validatedChanges.length,
+          keys: validatedChanges.map((c) => c.key),
+        },
+      },
+      async (tx) => this.repo.applyPatch(validatedChanges, tx),
+    );
     // Refresca el cache con los items actualizados.
     for (const row of updated) {
       this.cache.set(row.configKey, row);

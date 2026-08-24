@@ -18,6 +18,7 @@ import { ForbiddenException } from '@nestjs/common';
 import { ClientsService } from './clients.service';
 import { ClientRepository } from '../database/repositories/client.repository';
 import { VoucherRepository } from '../database/repositories/voucher.repository';
+import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 import { DRIZZLE_READ } from '../database/drizzle.provider';
 import { DocumentsService } from '../documents/documents.service';
 import { requestUserFactory } from '../../test/factories/auth.factory';
@@ -51,6 +52,18 @@ describe('ClientsService', () => {
         ClientsService,
         { provide: ClientRepository, useValue: clientRepo },
         { provide: VoucherRepository, useValue: voucherRepo },
+        {
+          provide: AuditLogRepository,
+          useValue: {
+            runWithContext: jest
+              .fn()
+              .mockImplementation(
+                async <T>(_ctx: unknown, work: (tx: unknown) => Promise<T>) =>
+                  work({ __isTx: true }),
+              ),
+            logEvent: jest.fn().mockResolvedValue(undefined),
+          },
+        },
         { provide: DRIZZLE_READ, useValue: readDb },
         { provide: DocumentsService, useValue: documentsService },
       ],
@@ -117,6 +130,18 @@ describe('ClientsService', () => {
         ClientsService,
         { provide: ClientRepository, useValue: clientRepo },
         { provide: VoucherRepository, useValue: voucherRepo },
+        {
+          provide: AuditLogRepository,
+          useValue: {
+            runWithContext: jest
+              .fn()
+              .mockImplementation(
+                async <T>(_ctx: unknown, work: (tx: unknown) => Promise<T>) =>
+                  work({ __isTx: true }),
+              ),
+            logEvent: jest.fn().mockResolvedValue(undefined),
+          },
+        },
         { provide: DRIZZLE_READ, useValue: stub },
         { provide: DocumentsService, useValue: documentsService },
       ],
@@ -175,6 +200,18 @@ describe('ClientsService', () => {
         ClientsService,
         { provide: ClientRepository, useValue: clientRepo },
         { provide: VoucherRepository, useValue: voucherRepo },
+        {
+          provide: AuditLogRepository,
+          useValue: {
+            runWithContext: jest
+              .fn()
+              .mockImplementation(
+                async <T>(_ctx: unknown, work: (tx: unknown) => Promise<T>) =>
+                  work({ __isTx: true }),
+              ),
+            logEvent: jest.fn().mockResolvedValue(undefined),
+          },
+        },
         { provide: DRIZZLE_READ, useValue: stub },
         { provide: DocumentsService, useValue: documentsService },
       ],
@@ -213,6 +250,18 @@ describe('ClientsService', () => {
         ClientsService,
         { provide: ClientRepository, useValue: clientRepo },
         { provide: VoucherRepository, useValue: voucherRepo },
+        {
+          provide: AuditLogRepository,
+          useValue: {
+            runWithContext: jest
+              .fn()
+              .mockImplementation(
+                async <T>(_ctx: unknown, work: (tx: unknown) => Promise<T>) =>
+                  work({ __isTx: true }),
+              ),
+            logEvent: jest.fn().mockResolvedValue(undefined),
+          },
+        },
         { provide: DRIZZLE_READ, useValue: stub },
         { provide: DocumentsService, useValue: documentsService },
       ],
@@ -325,6 +374,18 @@ describe('ClientsService', () => {
         ClientsService,
         { provide: ClientRepository, useValue: clientRepo },
         { provide: VoucherRepository, useValue: voucherRepo },
+        {
+          provide: AuditLogRepository,
+          useValue: {
+            runWithContext: jest
+              .fn()
+              .mockImplementation(
+                async <T>(_ctx: unknown, work: (tx: unknown) => Promise<T>) =>
+                  work({ __isTx: true }),
+              ),
+            logEvent: jest.fn().mockResolvedValue(undefined),
+          },
+        },
         { provide: DRIZZLE_READ, useValue: stub },
         { provide: DocumentsService, useValue: documentsService },
       ],
@@ -362,6 +423,18 @@ describe('ClientsService', () => {
         ClientsService,
         { provide: ClientRepository, useValue: clientRepo },
         { provide: VoucherRepository, useValue: voucherRepo },
+        {
+          provide: AuditLogRepository,
+          useValue: {
+            runWithContext: jest
+              .fn()
+              .mockImplementation(
+                async <T>(_ctx: unknown, work: (tx: unknown) => Promise<T>) =>
+                  work({ __isTx: true }),
+              ),
+            logEvent: jest.fn().mockResolvedValue(undefined),
+          },
+        },
         { provide: DRIZZLE_READ, useValue: stub },
         { provide: DocumentsService, useValue: documentsService },
       ],
@@ -422,6 +495,18 @@ describe('ClientsService', () => {
         ClientsService,
         { provide: ClientRepository, useValue: clientRepo },
         { provide: VoucherRepository, useValue: voucherRepo },
+        {
+          provide: AuditLogRepository,
+          useValue: {
+            runWithContext: jest
+              .fn()
+              .mockImplementation(
+                async <T>(_ctx: unknown, work: (tx: unknown) => Promise<T>) =>
+                  work({ __isTx: true }),
+              ),
+            logEvent: jest.fn().mockResolvedValue(undefined),
+          },
+        },
         { provide: DRIZZLE_READ, useValue: stub },
         { provide: DocumentsService, useValue: documentsService },
       ],

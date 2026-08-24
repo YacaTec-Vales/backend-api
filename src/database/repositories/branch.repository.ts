@@ -97,8 +97,10 @@ export class BranchRepository {
   async setManagerUserId(
     id: string,
     managerUserId: string | null,
+    tx?: DrizzleWrite,
   ): Promise<BranchEntity | null> {
-    const [row] = await this.writeDb
+    const db = tx ?? this.writeDb;
+    const [row] = await db
       .update(branches)
       .set({
         managerUserId,

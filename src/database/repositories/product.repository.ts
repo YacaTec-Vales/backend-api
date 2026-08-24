@@ -147,8 +147,12 @@ export class ProductRepository {
    *   `updated_at`; los llena la BD).
    * @returns Entidad creada tal cual quedo persistida.
    */
-  async create(data: NewProductEntity): Promise<ProductEntity> {
-    const [row] = await this.writeDb.insert(products).values(data).returning();
+  async create(
+    data: NewProductEntity,
+    tx?: DrizzleWrite,
+  ): Promise<ProductEntity> {
+    const db = tx ?? this.writeDb;
+    const [row] = await db.insert(products).values(data).returning();
     return row;
   }
 

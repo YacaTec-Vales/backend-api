@@ -274,8 +274,10 @@ export class PermissionRepository {
    */
   async grantOverride(
     input: GrantPermissionOverrideInput,
+    tx?: DrizzleWrite,
   ): Promise<UserPermissionOverrideRow> {
-    const [row] = await this.writeDb
+    const db = tx ?? this.writeDb;
+    const [row] = await db
       .insert(userPermissionOverrides)
       .values({
         userId: input.userId,
@@ -323,11 +325,13 @@ export class PermissionRepository {
   async revokeOverride(
     userId: string,
     permissionCode: string,
+    tx?: DrizzleWrite,
   ): Promise<UserPermissionOverrideRow | null> {
     const permission = await this.findPermissionByCode(permissionCode);
     if (!permission) return null;
 
-    const [row] = await this.writeDb
+    const db = tx ?? this.writeDb;
+    const [row] = await db
       .update(userPermissionOverrides)
       .set({ isActive: false })
       .where(

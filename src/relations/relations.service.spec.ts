@@ -31,6 +31,9 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { RelationsService } from './relations.service';
+import { AuditLogRepository } from '../database/repositories/audit-log.repository';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+type _AuditRepoUsed = AuditLogRepository;
 import type { RelationEntity } from '../database/schema';
 import type { DistributorEntity } from '../database/schema';
 
@@ -241,6 +244,15 @@ function buildService(
   const service = new RelationsService(
     relationsRepo as never,
     distRepo as never,
+    {
+      runWithContext: jest
+        .fn()
+        .mockImplementation(
+          async <T>(_ctx: unknown, work: (tx: unknown) => Promise<T>) =>
+            work({ __isTx: true }),
+        ),
+      logEvent: jest.fn().mockResolvedValue(undefined),
+    } as never,
     paymentRepo as never,
     writeDb as never,
   );
@@ -595,8 +607,13 @@ describe('RelationsService', () => {
       expect(dto.reconciliationStatus).toBe('LIQUIDADO');
       expect(dto.totalPaidCents).toBe(112_000);
       // El applyPayment se llamo con exactamente el saldo pendiente
-      // (112000), no con un valor arbitrario.
-      expect(relationsRepo.applyPayment).toHaveBeenCalledWith(REL_ID, 112_000);
+      // (112000), no con un valor arbitrario. Ahora va dentro del
+      // runWithContext, asi que recibe el `tx` como 3er arg.
+      expect(relationsRepo.applyPayment).toHaveBeenCalledWith(
+        REL_ID,
+        112_000,
+        expect.anything(),
+      );
     });
 
     it('pago parcial: status=PARCIAL', async () => {
@@ -750,8 +767,13 @@ describe('RelationsService', () => {
       );
       expect(dto.reconciliationStatus).toBe('LIQUIDADO');
       // Verificamos que el applyPayment se invoco (el Gerente
-      // pago en nombre de su Distribuidor).
-      expect(relationsRepo.applyPayment).toHaveBeenCalledWith(REL_ID, 112_000);
+      // pago en nombre de su Distribuidor). El 3er arg es el `tx`
+      // del runWithContext.
+      expect(relationsRepo.applyPayment).toHaveBeenCalledWith(
+        REL_ID,
+        112_000,
+        expect.anything(),
+      );
     });
   });
 

@@ -52,6 +52,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
+import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 import { SolicitationRepository } from '../database/repositories/solicitation.repository';
 import { BranchRepository } from '../database/repositories/branch.repository';
 import { UserRepository } from '../database/repositories/user.repository';
@@ -111,6 +112,7 @@ export class SolicitationsService {
     private readonly branchRepo: BranchRepository,
     private readonly userRepository: UserRepository,
     private readonly distributorRepo: DistributorRepository,
+    private readonly auditRepo: AuditLogRepository,
     // DRIZZLE_READ se inyecta solo para el lookup de validacion
     // de branch del actor vs. branch de la solicitud. Toda escritura
     // pasa por SolicitationRepository (DRIZZLE_WRITE).
@@ -358,9 +360,17 @@ export class SolicitationsService {
       SOLICITUD_ERROR_CODES.VERIFIER_NO_BRANCH,
       'VERIFICADOR',
     );
-    const updated = await this.solicitationRepo.assignVerifier(
-      solicitationId,
-      actor.id,
+    const updated = await this.auditRepo.runWithContext(
+      {
+        actorUserId: actor.id,
+        action: 'SOLICITATION.TAKEN',
+        metadata: {
+          solicitationId,
+          branchId: current.branchId,
+        },
+      },
+      async () =>
+        this.solicitationRepo.assignVerifier(solicitationId, actor.id),
     );
     this.logger.log(`Solicitud tomada: id=${solicitationId} verif=${actor.id}`);
     return this.mapper.fromEntity(updated ?? current);
@@ -628,11 +638,35 @@ export class SolicitationsService {
     if (Object.keys(patch).length === 0) {
       return this.mapper.fromEntity(current);
     }
-    const updated = await this.solicitationRepo.update(solicitationId, patch);
+    const updated = await this.auditRepo.runWithContext(
+      {
+        actorUserId: actor.id,
+        action: 'SOLICITATION.EDITED',
+        metadata: {
+          solicitationId,
+          branchId: current.branchId,
+          touchedGeneralData: dto.generalData !== undefined,
+          touchedAdditionalData: dto.additionalData !== undefined,
+          previousStatus: current.status,
+        },
+      },
+      async () => this.solicitationRepo.update(solicitationId, patch),
+    );
     if (current.status === 'DICTAMINADA') {
-      const statusBack = await this.solicitationRepo.updateStatus(
-        solicitationId,
-        'EN_VERIFICACION',
+      const statusBack = await this.auditRepo.runWithContext(
+        {
+          actorUserId: actor.id,
+          action: 'SOLICITATION.EDITED',
+          metadata: {
+            solicitationId,
+            branchId: current.branchId,
+            nextStatus: 'EN_VERIFICACION',
+            fromStatus: 'DICTAMINADA',
+            reason: 'correccion_por_coordinador',
+          },
+        },
+        async () =>
+          this.solicitationRepo.updateStatus(solicitationId, 'EN_VERIFICACION'),
       );
       this.logger.log(
         `Solicitud corregida por coord y vuelta a EN_VERIFICACION: ` +

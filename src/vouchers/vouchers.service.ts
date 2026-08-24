@@ -39,6 +39,7 @@ import { ClientRepository } from '../database/repositories/client.repository';
 import { DistributorRepository } from '../database/repositories/distributor.repository';
 import { ProductRepository } from '../database/repositories/product.repository';
 import { VoucherRepository } from '../database/repositories/voucher.repository';
+import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 import {
   DRIZZLE_READ,
   DRIZZLE_WRITE,
@@ -87,6 +88,7 @@ export class VouchersService {
     private readonly distributorRepo: DistributorRepository,
     @Inject(DRIZZLE_READ) private readonly readDb: DrizzleRead,
     @Inject(DRIZZLE_WRITE) private readonly writeDb: DrizzleWrite,
+    private readonly auditRepo: AuditLogRepository,
   ) {}
 
   /**
@@ -243,41 +245,73 @@ export class VouchersService {
       totalToPayCents / product.totalPeriods,
     );
 
-    // 9. INSERT voucher.
-    const inserted = await this.voucherRepo.create({
-      folio,
-      voucherType,
-      status: 'ACTIVO',
-      productId: product.id,
-      distributorId: distributor.id,
-      clientId: client.id,
-      amountCents,
-      paidPeriods: 0,
-      totalPeriods: product.totalPeriods,
-      destinationBankAccount: client.bankAccount ?? {},
-      authorizationNumber: null,
-      modificationAuthorizationId: null,
-      openingCommissionCents,
-      insuranceCents,
-      totalToPayCents,
-      paymentPerPeriodCents,
-      liquidatedAt: null,
-      cancelledAt: null,
-      cancellationReason: null,
-      isActive: true,
-      deletedAt: null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      categoryId: null,
-      categoryCommissionBps: null,
-      openingCommissionBps: product.commissionBps,
-      interestPerPeriodBps: product.interestPerPeriodBps,
-      insuranceRuleSnapshot: {},
-    });
+    // 9. INSERT voucher (envuelto en runWithContext para que el
+    // trigger registre el INSERT con actor, IP y device correctos).
+    const inserted = await this.auditRepo.runWithContext(
+      {
+        actorUserId: actor.id,
+        action: 'VOUCHER.GENERATED',
+        metadata: {
+          distributorId: distributor.id,
+          clientId: client.id,
+          productId: product.id,
+          amountCents,
+          isPrevale,
+        },
+      },
+      async (tx) =>
+        this.voucherRepo.create(
+          {
+            folio,
+            voucherType,
+            status: 'ACTIVO',
+            productId: product.id,
+            distributorId: distributor.id,
+            clientId: client.id,
+            amountCents,
+            paidPeriods: 0,
+            totalPeriods: product.totalPeriods,
+            destinationBankAccount: client.bankAccount ?? {},
+            authorizationNumber: null,
+            modificationAuthorizationId: null,
+            openingCommissionCents,
+            insuranceCents,
+            totalToPayCents,
+            paymentPerPeriodCents,
+            liquidatedAt: null,
+            cancelledAt: null,
+            cancellationReason: null,
+            isActive: true,
+            deletedAt: null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            categoryId: null,
+            categoryCommissionBps: null,
+            openingCommissionBps: product.commissionBps,
+            interestPerPeriodBps: product.interestPerPeriodBps,
+            insuranceRuleSnapshot: {},
+          },
+          tx,
+        ),
+    );
 
     // 10. Si fue PREVALE, marcar el voucher como primer vale del cliente.
+    //     Envuelto en runWithContext para que el trigger sobre
+    //     app.client vea actor, IP, device y action=CLIENT.UPDATED.
     if (isPrevale) {
-      await this.clientRepo.updateFirstVoucher(client.id, inserted.id);
+      await this.auditRepo.runWithContext(
+        {
+          actorUserId: actor.id,
+          action: 'CLIENT.UPDATED',
+          metadata: {
+            clientId: client.id,
+            voucherId: inserted.id,
+            reason: 'first_voucher_assigned',
+          },
+        },
+        async (tx) =>
+          this.clientRepo.updateFirstVoucher(client.id, inserted.id, tx),
+      );
     }
 
     // 11. KPI log
@@ -349,9 +383,13 @@ export class VouchersService {
     }
 
     // 4. Cancelar (UPDATE solo si status='ACTIVO').
-    const cancelled = await this.voucherRepo.cancelByFolio(
-      folio,
-      reason.trim(),
+    const cancelled = await this.auditRepo.runWithContext(
+      {
+        actorUserId: actor.id,
+        action: 'VOUCHER.CANCELLED',
+        metadata: { folio, reason: reason.trim() },
+      },
+      async (tx) => this.voucherRepo.cancelByFolio(folio, reason.trim(), tx),
     );
     if (!cancelled) {
       // Ya estaba cancelado, liquidado, o borrado.
@@ -366,9 +404,21 @@ export class VouchersService {
     }
 
     // 5. Si era PREVALE, limpiar el flag del cliente para que el
-    //    proximo vale vuelva a ser PREVALE.
+    //    proximo vale vuelva a ser PREVALE. Envuelto en
+    //    runWithContext para que el trigger vea actor y action.
     if (voucher.voucherType === 'PREVALE') {
-      await this.clientRepo.clearFirstVoucher(voucher.clientId);
+      await this.auditRepo.runWithContext(
+        {
+          actorUserId: actor.id,
+          action: 'CLIENT.UPDATED',
+          metadata: {
+            clientId: voucher.clientId,
+            voucherId: cancelled.id,
+            reason: 'first_voucher_cleared_after_cancel',
+          },
+        },
+        async (tx) => this.clientRepo.clearFirstVoucher(voucher.clientId, tx),
+      );
     }
 
     this.logger.log(

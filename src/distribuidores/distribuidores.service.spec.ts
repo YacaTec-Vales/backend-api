@@ -96,15 +96,22 @@ function buildService() {
   const distributorRepo = buildDistRepo();
   const branchRepo = createBranchRepositoryMock();
   const branchCutoffRepo = { listByBranch: jest.fn() };
+  const auditRepo = {
+    runWithContext: jest.fn(async <T>(_ctx: unknown, work: () => Promise<T>) =>
+      work(),
+    ),
+    logEvent: jest.fn().mockResolvedValue(undefined),
+  };
   const pool = buildPoolMock();
   const service = new DistribuidoresService(
     distributorRepo as never,
     branchRepo,
     branchCutoffRepo as never,
+    auditRepo as never,
     pool as never,
     pool as never,
   );
-  return { service, distributorRepo, branchCutoffRepo, pool };
+  return { service, distributorRepo, branchCutoffRepo, auditRepo, pool };
 }
 
 // ===========================================================================
@@ -357,14 +364,21 @@ describe('DistribuidoresService', () => {
       const distributorRepo = buildDistRepo();
       const branchRepo = createBranchRepositoryMock();
       const branchCutoffRepo = { listByBranch: jest.fn() };
+      const auditRepo = {
+        runWithContext: jest.fn(
+          async <T>(_ctx: unknown, work: () => Promise<T>) => work(),
+        ),
+        logEvent: jest.fn().mockResolvedValue(undefined),
+      };
       const service = new DistribuidoresService(
         distributorRepo as never,
         branchRepo,
         branchCutoffRepo as never,
+        auditRepo as never,
         { $client: pool } as never,
         { $client: pool } as never,
       );
-      return { service, distributorRepo, pool };
+      return { service, distributorRepo, auditRepo, pool };
     }
 
     function buildActorDist(role: UserType = 'DISTRIBUIDOR') {

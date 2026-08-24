@@ -17,6 +17,7 @@ import {
 import { createHash, randomUUID } from 'crypto';
 import { StorageService } from '../storage/storage.service';
 import { DocumentRepository } from '../database/repositories/document.repository';
+import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 import type { DocumentEntity } from '../database/schema';
 
 export const DOCUMENTS_ERROR_CODES = {
@@ -48,6 +49,7 @@ export class DocumentsService {
   constructor(
     private readonly storageService: StorageService,
     private readonly documentRepo: DocumentRepository,
+    private readonly auditRepo: AuditLogRepository,
   ) {}
 
   async upload(
@@ -97,7 +99,19 @@ export class DocumentsService {
     this.logger.log(
       `document upload: id=${created.id} type=${safeType} key=${path} sha256=${sha256.slice(0, 12)}`,
     );
-
+    // Fire-and-forget: registrar subida en audit_log via logEvent.
+    void this.auditRepo.logEvent({
+      action: 'DOCUMENT.UPLOADED',
+      actorUserId: actor.id,
+      tableName: 'document',
+      recordId: created.id,
+      metadata: {
+        documentType: safeType,
+        fileName: file.originalname,
+        sizeBytes: file.size,
+        sha256: sha256.slice(0, 16),
+      },
+    });
     return this.toResult(created, publicUrl);
   }
 

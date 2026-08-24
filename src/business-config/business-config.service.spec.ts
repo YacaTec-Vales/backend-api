@@ -72,7 +72,17 @@ function buildRepo(
 
 function buildService(opts: { repo?: ReturnType<typeof buildRepo> } = {}) {
   const repo = opts.repo ?? buildRepo();
-  const service = new BusinessConfigService(repo as never);
+  const fakeTx = { __isTx: true };
+  const auditRepo = {
+    runWithContext: jest
+      .fn()
+      .mockImplementation(
+        async <T>(_ctx: unknown, work: (tx: unknown) => Promise<T>) =>
+          work(fakeTx),
+      ),
+    logEvent: jest.fn().mockResolvedValue(undefined),
+  };
+  const service = new BusinessConfigService(repo as never, auditRepo as never);
   return { service, repo };
 }
 
@@ -140,13 +150,16 @@ describe('BusinessConfigService', () => {
       // El cache ya refleja el valor actualizado.
       const cached = await service.getByKey('insurance_cents');
       expect(cached?.valueCents).toBe(15_000);
-      expect(repo.applyPatch).toHaveBeenCalledWith([
-        expect.objectContaining({
-          key: 'insurance_cents',
-          valueCents: 15_000,
-          actorId: ACTOR_ID,
-        }),
-      ]);
+      expect(repo.applyPatch).toHaveBeenCalledWith(
+        [
+          expect.objectContaining({
+            key: 'insurance_cents',
+            valueCents: 15_000,
+            actorId: ACTOR_ID,
+          }),
+        ],
+        expect.anything(),
+      );
     });
 
     it('rechaza clave desconocida con BUSINESS_CONFIG.UNKNOWN_KEY', async () => {

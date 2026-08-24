@@ -1,6 +1,7 @@
 import { Injectable, Inject, Logger } from '@nestjs/common';
 import { DRIZZLE_WRITE } from '../../database/drizzle.provider';
 import type { DrizzleWrite } from '../../database/drizzle.provider';
+import { AuditLogRepository } from '../../database/repositories/audit-log.repository';
 import { ExcelParserService } from './excel-parser.service';
 import {
   reconciliationBatches,
@@ -8,7 +9,7 @@ import {
   reconciliations,
   relations,
 } from '../../database/schema';
-import { eq, sql, isNull, desc } from 'drizzle-orm';
+import { eq, isNull, desc } from 'drizzle-orm';
 
 @Injectable()
 export class ConciliacionService {
@@ -17,6 +18,7 @@ export class ConciliacionService {
   constructor(
     @Inject(DRIZZLE_WRITE) private readonly db: DrizzleWrite,
     private readonly excelParser: ExcelParserService,
+    private readonly auditRepo: AuditLogRepository,
   ) {}
 
   /**
@@ -37,112 +39,126 @@ export class ConciliacionService {
     // 1. Extraemos los movimientos usando el servicio de parsing
     const parsedMovements = this.excelParser.parseBankExcel(fileBuffer);
 
-    // 2. Ejecutamos la lógica en una transacción garantizando atomicidad
-    await this.db.transaction(async (tx) => {
-      // Crear el lote de conciliación en estado inicial
-      const [batch] = await tx
-        .insert(reconciliationBatches)
-        .values({
-          uploadedBy,
+    // 2. Ejecutamos la lógica en una transacción garantizando atomicidad.
+    //    Envolvemos la TX con runWithContext para que el trigger vea
+    //    actor + action + metadata; sin esto, los INSERT/UPDATE de
+    //    esta mutacion salen con user_id NULL en app.audit_log.
+    await this.auditRepo.runWithContext(
+      {
+        actorUserId: uploadedBy,
+        action: 'RECONCILIATION.AUTOMATIC',
+        metadata: {
           originalFileName,
           storagePath,
-          sheetName: 'Hoja1',
-          status: 'PROCESANDO',
-        })
-        .returning();
-
-      let matchedCount = 0;
-      let branchCreditBalance = 0;
-
-      for (const movement of parsedMovements) {
-        // Ignoramos concepto, cruzamos exclusivamente por Referencia
-        const relationList = await tx
-          .select()
-          .from(relations)
-          .where(eq(relations.referencePayment, movement.reference))
-          .limit(1);
-
-        const relation = relationList[0];
-
-        // Convertir el monto flotante a centavos
-        const paymentCents = Math.round(movement.paymentAmount * 100);
-
-        // Insertar siempre el movimiento bancario extraído del archivo
-        const [insertedMovement] = await tx
-          .insert(bankMovements)
+          parsedMovements: parsedMovements.length,
+        },
+      },
+      async (tx) => {
+        // Crear el lote de conciliación en estado inicial
+        const [batch] = await tx
+          .insert(reconciliationBatches)
           .values({
-            batchId: batch.id,
-            item: movement.item,
-            concept: movement.concept, // Se ignora para el cruce, pero se guarda para auditoría
-            reference: movement.reference,
-            paymentCents,
-            paymentFolio: movement.paymentFolio,
-            paymentDate: movement.paymentDate, // Formato normalizado a YYYY-MM-DD o texto plano
-            paymentTime: movement.paymentTime, // Formato normalizado a HH:mm
-            paymentType: movement.paymentType,
-            rawRow: movement.rawRow,
+            uploadedBy,
+            originalFileName,
+            storagePath,
+            sheetName: 'Hoja1',
+            status: 'PROCESANDO',
           })
           .returning();
 
-        if (relation) {
-          // MATCH ENCONTRADO
-          const newPaidCents = Number(relation.totalPaidCents) + paymentCents;
-          const newStatus =
-            newPaidCents >= Number(relation.totalToPayCents)
-              ? 'LIQUIDADO'
-              : 'PARCIAL';
+        let matchedCount = 0;
+        let branchCreditBalance = 0;
 
-          // Actualizar saldo y estado de la relación
-          await tx
-            .update(relations)
-            .set({
-              totalPaidCents: newPaidCents,
-              reconciliationStatus: newStatus,
-              updatedAt: new Date(),
-            })
-            .where(eq(relations.id, relation.id));
+        for (const movement of parsedMovements) {
+          // Ignoramos concepto, cruzamos exclusivamente por Referencia
+          const relationList = await tx
+            .select()
+            .from(relations)
+            .where(eq(relations.referencePayment, movement.reference))
+            .limit(1);
 
-          // Registrar el cruce en la tabla reconciliation
-          const [reconciliationRecord] = await tx
-            .insert(reconciliations)
+          const relation = relationList[0];
+
+          // Convertir el monto flotante a centavos
+          const paymentCents = Math.round(movement.paymentAmount * 100);
+
+          // Insertar siempre el movimiento bancario extraído del archivo
+          const [insertedMovement] = await tx
+            .insert(bankMovements)
             .values({
-              relationId: relation.id,
-              bankMovementId: insertedMovement.id,
-              montoAplicadoCents: paymentCents,
-              reconciliationType: 'AUTOMATICA',
+              batchId: batch.id,
+              item: movement.item,
+              concept: movement.concept, // Se ignora para el cruce, pero se guarda para auditoría
+              reference: movement.reference,
+              paymentCents,
+              paymentFolio: movement.paymentFolio,
+              paymentDate: movement.paymentDate, // Formato normalizado a YYYY-MM-DD o texto plano
+              paymentTime: movement.paymentTime, // Formato normalizado a HH:mm
+              paymentType: movement.paymentType,
+              rawRow: movement.rawRow,
             })
             .returning();
 
-          // Ligar el bank_movement con su reconciliation id
-          await tx
-            .update(bankMovements)
-            .set({ reconciliationId: reconciliationRecord.id })
-            .where(eq(bankMovements.id, insertedMovement.id));
+          if (relation) {
+            // MATCH ENCONTRADO
+            const newPaidCents = Number(relation.totalPaidCents) + paymentCents;
+            const newStatus =
+              newPaidCents >= Number(relation.totalToPayCents)
+                ? 'LIQUIDADO'
+                : 'PARCIAL';
 
-          matchedCount++;
-        } else {
-          // SIN MATCH: Se registra como SALDO_FAVOR_SUCURSAL sumándolo al total del batch.
-          // El bank_movement se queda sin reconciliationId y sirve como histórico del sobrante.
-          branchCreditBalance += paymentCents;
+            // Actualizar saldo y estado de la relación
+            await tx
+              .update(relations)
+              .set({
+                totalPaidCents: newPaidCents,
+                reconciliationStatus: newStatus,
+                updatedAt: new Date(),
+              })
+              .where(eq(relations.id, relation.id));
+
+            // Registrar el cruce en la tabla reconciliation
+            const [reconciliationRecord] = await tx
+              .insert(reconciliations)
+              .values({
+                relationId: relation.id,
+                bankMovementId: insertedMovement.id,
+                montoAplicadoCents: paymentCents,
+                reconciliationType: 'AUTOMATICA',
+              })
+              .returning();
+
+            // Ligar el bank_movement con su reconciliation id
+            await tx
+              .update(bankMovements)
+              .set({ reconciliationId: reconciliationRecord.id })
+              .where(eq(bankMovements.id, insertedMovement.id));
+
+            matchedCount++;
+          } else {
+            // SIN MATCH: Se registra como SALDO_FAVOR_SUCURSAL sumándolo al total del batch.
+            // El bank_movement se queda sin reconciliationId y sirve como histórico del sobrante.
+            branchCreditBalance += paymentCents;
+          }
         }
-      }
 
-      // 3. Finalizar y actualizar el estado y contadores del lote
-      await tx
-        .update(reconciliationBatches)
-        .set({
-          totalMovements: parsedMovements.length,
-          totalReconciled: matchedCount,
-          totalBranchCreditBalance: branchCreditBalance,
-          status: 'COMPLETADO',
-          completedAt: new Date(),
-        })
-        .where(eq(reconciliationBatches.id, batch.id));
+        // 3. Finalizar y actualizar el estado y contadores del lote
+        await tx
+          .update(reconciliationBatches)
+          .set({
+            totalMovements: parsedMovements.length,
+            totalReconciled: matchedCount,
+            totalBranchCreditBalance: branchCreditBalance,
+            status: 'COMPLETADO',
+            completedAt: new Date(),
+          })
+          .where(eq(reconciliationBatches.id, batch.id));
 
-      this.logger.log(
-        `Lote ${batch.id} procesado exitosamente. Movimientos totales: ${parsedMovements.length}, Cruzados: ${matchedCount}, Saldo huérfano (cents): ${branchCreditBalance}`,
-      );
-    });
+        this.logger.log(
+          `Lote ${batch.id} procesado exitosamente. Movimientos totales: ${parsedMovements.length}, Cruzados: ${matchedCount}, Saldo huérfano (cents): ${branchCreditBalance}`,
+        );
+      },
+    );
   }
 
   /**
@@ -155,74 +171,93 @@ export class ConciliacionService {
     authorizationId: string,
     userId: string,
   ) {
-    await this.db.transaction(async (tx) => {
-      // Validar que el movimiento no esté conciliado previamente
-      const [movement] = await tx
-        .select()
-        .from(bankMovements)
-        .where(eq(bankMovements.id, bankMovementId))
-        .limit(1);
-
-      if (!movement) throw new Error('Movimiento bancario no encontrado');
-      if (movement.reconciliationId)
-        throw new Error('El movimiento ya se encuentra conciliado');
-
-      // Validar relación
-      const [relation] = await tx
-        .select()
-        .from(relations)
-        .where(eq(relations.id, relationId))
-        .limit(1);
-
-      if (!relation) throw new Error('Relación no encontrada');
-
-      // (Nota: En un entorno real validaríamos que la autorización existe,
-      // es del tipo CONCILIACION_MANUAL, está APROBADA y pertenece a esto).
-
-      const paymentCents = movement.paymentCents;
-      const newPaidCents = Number(relation.totalPaidCents) + paymentCents;
-      const newStatus =
-        newPaidCents >= Number(relation.totalToPayCents)
-          ? 'LIQUIDADO'
-          : 'PARCIAL';
-
-      // 1. Actualizar Relación
-      await tx
-        .update(relations)
-        .set({
-          totalPaidCents: newPaidCents,
-          reconciliationStatus: newStatus,
-          updatedAt: new Date(),
-        })
-        .where(eq(relations.id, relation.id));
-
-      // 2. Insertar Conciliación Manual
-      const [reconciliationRecord] = await tx
-        .insert(reconciliations)
-        .values({
-          relationId: relation.id,
-          bankMovementId: movement.id,
-          montoAplicadoCents: paymentCents,
-          reconciliationType: 'MANUAL',
+    // En lugar de abrir una TX nueva con this.db.transaction (que
+    // quedaria fuera del ambito del AuditContextInterceptor y no
+    // tendria acceso a las 4 vars de transporte), usamos la TX
+    // actual del request via runWithContext, que ademas setea las
+    // 2 vars de negocio (action + metadata) en el MISMO client.
+    await this.auditRepo.runWithContext(
+      {
+        actorUserId: userId,
+        action: 'RECONCILIATION.MANUAL',
+        metadata: {
+          bankMovementId,
+          relationId,
           authorizationId,
-          notes: `Conciliación manual ejecutada por el usuario ${userId}`,
-        })
-        .returning();
+        },
+      },
+      async (tx) => {
+        // Validar que el movimiento no esté conciliado previamente
+        const [movement] = await tx
+          .select()
+          .from(bankMovements)
+          .where(eq(bankMovements.id, bankMovementId))
+          .limit(1);
 
-      // 3. Ligar Bank Movement
-      await tx
-        .update(bankMovements)
-        .set({ reconciliationId: reconciliationRecord.id })
-        .where(eq(bankMovements.id, movement.id));
+        if (!movement) throw new Error('Movimiento bancario no encontrado');
+        if (movement.reconciliationId)
+          throw new Error('El movimiento ya se encuentra conciliado');
 
-      // NOTA: Como la acción modifica una conciliación, la traza de auditoría
-      // debe quedar mediante el app.audit_action seteado a 'CONCILIACION.MANUAL'
-      await tx.execute(sql`SET LOCAL app.audit_action = 'CONCILIACION.MANUAL'`);
+        // Validar relación
+        const [relation] = await tx
+          .select()
+          .from(relations)
+          .where(eq(relations.id, relationId))
+          .limit(1);
 
-      this.logger.log(
-        `Conciliación manual ejecutada. Movimiento: ${bankMovementId}, Relación: ${relationId}`,
-      );
-    });
+        if (!relation) throw new Error('Relación no encontrada');
+
+        // (Nota: En un entorno real validaríamos que la autorización existe,
+        // es del tipo CONCILIACION_MANUAL, está APROBADA y pertenece a esto).
+
+        const paymentCents = movement.paymentCents;
+        const newPaidCents = Number(relation.totalPaidCents) + paymentCents;
+        const newStatus =
+          newPaidCents >= Number(relation.totalToPayCents)
+            ? 'LIQUIDADO'
+            : 'PARCIAL';
+
+        // 1. Actualizar Relación
+        await tx
+          .update(relations)
+          .set({
+            totalPaidCents: newPaidCents,
+            reconciliationStatus: newStatus,
+            updatedAt: new Date(),
+          })
+          .where(eq(relations.id, relation.id));
+
+        // 2. Insertar Conciliación Manual
+        const [reconciliationRecord] = await tx
+          .insert(reconciliations)
+          .values({
+            relationId: relation.id,
+            bankMovementId: movement.id,
+            montoAplicadoCents: paymentCents,
+            reconciliationType: 'MANUAL',
+            authorizationId,
+            notes: `Conciliación manual ejecutada por el usuario ${userId}`,
+          })
+          .returning();
+
+        // 3. Ligar Bank Movement
+        await tx
+          .update(bankMovements)
+          .set({ reconciliationId: reconciliationRecord.id })
+          .where(eq(bankMovements.id, movement.id));
+
+        // El trigger de app.audit_trigger() registra esta operacion
+        // con `table_name = reconciliation` y `action = RECONCILIATION.MANUAL`
+        // porque el trigger lee `app.audit_action` que setea
+        // runWithContext. Antes se hacia con SET LOCAL DESPUES de
+        // las mutaciones, lo cual no se propagaba (el trigger ya
+        // habia disparado).
+
+        this.logger.log(
+          `Conciliación manual ejecutada. Movimiento: ${bankMovementId}, Relación: ${relationId}`,
+        );
+      },
+    );
   }
 
   /**

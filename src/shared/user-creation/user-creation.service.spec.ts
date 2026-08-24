@@ -122,8 +122,13 @@ describe('UserCreationService', () => {
         roleCode: 'GERENTE_SUCURSAL',
         branchId: 'suc-1',
       }),
+      expect.anything(),
     );
-    expect(branchRepo.setManagerUserId).toHaveBeenCalledWith('suc-1', 'u-1');
+    expect(branchRepo.setManagerUserId).toHaveBeenCalledWith(
+      'suc-1',
+      'u-1',
+      expect.anything(),
+    );
     expect(mailService.sendUserWelcome).toHaveBeenCalledTimes(1);
     expect(auditRepo.logEvent).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'USER.WELCOME_EMAIL_SENT' }),

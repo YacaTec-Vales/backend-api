@@ -26,6 +26,9 @@ import compression from 'compression';
 import { AllExceptionsFilter } from './shared/filters/all-exceptions.filter';
 import { RequestLoggingInterceptor } from './shared/interceptors/request-logging.interceptor';
 import { ResponseEnvelopeInterceptor } from './shared/interceptors/response-envelope.interceptor';
+import { AuditContextInterceptor } from './shared/interceptors/audit-context.interceptor';
+import { AuditContextStoreService } from './shared/context/audit-context.store';
+import { DRIZZLE_WRITE, type DrizzleWrite } from './database/drizzle.provider';
 import type { AppConfig } from './config/app.config';
 
 export interface ConfigureApplicationOptions {
@@ -94,10 +97,13 @@ export function configureApplication(
   );
 
   const reflector = app.get(Reflector);
+  const writeDb = app.get<DrizzleWrite>(DRIZZLE_WRITE);
+  const auditContextStore = app.get(AuditContextStoreService);
   app.useGlobalFilters(new AllExceptionsFilter(reflector));
   app.useGlobalInterceptors(
     new RequestLoggingInterceptor(),
     new ResponseEnvelopeInterceptor(reflector),
+    new AuditContextInterceptor(writeDb, auditContextStore),
   );
 
   if (mountOpenApi) {

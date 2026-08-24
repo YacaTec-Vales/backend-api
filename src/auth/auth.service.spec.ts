@@ -33,6 +33,8 @@ import {
 import { AuthService } from './services/auth.service';
 import { UserRepository } from '../database/repositories/user.repository';
 import { RefreshTokenRepository } from '../database/repositories/refresh-token.repository';
+import { AuditLogRepository } from '../database/repositories/audit-log.repository';
+import { LogService } from '../shared/logging/log.service';
 import {
   PasswordService,
   WeakPasswordError,
@@ -193,6 +195,28 @@ describe('AuthService', () => {
       sessionService,
       permissionCache,
       { get: jest.fn() } as unknown as ConfigService,
+      {
+        logEvent: jest.fn().mockResolvedValue(undefined),
+        runWithContext: jest
+          .fn()
+          .mockImplementation(
+            async <T>(
+              _ctx: unknown,
+              work: (tx: unknown) => Promise<T>,
+            ): Promise<T> => work(undefined),
+          ),
+      } as unknown as AuditLogRepository,
+      {
+        loginSuccess: jest.fn().mockResolvedValue(undefined),
+        loginFailed: jest.fn().mockResolvedValue(undefined),
+        logout: jest.fn().mockResolvedValue(undefined),
+        tokenRefreshed: jest.fn().mockResolvedValue(undefined),
+        error: jest.fn().mockResolvedValue(undefined),
+        httpRequest: jest.fn().mockResolvedValue(undefined),
+        vpnGuardRejected: jest.fn().mockResolvedValue(undefined),
+        permissionDenied: jest.fn().mockResolvedValue(undefined),
+        logEvent: jest.fn().mockResolvedValue(undefined),
+      } as unknown as LogService,
       null,
     );
   });
@@ -303,6 +327,7 @@ describe('AuthService', () => {
         'user-1',
         5,
         15,
+        undefined,
       );
     });
 
@@ -395,6 +420,28 @@ describe('AuthService', () => {
         sessionService,
         permissionCache,
         { get: jest.fn() } as unknown as ConfigService,
+        {
+          logEvent: jest.fn().mockResolvedValue(undefined),
+          runWithContext: jest
+            .fn()
+            .mockImplementation(
+              async <T>(
+                _ctx: unknown,
+                work: (tx: unknown) => Promise<T>,
+              ): Promise<T> => work(undefined),
+            ),
+        } as unknown as AuditLogRepository,
+        {
+          loginSuccess: jest.fn().mockResolvedValue(undefined),
+          loginFailed: jest.fn().mockResolvedValue(undefined),
+          logout: jest.fn().mockResolvedValue(undefined),
+          tokenRefreshed: jest.fn().mockResolvedValue(undefined),
+          error: jest.fn().mockResolvedValue(undefined),
+          httpRequest: jest.fn().mockResolvedValue(undefined),
+          vpnGuardRejected: jest.fn().mockResolvedValue(undefined),
+          permissionDenied: jest.fn().mockResolvedValue(undefined),
+          logEvent: jest.fn().mockResolvedValue(undefined),
+        } as unknown as LogService,
         mfaStub,
       );
     }
@@ -673,6 +720,7 @@ describe('AuthService', () => {
         'user-1',
         'hashed:new',
         false,
+        undefined,
       );
       expect(sessionService.revokeOthersForUser).toHaveBeenCalledWith(
         'user-1',

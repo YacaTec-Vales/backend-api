@@ -40,6 +40,7 @@ import {
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { ClientRepository } from '../database/repositories/client.repository';
 import { VoucherRepository } from '../database/repositories/voucher.repository';
+import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 import { DRIZZLE_READ, type DrizzleRead } from '../database/drizzle.provider';
 import { distributors, branches, vouchers } from '../database/schema';
 import { DocumentsService } from '../documents/documents.service';
@@ -63,6 +64,7 @@ export class ClientsService {
   constructor(
     private readonly clientRepo: ClientRepository,
     private readonly voucherRepo: VoucherRepository,
+    private readonly auditRepo: AuditLogRepository,
     @Inject(DRIZZLE_READ) private readonly readDb: DrizzleRead,
     private readonly documentsService: DocumentsService,
   ) {}

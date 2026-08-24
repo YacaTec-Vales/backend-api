@@ -15,6 +15,7 @@ import { ConfigService } from '@nestjs/config';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { MailerService } from '@nestjs-modules/mailer';
+import { ThrottlerGuard } from '@nestjs/throttler';
 import type { INestApplication } from '@nestjs/common';
 import type { Server } from 'node:http';
 
@@ -48,6 +49,14 @@ export interface TestAppOptions {
    */
   mockMailer?: boolean;
   /**
+   * Si `true`, reemplaza el `ThrottlerGuard` global por un no-op.
+   * Los e2e que disparan rafagas de requests (vpn-origin, audit)
+   * lo necesitan porque el throttle real (10 req/s) responde 429
+   * y rompe las expectativas de status exacto. Default `false`
+   * para mantener paridad con produccion en suites pocas-requests.
+   */
+  mockThrottler?: boolean;
+  /**
    * Si se omite, se usa el prefix de produccion (`api/v1`).
    */
   globalPrefix?: string;
@@ -73,6 +82,7 @@ export async function createTestApp(
   opts: TestAppOptions = {},
 ): Promise<CreateTestAppHandle> {
   const mockMailer = opts.mockMailer !== false;
+  const mockThrottler = opts.mockThrottler === true;
   const globalPrefix = opts.globalPrefix ?? 'api/v1';
 
   const moduleBuilder = Test.createTestingModule({
@@ -83,6 +93,11 @@ export async function createTestApp(
     moduleBuilder
       .overrideProvider(MailerService)
       .useValue(createMailerServiceMock());
+  }
+  if (mockThrottler) {
+    moduleBuilder.overrideProvider(ThrottlerGuard).useValue({
+      canActivate: () => true,
+    });
   }
   for (const override of opts.overrides ?? []) {
     moduleBuilder.overrideProvider(override.token).useValue(override.value);

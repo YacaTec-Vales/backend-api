@@ -25,6 +25,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 import { ClientRepository } from '../database/repositories/client.repository';
 import { VoucherRepository } from '../database/repositories/voucher.repository';
 import { DistributorRepository } from '../database/repositories/distributor.repository';
@@ -65,6 +66,7 @@ export const buildTransferClient = (
   voucherRepo: VoucherRepository,
   distributorRepo: DistributorRepository,
   authRepo: AuthorizationRepository,
+  auditRepo: AuditLogRepository,
 ) => {
   const logger = new Logger('TransferClient');
 
@@ -100,7 +102,10 @@ export const buildTransferClient = (
       });
     }
 
-    // 3. Crear registro PENDIENTE en app.authorization.
+    // 3. Crear registro PENDIENTE en app.authorization. El INSERT
+    //    dispara el trigger sin actor porque usa una conexion
+    //    distinta a la del interceptor; el logEvent compensatorio
+    //    garantiza que el admin vea quien la solicito.
     const authorization = await authRepo.create({
       authorizationType: 'TRANSFERENCIA_DISTRIBUIDOR',
       requesterId: actor.id,
@@ -110,6 +115,20 @@ export const buildTransferClient = (
       },
       justification: dto.reason,
       status: 'PENDIENTE',
+    });
+
+    void auditRepo.logEvent({
+      action: 'AUTHORIZATION.REQUESTED',
+      actorUserId: actor.id,
+      targetUserId: null,
+      tableName: 'authorization',
+      recordId: authorization.id,
+      metadata: {
+        authorizationType: 'TRANSFERENCIA_DISTRIBUIDOR',
+        clientId,
+        fromDistributorId: client.currentDistributorId,
+        reason: dto.reason,
+      },
     });
 
     logger.log(

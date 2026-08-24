@@ -342,6 +342,7 @@ describe('BranchesService', () => {
           paymentDay: 20,
           earlyPaymentDays: 3,
         }),
+        expect.anything(),
       );
     });
   });

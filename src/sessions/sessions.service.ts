@@ -18,6 +18,7 @@ import { UserRepository } from '../database/repositories/user.repository';
 import { RefreshTokenRepository } from '../database/repositories/refresh-token.repository';
 import { SessionService } from '../auth/services/session.service';
 import { PermissionCacheService } from '../auth/services/permission-cache.service';
+import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 import { AUTH_CONFIG } from '../database/tokens';
 import type { AuthConfig } from '../config/auth.config';
 import type { SessionListItem } from '../auth/services/session.service';
@@ -36,6 +37,7 @@ export class SessionsService {
     private readonly sessionService: SessionService,
     private readonly permissionCache: PermissionCacheService,
     private readonly configService: ConfigService,
+    private readonly auditRepo: AuditLogRepository,
   ) {}
 
   /**
@@ -96,7 +98,15 @@ export class SessionsService {
     notifyUser: boolean,
   ): Promise<void> {
     await this.sessionService.revokeAllForUser(userId, reason);
-    await this.userRepo.bumpTokenVersion(userId);
+    await this.auditRepo.runWithContext(
+      {
+        actorUserId: actorId,
+        action: 'USER.INVALIDATE_SESSIONS',
+        targetUserId: userId,
+        metadata: { reason, notifyUser },
+      },
+      async (tx) => this.userRepo.bumpTokenVersion(userId, tx),
+    );
     this.permissionCache.invalidate(userId);
     this.logger.warn(
       `Actor ${actorId} invalido todas las sesiones del usuario ${userId}. Razon: ${reason}. Notificar=${notifyUser}`,

@@ -26,6 +26,7 @@ import { randomBytes } from 'crypto';
 import { UserRepository } from '../database/repositories/user.repository';
 import { PasswordResetTokenRepository } from '../database/repositories/password-reset-token.repository';
 import { RefreshTokenRepository } from '../database/repositories/refresh-token.repository';
+import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 import {
   PasswordService,
   WeakPasswordError,
@@ -59,6 +60,7 @@ export class PasswordResetService {
     private readonly mailService: MailService,
     private readonly permissionCache: PermissionCacheService,
     private readonly configService: ConfigService,
+    private readonly auditRepo: AuditLogRepository,
   ) {}
 
   /**
@@ -144,10 +146,24 @@ export class PasswordResetService {
     // El usuario eligio su propia contrasena, asi que no forzamos un
     // cambio posterior (deja mustChangePassword = false aunque el
     // alta administrativa lo hubiera activado).
-    await this.userRepo.setPassword(record.userId, newHash, false);
-    await this.resetRepo.markUsed(record.id);
-    await this.resetRepo.invalidateForUser(record.userId);
-    await this.refreshRepo.revokeAllForUser(record.userId, 'password_reset');
+    await this.auditRepo.runWithContext(
+      {
+        actorUserId: record.userId,
+        action: 'PASSWORD_RESET.COMPLETED',
+        targetUserId: record.userId,
+        metadata: { tokenId: record.id },
+      },
+      async (tx) => {
+        await this.userRepo.setPassword(record.userId, newHash, false, tx);
+        await this.resetRepo.markUsed(record.id, tx);
+        await this.resetRepo.invalidateForUser(record.userId, tx);
+        await this.refreshRepo.revokeAllForUser(
+          record.userId,
+          'password_reset',
+          tx,
+        );
+      },
+    );
     this.permissionCache.invalidate(record.userId);
 
     this.logger.warn(
