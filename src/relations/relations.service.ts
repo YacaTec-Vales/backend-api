@@ -285,7 +285,24 @@ export class RelationsService {
         message: 'el monto no puede superar 10,000,000,000,000 centavos',
       });
     }
-    const updated = await this.relationsRepo.applyPayment(relationId, amount);
+    const qualifiesAsEarly = window.state === 'EARLY';
+    // Envolver el pago en runWithContext para que el trigger de
+    // app.relation vea actor + action. El logEvent compensatorio
+    // ya no es necesario una vez que el UPDATE va en la TX.
+    const updated = await this.auditRepo.runWithContext(
+      {
+        actorUserId: actor.id,
+        action: 'RELATION.PAID',
+        metadata: {
+          amountCents: amount,
+          earlyPayment: qualifiesAsEarly,
+          paymentMethod: dto.paymentMethod ?? null,
+          previousStatus: rel.reconciliationStatus,
+          remainingCentsBefore: remainingCents,
+        },
+      },
+      async (tx) => this.relationsRepo.applyPayment(relationId, amount, tx),
+    );
     if (!updated) {
       throw new NotFoundException({
         code: RELATION_ERROR_CODES.NOT_FOUND,
@@ -293,7 +310,6 @@ export class RelationsService {
           'la relacion desaparecio despues del pago (estado inconsistente)',
       });
     }
-    const qualifiesAsEarly = window.state === 'EARLY';
     this.logger.log(
       `Pago de relacion: id=${relationId} monto=${amount} ` +
         `saldoAntes=${remainingCents} saldoDespues=${
@@ -301,20 +317,6 @@ export class RelationsService {
         } anticipado=${qualifiesAsEarly} status=${updated.reconciliationStatus} ` +
         `metodo=${dto.paymentMethod ?? 'N/D'} actor=${actor.role}/${actor.id}`,
     );
-    // Fire-and-forget: registrar el pago en audit_log via logEvent.
-    void this.auditRepo.logEvent({
-      action: 'RELATION.PAID',
-      actorUserId: actor.id,
-      targetUserId: rel.distributorId,
-      tableName: 'relation',
-      recordId: relationId,
-      metadata: {
-        amountCents: amount,
-        statusAfter: updated.reconciliationStatus,
-        earlyPayment: qualifiesAsEarly,
-        paymentMethod: dto.paymentMethod ?? null,
-      },
-    });
     return this.toDto(updated);
   }
 

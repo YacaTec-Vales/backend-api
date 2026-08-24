@@ -168,12 +168,17 @@ export class RelationsRepository {
    *  - saldo > 0 -> PARCIAL (o PENDIENTE si era 0 antes).
    *
    * El UPDATE usa `RETURNING *` para devolver la fila actualizada.
+   *
+   * Conexion: `DRIZZLE_WRITE` (o el `tx` recibido si el caller esta
+   * dentro de un `AuditLogRepository.runWithContext`).
    */
   async applyPayment(
     id: string,
     deltaCents: number,
+    tx?: DrizzleWrite,
   ): Promise<RelationEntity | null> {
-    const [row] = await this.writeDb
+    const db = tx ?? this.writeDb;
+    const [row] = await db
       .update(relations)
       .set({
         totalPaidCents: sql`${relations.totalPaidCents} + ${deltaCents}`,
@@ -193,7 +198,7 @@ export class RelationsRepository {
       newStatus = 'SALDO_FAVOR_SUCURSAL';
     }
     if (newStatus !== row.reconciliationStatus) {
-      const [updated] = await this.writeDb
+      const [updated] = await db
         .update(relations)
         .set({ reconciliationStatus: newStatus, updatedAt: new Date() })
         .where(eq(relations.id, id))
