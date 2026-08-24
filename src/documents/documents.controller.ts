@@ -45,28 +45,29 @@ import {
 } from '../shared/decorators/api-envelope-response.decorator';
 import { JwtAuthGuard } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
-import { VpnOriginGuard } from '../shared/guards/vpn-origin.guard';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';
-import { RequireVpnOrigin } from '../shared/decorators/require-vpn-origin.decorator';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
 import type { RequestUser } from '../shared/guards/auth.guards';
 
 @ApiTags('Documents')
 @ApiBearerAuth('bearer')
 @Controller('uploads')
-@UseGuards(JwtAuthGuard, PermissionsGuard, VpnOriginGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class DocumentsController {
   constructor(private readonly documentsService: DocumentsService) {}
 
   @Post()
-  @RequireVpnOrigin('Tecu')
   @RequirePermissions('document.upload')
   @UseInterceptors(FileInterceptor('file'))
   @ApiOperation({
     summary: 'Subir un archivo al storage',
     description:
       'Sube un archivo al bucket (MinIO/DO Spaces) y registra la metadata ' +
-      'en app.document. Devuelve id, publicUrl, sha256.',
+      'en app.document. Devuelve id, publicUrl, sha256. ' +
+      '**Acceso libre** desde cualquier frontend (Tecu/Calipx/Poch): ' +
+      'gerente sube desde VPN/Tecu; cajera/coord/verif suben desde ' +
+      'calpix.xx; distribuidor sube desde poch.xx. La firma de upload ' +
+      'queda registrada en audit_log con user_id y metadata.',
   })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -222,7 +223,6 @@ export class DocumentsController {
   }
 
   @Post('verification/:solicitationId')
-  @RequireVpnOrigin('Tecu')
   @RequirePermissions('document.upload')
   @UseInterceptors(FileInterceptor('file'))
   @ApiOperation({

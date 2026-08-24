@@ -74,10 +74,10 @@ import type { RequestUser } from '../shared/guards/auth.guards';
  * Controlador del flujo de solicitudes de Distribuidora.
  *
  * Gateado por `JwtAuthGuard` + `PermissionsGuard` + `VpnOriginGuard`.
- * Las operaciones de AUTORIZACION/RECHAZO requieren VPN+Tecu
- * (ver `@RequireVpnOrigin('Tecu')`). Las demas (crear, editar,
- * tomar, verificar, listar, detalle) funcionan desde cualquier
- * frontend.
+ * Solo las operaciones estrictamente gerenciales (`autorizar`,
+ * `rechazar`) requieren VPN+Tecu via `@RequireVpnOrigin('Tecu')`.
+ * Las demas (crear, editar, tomar, verificar, listar, detalle)
+ * funcionan desde cualquier frontend (Calipx coord/verif tambien).
  */
 @ApiTags('Solicitudes')
 @ApiBearerAuth('bearer')
@@ -106,7 +106,6 @@ export class SolicitationsController {
    */
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @RequireVpnOrigin('Tecu')
   @RequirePermissions('distribuidor.solicitud.create')
   @ApiOperation({
     summary: 'Crear solicitud de Distribuidora (alta cruda)',
@@ -162,7 +161,6 @@ export class SolicitationsController {
    */
   @Patch(':id')
   @HttpCode(HttpStatus.OK)
-  @RequireVpnOrigin('Tecu')
   @RequirePermissions('distribuidor.solicitud.update')
   @ApiOperation({
     summary: 'Editar solicitud (Coordinador, libre)',
@@ -213,7 +211,6 @@ export class SolicitationsController {
    */
   @Post(':id/tomar')
   @HttpCode(HttpStatus.OK)
-  @RequireVpnOrigin('Tecu')
   @RequirePermissions('distribuidor.solicitud.take')
   @ApiOperation({
     summary: 'Tomar solicitud para verificar',
@@ -258,7 +255,6 @@ export class SolicitationsController {
    */
   @Post(':id/verificar')
   @HttpCode(HttpStatus.OK)
-  @RequireVpnOrigin('Tecu')
   @RequirePermissions('distribuidor.solicitud.verify')
   @ApiOperation({
     summary: 'Registrar dictamen de verificacion',
