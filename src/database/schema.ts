@@ -597,6 +597,15 @@ export const products = appSchema.table('product', {
   commissionBps: integer('commission_bps').notNull().default(0),
   insuranceCents: integer('insurance_cents').notNull().default(0),
   interestPerPeriodBps: integer('interest_per_period_bps').notNull().default(0),
+  /**
+   * Monto de la multa en centavos por atraso en el pago asociado a este
+   * tipo de vale. BIGINT (mismo tipo que `costCents` / `insuranceCents`).
+   * Default 0 para no introducir efecto retroactivo en productos existentes.
+   * Regla de la BD (CHECK `product_penalty_cents_check`): `penalty_cents >= 0`.
+   */
+  penaltyCents: bigint('penalty_cents', { mode: 'number' })
+    .notNull()
+    .default(0),
   isActive: boolean('is_active').notNull().default(true),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true })

@@ -116,4 +116,17 @@ export class CreateProductDto {
   @IsInt({ message: 'el interes debe ser un entero (basis points)' })
   @Min(0, { message: 'el interes no puede ser negativo' })
   interestPerPeriodBps: number = 0;
+
+  @ApiProperty({
+    description:
+      'Monto de la multa en centavos por atraso en el pago asociado a ' +
+      'este tipo de vale. Ej. 5000 = $50.00 MXN. Default 0 (sin multa). ' +
+      'No puede ser negativo; la BD enforce CHECK `penalty_cents >= 0`.',
+    example: 5000,
+    default: 0,
+    minimum: 0,
+  })
+  @IsInt({ message: 'la multa debe ser un entero (centavos)' })
+  @Min(0, { message: 'la multa no puede ser negativa' })
+  penaltyCents: number = 0;
 }

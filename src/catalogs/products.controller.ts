@@ -183,6 +183,18 @@ export class ProductsController {
    * @apiGroup Catalogs
    * @apiVersion 1.0.0
    * @apiPermission catalog.write (solo GERENTE_GENERAL por seed canonico)
+   *
+   * Campos del body (todos persistidos en `app.product`, ver migracion
+   * `infrastructure/database/updates/23-agregar-penalty-cents.sql` para
+   * el campo `penaltyCents`):
+   *  - `code` (string, formato X/Y)
+   *  - `variant` ('NORMAL' | 'PLUS')
+   *  - `costCents` (int, multiplo de 10000)
+   *  - `totalPeriods` (int, 1..60)
+   *  - `commissionBps` (int, >= 0)
+   *  - `insuranceCents` (int, >= 0)
+   *  - `interestPerPeriodBps` (int, >= 0)
+   *  - `penaltyCents` (int, >= 0) - multa por atraso en centavos (default 0)
    */
   @Post()
   @RequireVpnOrigin('Tecu')
@@ -191,8 +203,9 @@ export class ProductsController {
     summary: 'Alta de producto',
     description:
       'Crea un producto en el catalogo. Solo `catalog.write`: GERENTE_GENERAL. ' +
-      'Valida multiplicidad de $100 MXN (regla R5), limite de 60 quincenas y ' +
-      'unicidad (code, variant).',
+      'Valida multiplicidad de $100 MXN (regla R5), limite de 60 quincenas, ' +
+      'unicidad (code, variant) y `penaltyCents >= 0`. ' +
+      'Ver `infrastructure/database/updates/23-agregar-penalty-cents.sql`.',
   })
   @ApiEnvelopeCreatedResponse({
     message: 'Producto creado correctamente',
@@ -234,6 +247,7 @@ export class ProductsController {
    *  - `commissionBps` (int, >= 0)
    *  - `insuranceCents` (int, >= 0)
    *  - `interestPerPeriodBps` (int, >= 0)
+   *  - `penaltyCents` (int, >= 0) - multa por atraso en centavos (default 0)
    *  - `isActive` (bool) - baja logica sin eliminar la fila
    *
    * Restricciones:

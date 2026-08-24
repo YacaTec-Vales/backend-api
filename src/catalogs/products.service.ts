@@ -86,6 +86,7 @@ export class ProductsService {
         commissionBps: dto.commissionBps ?? 0,
         insuranceCents: dto.insuranceCents ?? 0,
         interestPerPeriodBps: dto.interestPerPeriodBps ?? 0,
+        penaltyCents: dto.penaltyCents ?? 0,
         isActive: true,
         deletedAt: null,
       });
@@ -220,6 +221,7 @@ export class ProductsService {
       patch.insuranceCents = dto.insuranceCents;
     if (dto.interestPerPeriodBps !== undefined)
       patch.interestPerPeriodBps = dto.interestPerPeriodBps;
+    if (dto.penaltyCents !== undefined) patch.penaltyCents = dto.penaltyCents;
     if (dto.isActive !== undefined) patch.isActive = dto.isActive;
 
     let updated;

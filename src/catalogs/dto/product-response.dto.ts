@@ -62,6 +62,14 @@ export class ProductResponseDto {
   })
   interestPerPeriodBps!: number;
 
+  @ApiProperty({
+    description:
+      'Monto de la multa en centavos por atraso en el pago asociado a ' +
+      'este tipo de vale. Ej. 5000 = $50.00 MXN. Default 0.',
+    example: 5000,
+  })
+  penaltyCents!: number;
+
   @ApiProperty({ description: 'Producto activo en el catalogo.' })
   isActive!: boolean;
 

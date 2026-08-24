@@ -24,6 +24,7 @@ export interface ProductRowShape {
   commissionBps: number;
   insuranceCents: number;
   interestPerPeriodBps: number;
+  penaltyCents: number;
   isActive: boolean;
   deletedAt: Date | null;
   createdAt: Date;
@@ -33,6 +34,9 @@ export interface ProductRowShape {
 /**
  * Proyeccion del row entidad a DTO publico. Fechas como ISO 8601
  * via `toIso` (regla del proyecto: fechas SIEMPRE string en DTOs).
+ *
+ * `penaltyCents` se proyecta en centavos como el resto de los campos
+ * monetarios del producto (el navegador lo formatea a moneda).
  *
  * @param row - Row de la BD (`ProductEntity`).
  * @returns DTO publico para el envelope.
@@ -47,6 +51,7 @@ export function toProductResponseDto(row: ProductRowShape): ProductResponseDto {
     commissionBps: row.commissionBps,
     insuranceCents: row.insuranceCents,
     interestPerPeriodBps: row.interestPerPeriodBps,
+    penaltyCents: row.penaltyCents,
     isActive: row.isActive,
     createdAt: toIso(row.createdAt) ?? '',
     updatedAt: toIso(row.updatedAt) ?? '',
