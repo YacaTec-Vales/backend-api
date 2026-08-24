@@ -29,6 +29,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { mailConfig } from '../config/mail.config';
 import { MAIL_CONFIG } from './mail.tokens';
+import { createMailerOptions } from './mailer-options.factory';
 import { MailService } from './mail.service';
 import { TemplateRendererService } from './services/template-renderer.service';
 import { NotificationDispatcherService } from './services/notification-dispatcher.service';
@@ -38,7 +39,6 @@ import { UserRepository } from '../database/repositories/user.repository';
 import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 import { EmailLogRepository } from '../database/repositories/email-log.repository';
 import { AuthModule } from '../auth/auth.module';
-import { join } from 'path';
 
 /**
  * Forma del provider de MailConfig expuesto en este modulo.
@@ -103,38 +103,22 @@ const mailConfigProvider: Provider = {
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
-        const host = config.get<string>('mail.host') ?? '';
         const driver =
           (config.get<string>('mail.driver') as 'smtp' | 'noop') ?? 'smtp';
-        const enabled = driver === 'smtp' && host.length > 0;
-        const baseTemplate = {
-          dir: join(__dirname, 'templates'),
-          options: { strict: true },
-        };
-        const defaults = {
+        // El factory registra `template` (compile opts) y `options`
+        // con `partials.dir` al nivel superior: sin esa key el
+        // HandlebarsAdapter no registra header/footer y TODO envio
+        // de plantilla falla con "The partial ... could not be
+        // found" (ver mailer-options.factory.ts).
+        return createMailerOptions({
+          driver,
+          host: config.get<string>('mail.host') ?? '',
+          port: config.get<number>('mail.port', 587),
+          secure: config.get<boolean>('mail.secure', false),
+          user: config.get<string>('mail.user') ?? '',
+          password: config.get<string>('mail.password') ?? '',
           from: config.get<string>('mail.from') ?? 'no-reply@yacatec.demo',
-        };
-        // Modo degradado o driver=noop: transport placeholder.
-        if (!enabled) {
-          return {
-            transport: { host: 'localhost', port: 2525, secure: false },
-            defaults,
-            template: baseTemplate,
-          };
-        }
-        return {
-          transport: {
-            host,
-            port: config.get<number>('mail.port', 587),
-            secure: config.get<boolean>('mail.secure', false),
-            auth: {
-              user: config.get<string>('mail.user') ?? '',
-              pass: config.get<string>('mail.password') ?? '',
-            },
-          },
-          defaults,
-          template: baseTemplate,
-        };
+        });
       },
     }),
   ],

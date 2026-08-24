@@ -28,6 +28,7 @@ import { MAIL_CONFIG } from '../mail.tokens';
 import type { MailConfigShape } from '../mail.module';
 import { getTemplateEntry, type TemplateKey } from '../templates/manifest';
 import { MailDeliveryResultDto } from '../dto/mail-delivery-result.dto';
+import { EmailLogRepository } from '../../database/repositories/email-log.repository';
 
 /**
  * Contexto de variables que se pasan al HBS. Es `Record<string,
@@ -47,7 +48,38 @@ export class TemplateRendererService {
   constructor(
     private readonly mailer: MailerService,
     @Inject(MAIL_CONFIG) private readonly config: MailConfigShape,
+    private readonly emailLog: EmailLogRepository,
   ) {}
+
+  /**
+   * Persiste un fallo de envio en `app.email_log` (status='failed').
+   *
+   * El flujo de autorizacion de distribuidoras NO pasa por
+   * `NotificationDispatcherService`, asi que sin esto un fallo solo
+   * quedaria en logs de proceso y seria invisible para operacion.
+   * Nunca lanza: si la BD tambien falla, el envio ya esta abortado
+   * y no queremos enmascarar el error original.
+   */
+  private async logFailure(
+    key: string,
+    to: string,
+    subject: string,
+    errorMessage: string,
+  ): Promise<void> {
+    try {
+      await this.emailLog.create({
+        templateKey: key,
+        recipientEmail: to,
+        subject: subject || '(sin subject)',
+        status: 'failed',
+        errorMessage: errorMessage.slice(0, 500),
+      });
+    } catch (dbErr) {
+      this.logger.error(
+        `ademas, no se pudo registrar el fallo en email_log para plantilla ${key}: ${(dbErr as Error).message}`,
+      );
+    }
+  }
 
   /**
    * Renderiza y envia la plantilla identificada por `key`.
@@ -81,6 +113,7 @@ export class TemplateRendererService {
       this.logger.error(
         `plantilla ${key} no registrada en TEMPLATE_MANIFEST; no se envia. (${(err as Error).message})`,
       );
+      await this.logFailure(key, to, '', (err as Error).message);
       return { sent: false };
     }
 
@@ -110,6 +143,7 @@ export class TemplateRendererService {
         `fallo al enviar plantilla ${key} a ${to}`,
         err as Error,
       );
+      await this.logFailure(key, to, entry.subject, (err as Error).message);
       return { sent: false };
     }
   }
