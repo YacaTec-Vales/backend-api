@@ -27,6 +27,12 @@ jobs:
             exit 1
           fi
 
+          # Compatibilidad: permitir tambien titulos estilo rama GitFlow (feature/scope, etc.)
+          if [[ "$title" =~ ^[Ff]eature/[a-z0-9-]+$ || "$title" =~ ^[Bb]ugfix/[a-z0-9-]+$ || "$title" =~ ^[Hh]otfix/[a-z0-9-]+$ || "$title" =~ ^[Rr]elease/[a-z0-9-]+$ || "$title" =~ ^[Cc]hore/[a-z0-9-]+$ ]]; then
+            echo "OK: $title (formato GitFlow permitido)"
+            exit 0
+          fi
+
           # Formato: <tipo>(<scope>): <descripcion>  |  <chore>: <descripcion>
           if ! [[ "$title" =~ ^[a-z]+(\([a-z0-9-]+\))?: ]]; then
             echo "::error::El titulo debe seguir 'tipo(scope): descripcion'. Ej: feat(auth): agregar autenticacion de dos factores"

@@ -117,3 +117,4 @@ infra puede desplegar en staging con esa versión.
 - Formato: `tipo(scope): descripcion` (ej. `feat(auth): agregar login`).
 - Tipos permitidos: `feat, fix, docs, refactor, chore, style, test, ci`.
 - Scope obligatorio salvo `chore`; minúsculas, sin punto final, sin emojis.
+- Compatibilidad temporal: también se acepta `feature/<scope>`, `bugfix/<scope>`, `hotfix/<scope>`, `release/<scope>` y `chore/<scope>`.
