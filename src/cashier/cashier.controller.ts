@@ -3,7 +3,14 @@
  *
  * Endpoints (prefijo global `api/v1`):
  *  - `POST /cashier/vouchers/find/:folio`  buscar vale por folio
- *    (gateado por voucher.read, usado por la cajera).
+ *    (gateado por voucher.read, usado por la cajera desde Calipx).
+ *
+ * **Acceso**: la cajera se autentica desde Calipx (tablet, X-Client-App=Calipx)
+ * por `calpix.taquizaschavez.com.mx` (origen publico). Estas operaciones
+ * NO requieren VPN: el rol CAJERO es local-de-sucursal, no gerencial.
+ * El gate por VPN aplica solo a flujos sensibles de GERENTE_GENERAL /
+ * GERENTE_SUCURSAL (autorizaciones, cortes, business-config, etc.); ver
+ * `shared/guards/vpn-origin.guard.ts` y `infra/docs/FLOW-VPN-PUBLIC.md`.
  *
  * @module cashier
  * @author Equipo de desarrollo Mis Vales
@@ -45,9 +52,7 @@ import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import { ApiEnvelopeOkResponse } from '../shared/decorators/api-envelope-response.decorator';
 import { JwtAuthGuard } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
-import { VpnOriginGuard } from '../shared/guards/vpn-origin.guard';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';
-import { RequireVpnOrigin } from '../shared/decorators/require-vpn-origin.decorator';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
 import type { RequestUser } from '../shared/guards/auth.guards';
 
@@ -56,7 +61,9 @@ import type { RequestUser } from '../shared/guards/auth.guards';
  *
  * Gestiona el flujo de caja: buscar un vale por folio y
  * confirmar el feriado. Gateado por `JwtAuthGuard` +
- * `PermissionsGuard` + `VpnOriginGuard` (solo desde VPN+Tecu).
+ * `PermissionsGuard` (sin VpnOriginGuard: el cajero opera
+ * desde Calipx en red publica, la VPN es exclusiva para
+ * gerentes).
  *
  * @see CashierService
  * @author Equipo Mis Vales
@@ -65,7 +72,7 @@ import type { RequestUser } from '../shared/guards/auth.guards';
 @ApiTags('Cashier')
 @ApiBearerAuth('bearer')
 @Controller('cashier')
-@UseGuards(JwtAuthGuard, PermissionsGuard, VpnOriginGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class CashierController {
   constructor(private readonly cashierService: CashierService) {}
 
@@ -78,7 +85,6 @@ export class CashierController {
    */
   @Post('vouchers/find/:folio')
   @HttpCode(200)
-  @RequireVpnOrigin('Tecu')
   @RequirePermissions('voucher.read')
   @ApiOperation({
     summary: 'Buscar vale por folio (cajera pre-carga datos)',
@@ -127,7 +133,6 @@ export class CashierController {
    * @apiPermission voucher.read
    */
   @Get('vouchers')
-  @RequireVpnOrigin('Tecu')
   @RequirePermissions('voucher.read')
   @ApiOperation({
     summary: 'Listar vales de la sucursal de la cajera',
@@ -161,7 +166,6 @@ export class CashierController {
    */
   @Post('vouchers/confirm/:folio')
   @HttpCode(200)
-  @RequireVpnOrigin('Tecu')
   @ApiOperation({
     summary: 'Confirmar el feriado de un vale',
     description:
@@ -206,7 +210,6 @@ export class CashierController {
    */
   @Post('vouchers/:folio/client-discrepancy')
   @HttpCode(200)
-  @RequireVpnOrigin('Tecu')
   @ApiOperation({
     summary: 'Reportar discrepancia en datos del cliente',
     description:
