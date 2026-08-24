@@ -27,10 +27,8 @@ export { toMailLogItemDto } from './mail-log.mapper';
 export type { EmailLogRowShape } from './mail-log.mapper';
 export { toSessionResponseDto } from './session.mapper';
 export type { SessionRowShape } from './session.mapper';
-export {
-  toSolicitationResponseDto,
-  toSolicitationResponseDtoFromEntity,
-} from './solicitation.mapper';
+export { SolicitationResponseMapper } from './solicitation.mapper';
+export { UUID_REGEX } from './solicitation.mapper';
 export type { SolicitationRowShape } from './solicitation.mapper';
 export {
   toDistribuidorResponseDto,
