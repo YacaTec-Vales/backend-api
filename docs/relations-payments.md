@@ -29,9 +29,15 @@ Antes de este endpoint existia `POST /api/v1/relations/:id/pay`
 | `POST` | `/api/v1/relations/:id/payments` | `relation.pay` | Registra pago con historial. |
 
 > **Conventions**: prefijo global `api/v1`, body JSON, autenticacion
-> Bearer JWT (mismo flujo que el resto del backend). El endpoint esta
-> gateado por `VpnOriginGuard('Tecu')` igual que el resto de los
-> endpoints de Relations (solo lo consume la app Tecu desde la VPN).
+> Bearer JWT (mismo flujo que el resto del backend). El endpoint NO
+> exige `VpnOriginGuard('Tecu')`: lo consume la Distribuidora desde
+> **Poch (mobile)** cuando su cliente final le paga en persona y
+> registra el cobro, y tambien lo llaman Calipx (cajero) y Tecu
+> (Gerente). Solo se exige el permiso `relation.pay` y que el actor
+> sea dueno de la relacion (o Gerente de su branch / GG). Es el mismo
+> criterio que aplico el commit `1cae553 fix(vpn): quitar
+> @RequireVpnOrigin de endpoints usados por Calipx/Poch (#87)` a
+> `/cashier/confirm`, `/clients`, `/vouchers` emitir, etc.
 
 ### Request
 

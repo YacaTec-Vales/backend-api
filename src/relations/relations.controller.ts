@@ -22,9 +22,15 @@
  * `POST /relations/:id/payments` es la version CONTABilidad:
  * ademas de actualizar el saldo y el status, persiste una fila en
  * `app.relation_payment` (historial inmutable) y devuelve el credito
- * a `app.distributor.credit_available_cents`. Es lo que usa el
- * frontend de caja (calpix) y distribuidor (poch) para reflejar el
- * pago del cliente final sin recargar.
+ * a `app.distributor.credit_available_cents`. La usa el Distribuidor
+ * desde **Poch (mobile)** cuando su cliente final le paga en persona
+ * y registra el cobro en el sistema; tambien la usan Calipx (cajero
+ * registrando pagos manuales) y Tecu (Gerente). Por eso NO tiene
+ * `@RequireVpnOrigin('Tecu')` — el guard global a nivel de clase
+ * (`VpnOriginGuard`) sigue montado, pero el handler no exige origen
+ * VPN+Tecu, solo el permiso `relation.pay` + propiedad de la
+ * relacion (mismo criterio que el commit #87 aplico a
+ * `/cashier/confirm`, `/clients`, etc.).
  *
  * @module relations
  * @author Equipo de desarrollo Mis Vales
@@ -286,7 +292,6 @@ export class RelationsController {
    */
   @Post(':id/payments')
   @HttpCode(HttpStatus.CREATED)
-  @RequireVpnOrigin('Tecu')
   @RequirePermissions('relation.pay')
   @ApiOperation({
     summary:
@@ -298,7 +303,11 @@ export class RelationsController {
       '§6.1.2: el pago del cliente final devuelve el credito a la ' +
       'distribuidora). El monto se envia en PESOS y se convierte a ' +
       'centavos en backend. Devuelve `paymentId`, ' +
-      '`newOutstandingBalance`, `newAvailableCredit` y `newStatus`.',
+      '`newOutstandingBalance`, `newAvailableCredit` y `newStatus`. ' +
+      'Accesible desde **Poch (Distribuidora en mobile)**, **Calipx ' +
+      '(cajero/coord en tablet)** y **Tecu (Gerente en escritorio)**; ' +
+      'el `JwtAuthGuard` + `PermissionsGuard` validan el permiso ' +
+      '`relation.pay` y la propiedad de la relacion.',
   })
   @ApiEnvelopeCreatedResponse({
     message: 'Pago registrado correctamente',
