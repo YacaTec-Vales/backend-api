@@ -44,4 +44,20 @@ export class AuthorizeSolicitationResponseDto {
     example: true,
   })
   welcomeEmailSent?: boolean;
+
+  /**
+   * Motivo por el que el correo no se envio. Solo presente cuando
+   * `welcomeEmailSent === false`. Sirve para que el frontend muestre
+   * un mensaje claro al gerente y, en diagnostico, al operador.
+   */
+  @ApiPropertyOptional({
+    description:
+      'Motivo del fallo de envio del correo de bienvenida. Solo presente ' +
+      'cuando `welcomeEmailSent === false`. Tipos: `smtp_error` (SMTP rechazo), ' +
+      '`template_missing` (plantilla no encontrada en el manifest), ' +
+      '`mailer_disabled` (modo degradado), `unexpected` (error no clasificado).',
+    example: 'template_missing',
+  })
+  welcomeEmailError?:
+    'smtp_error' | 'template_missing' | 'mailer_disabled' | 'unexpected';
 }
