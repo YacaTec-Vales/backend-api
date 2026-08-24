@@ -22,6 +22,9 @@ export {
   createUserRepositoryMock,
   writeExecutorMock,
 } from './repositories.mock';
-export { createOneRowDrizzleStub } from './drizzle.mock';
+export {
+  createOneRowDrizzleStub,
+  createQueueDrizzleStub,
+} from './drizzle.mock';
 export { createBranchCutoffRepositoryMock } from './branch-cutoff.repository.mock';
 export { createSolicitationRepositoryMock } from './solicitation.repository.mock';

@@ -27,6 +27,14 @@ import {
 export const TEST_DB_MARKER = 'test';
 
 /**
+ * Hosts locales aceptados como "BD de test" cuando el nombre de la
+ * base contiene el marcador `test`. Esto permite apuntar a
+ * `127.0.0.1` o `localhost` durante el desarrollo local sin
+ * necesidad de editar `/etc/hosts` con un alias `*test*`.
+ */
+const LOCAL_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
+
+/**
  * Asserts de seguridad sobre la configuracion de BD. Lanza
  * `Error` si el entorno actual no es seguro para ejecutar
  * limpieza o migraciones de test.
@@ -34,8 +42,9 @@ export const TEST_DB_MARKER = 'test';
  * Reglas:
  *  - `NODE_ENV` debe ser `test`.
  *  - El host de escritura debe contener el marcador `test`
- *    (case-insensitive).
- *  - El host de lectura debe contener el marcador `test`.
+ *    (case-insensitive) O ser un host local (`127.0.0.1`,
+ *    `::1`, `localhost`).
+ *  - El host de lectura sigue la misma regla.
  *  - El nombre de la base de datos de escritura debe contener
  *    el marcador `test`.
  *
@@ -54,12 +63,16 @@ export function assertSafeTestDatabase(config: {
     );
   }
   const contains = (s: string) => s.toLowerCase().includes(TEST_DB_MARKER);
-  if (!contains(config.writeHost) || !contains(config.writeDatabase)) {
+  const isLocalHost = (s: string) =>
+    LOCAL_HOSTS.has(s.toLowerCase()) ||
+    LOCAL_HOSTS.has(s.toLowerCase().split(':')[0] ?? '');
+  const isSafeHost = (s: string) => contains(s) || isLocalHost(s);
+  if (!isSafeHost(config.writeHost) || !contains(config.writeDatabase)) {
     throw new Error(
       `BD de escritura (${config.writeHost}/${config.writeDatabase}) no parece ser de test. Aborta para no truncar una BD real.`,
     );
   }
-  if (!contains(config.readHost) || !contains(config.readDatabase)) {
+  if (!isSafeHost(config.readHost) || !contains(config.readDatabase)) {
     throw new Error(
       `BD de lectura (${config.readHost}/${config.readDatabase}) no parece ser de test. Aborta para no truncar una BD real.`,
     );

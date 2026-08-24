@@ -43,13 +43,18 @@ export function createOneRowDrizzleStub<T>(initialRows: T[]) {
    * Trade-off: si el codigo bajo prueba muta la BD entre dos awaits,
    * el stub sigue devolviendo los mismos datos. Para los tests del
    * `ClientsService` esto es suficiente.
+   *
+   * Soporta ademas `orderBy` y `offset`, necesarios para queries
+   * paginadas (ej. `AuditService`).
    */
   const chainable = (): unknown => {
     const term = buildPromise();
     const node: Record<string, unknown> = {
       leftJoin: chainable,
       where: chainable,
+      orderBy: chainable,
       limit: chainable,
+      offset: chainable,
       then: term.then.bind(term),
     };
     return node;
@@ -68,6 +73,47 @@ export function createOneRowDrizzleStub<T>(initialRows: T[]) {
      */
     setRows(nextRows: T[]) {
       currentRows = nextRows;
+    },
+  };
+}
+
+/**
+ * Stub con cola para servicios que ejecutan varias queries
+ * consecutivas (ej. count + data en `AuditService`).
+ *
+ * Cada llamada a `from()` consume la siguiente entrada de la cola
+ * y la "congela" en el thenable que devuelve. Si la cola se agota,
+ * devuelve `[]`.
+ *
+ * @param responses - Lista de respuestas en orden de consumo.
+ * @returns Stub con `select()` y `from()` mockeados.
+ */
+export function createQueueDrizzleStub<T>(responses: T[][]) {
+  const queue: T[][] = [...responses];
+
+  const from = jest.fn().mockImplementation(() => {
+    const next = queue.shift() ?? [];
+    const term = Promise.resolve(next);
+    const node: Record<string, unknown> = {
+      leftJoin: () => node,
+      where: () => node,
+      orderBy: () => node,
+      limit: () => node,
+      offset: () => node,
+      then: term.then.bind(term),
+    };
+    return node;
+  });
+  const select = jest.fn().mockReturnValue({ from });
+
+  return {
+    select,
+    from,
+    /**
+     * Anade mas respuestas al final de la cola.
+     */
+    push(next: T[]) {
+      queue.push(next);
     },
   };
 }
