@@ -1,6 +1,15 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsDate, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import {
+  IsDate,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
+
+import { LOG_TYPES, type LogType } from '../../shared/types/audit.types';
 
 /**
  * DTO para el query de paginación y filtrado de System Logs.
@@ -16,11 +25,14 @@ export class GetSystemLogsDto {
   @IsString()
   userId?: string;
 
-  /** Tipo de log (ej. LOGIN, ERROR). */
-  @ApiPropertyOptional({ description: 'Tipo de log (ej. LOGIN, LOGOUT).' })
+  /** Tipo de log (ej. LOGIN_SUCCESS, LOGOUT, ERROR). */
+  @ApiPropertyOptional({
+    description: 'Tipo de log de aplicacion',
+    enum: LOG_TYPES,
+  })
   @IsOptional()
-  @IsString()
-  logType?: string;
+  @IsIn(LOG_TYPES)
+  logType?: LogType;
 
   /** Fecha de inicio para el filtrado (ISO 8601). */
   @ApiPropertyOptional({ description: 'Fecha de inicio (ISO 8601).' })
