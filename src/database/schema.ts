@@ -1039,6 +1039,72 @@ export type RelationEntity = typeof relations.$inferSelect;
 export type NewRelationEntity = typeof relations.$inferInsert;
 
 /**
+ * Tabla `app.relation_payment`. Historial inmutable de pagos aplicados a
+ * una relacion.
+ *
+ * Reglas:
+ *  - Cada fila es UN pago individual registrado via
+ *    `POST /api/v1/relations/:id/payments` (feature 2.4.0).
+ *  - `amount_cents` > 0 (CHECK en BD).
+ *  - `outstanding_balance_before_cents` y `outstanding_balance_after_cents`
+ *    son snapshots en centavos (regla 2.0: auditoria fria).
+ *  - `reconciliation_status_after` es el snapshot del estado de la
+ *    relacion tras aplicar el pago (PARCIAL | LIQUIDADO |
+ *    SALDO_FAVOR_SUCURSAL).
+ *  - NO hay `deleted_at`: la fila es inmutable. Cualquier ajuste va por
+ *    una fila de reversion (flujo futuro, fuera de scope).
+ *  - Trigger generico `audit_trigger()` registra INSERT/UPDATE/DELETE en
+ *    `app.audit_log` (regla del repo: `970_audit_triggers.sql`).
+ *
+ * Migracion que la creo: `infrastructure/database/updates/25-relation-payment-history.sql`.
+ *
+ * @module database/schema
+ * @author Equipo de desarrollo Mis Vales
+ * @since 2.4.0
+ */
+export const relationPayments = appSchema.table('relation_payment', {
+  id: uuid('id')
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+
+  // FKs
+  relationId: uuid('relation_id')
+    .notNull()
+    .references(() => relations.id, { onDelete: 'restrict' }),
+  registeredById: uuid('registered_by_id')
+    .notNull()
+    .references((): AnyPgColumn => users.id, { onDelete: 'restrict' }),
+
+  // Pago
+  amountCents: bigint('amount_cents', { mode: 'number' }).notNull(),
+  paymentMethod: text('payment_method'),
+  notes: text('notes'),
+
+  // Snapshots para auditoria / PDF / reportes
+  outstandingBalanceBeforeCents: bigint('outstanding_balance_before_cents', {
+    mode: 'number',
+  }).notNull(),
+  outstandingBalanceAfterCents: bigint('outstanding_balance_after_cents', {
+    mode: 'number',
+  }).notNull(),
+  reconciliationStatusAfter: text('reconciliation_status_after')
+    .$type<'PENDIENTE' | 'PARCIAL' | 'LIQUIDADO' | 'SALDO_FAVOR_SUCURSAL'>()
+    .notNull(),
+
+  // Timestamps
+  paidAt: timestamp('paid_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export type RelationPaymentEntity = typeof relationPayments.$inferSelect;
+export type NewRelationPaymentEntity = typeof relationPayments.$inferInsert;
+
+/**
  * Tabla `app.business_config`. Configuracion global del calculo
  * de la relacion (regla 2.0 §6.1.3, fuente PDF
  * `Analisis-calculo-relacion.pdf`). Cada fila es un parametro con

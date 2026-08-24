@@ -146,6 +146,10 @@ export function configureApplication(
       .addTag('Vouchers', 'Emision y cancelacion de vales')
       .addTag('Relations', 'Pagos del Distribuidor (relaciones de quincena)')
       .addTag(
+        'Relations Payments',
+        'Registro de pagos contra relaciones con historial y devolucion de credito al distribuidor',
+      )
+      .addTag(
         'Autorizaciones',
         'Flujo de aprobacion/rechazo de acciones sensibles (transferencias, conciliaciones, etc.)',
       )
