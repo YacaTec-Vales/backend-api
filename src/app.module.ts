@@ -145,6 +145,8 @@ import { AuditContextModule } from './shared/context/audit-context.module';
     AuditModule,
     RecaptchaModule,
     CategoriesModule,
+    LogModule,
+    AuditContextModule,
   ],
   controllers: [AppController],
   providers: [

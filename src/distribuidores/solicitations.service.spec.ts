@@ -141,13 +141,13 @@ function buildService() {
           work({ __isTx: true }),
       ),
     logEvent: jest.fn().mockResolvedValue(undefined),
-  };
+  } as unknown as AuditLogRepository;
   const service = new SolicitationsService(
     solicitationRepo,
     branchRepo as never,
     userRepository as never,
     distributorRepo as never,
-    auditRepo as never,
+    auditRepo,
     readDb as never,
     documentsService as never,
   );
