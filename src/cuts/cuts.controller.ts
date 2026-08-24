@@ -2,11 +2,25 @@
  * @fileoverview Controlador del modulo `cuts` (corte de quincena).
  *
  * Endpoints (prefijo global `api/v1`):
- *  - POST /cuts/run           Ejecuta el corte (solo GG/GS).
+ *  - POST /cuts/run            Ejecuta el corte (solo GG/GS, sandbox via force).
+ *  - POST /cuts/trigger-cut    Dispara el cron manualmente (solo GG,
+ *                              sandbox via forceDate/branchId).
+ *
+ * Sandbox / soporte para QA:
+ *  - `POST /cuts/run` acepta `force=true` para correr el corte de la
+ *    Sucursal matriz (u otra Sucursal sin `branch_cutoff` sembrado)
+ *    en un dia arbitrario. El backend cae a las columnas legacy de
+ *    `app.branch` para derivar la configuracion. Solo permitido para
+ *    GERENTE_GENERAL.
+ *  - `POST /cuts/trigger-cut` acepta `forceDate` (YYYY-MM-DD) y
+ *    `branchId` (UUID) para simular otra fecha y/o restringir a una
+ *    sola Sucursal. Util para que QA pueda disparar el flujo de la
+ *    Sucursal matriz sin esperar al 15/fin de mes y sin afectar al
+ *    resto. Ver `backend-api/docs/cuts-sandbox.md` para el detalle.
  *
  * El gateado por `business_config.read` no es exacto (el corte
  * afecta a relations, no a configuracion); usamos `relation.update`
- * que es lo mas cercano semánticamente.
+ * que es lo mas cercano semanticamente.
  *
  * @module cuts
  * @author Equipo de desarrollo Mis Vales
@@ -34,6 +48,7 @@ import {
 import { CutService } from './cuts.service';
 import { CutsCronService } from './cuts-cron.service';
 import { RunCutDto } from './dto/run-cut.dto';
+import { TriggerCutRequestDto } from './dto/trigger-cut-request.dto';
 import { CutResultDto } from './dto/cut-result.dto';
 import { TriggerCutResponseDto } from './dto/trigger-cut-response.dto';
 import { ApiEnvelopeOkResponse } from '../shared/decorators/api-envelope-response.decorator';
@@ -60,6 +75,10 @@ export class CutsController {
    * `POST /cuts/run` — Ejecuta el corte de quincena.
    *
    * Auth: requiere `relation.update` (GG o GS).
+   *
+   * Sandbox QA: enviar `force=true` para correr el corte sin tener
+   * un `branch_cutoff` real (cae a las columnas legacy de `app.branch`).
+   * Solo permitido para GERENTE_GENERAL.
    */
   @Post('run')
   @HttpCode(HttpStatus.OK)
@@ -69,6 +88,12 @@ export class CutsController {
     summary:
       'Ejecuta el corte de quincena: genera app.relation + ' +
       'app.relation_detail para cada Distribuidora con vales en el periodo',
+    description:
+      'Por defecto exige un branch_cutoff sembrado en la Sucursal. ' +
+      'Si la Sucursal no tiene branch_cutoff pero tiene las columnas ' +
+      'legacy de app.branch (cutoff_day / payment_day / early_payment_days) ' +
+      'configuradas, enviar force=true para activar el modo sandbox QA. ' +
+      'En ese caso el resultado expone sandbox=true. Solo GERENTE_GENERAL.',
   })
   @ApiEnvelopeOkResponse({
     message: 'Corte ejecutado correctamente',
@@ -80,7 +105,8 @@ export class CutsController {
     type: ErrorResponseDto,
   })
   @ApiBadRequestResponse({
-    description: 'CUT.NO_VOUCHERS | CUT.INVALID_CUT_DATE.',
+    description:
+      'CUT.NO_VOUCHERS | CUT.INVALID_CUT_DATE | CUT.SANDBOX_FORBIDDEN.',
     type: ErrorResponseDto,
   })
   @ApiNotFoundResponse({
@@ -91,13 +117,21 @@ export class CutsController {
     @CurrentUser() actor: RequestUser,
     @Body() dto: RunCutDto,
   ): Promise<CutResultDto> {
-    return this.service.runCut(actor, dto.branchId, dto.cutDate);
+    return this.service.runCut(actor, dto.branchId, dto.cutDate, {
+      force: dto.force === true,
+    });
   }
 
   /**
    * `POST /cuts/trigger-cut` — Dispara el proceso de generación automática manualmente.
    *
    * Auth: solo GERENTE_GENERAL.
+   *
+   * Sandbox QA: enviar `forceDate` (YYYY-MM-DD) y/o `branchId` (UUID)
+   * para simular otra fecha y/o restringir a una sola Sucursal. La
+   * Sucursal matriz queda cubierta porque la consulta de
+   * `branch_cutoff` es uniforme (NO se filtra por `branchType` ni
+   * `esMatriz`).
    */
   @Post('trigger-cut')
   @HttpCode(HttpStatus.OK)
@@ -105,7 +139,13 @@ export class CutsController {
   @ApiOperation({
     summary: 'Disparador manual de cortes automatizados',
     description:
-      'Fuerza la ejecución del cron job diario para generar las relaciones de corte (solo GERENTE_GENERAL)',
+      'Fuerza la ejecucion del cron job diario para generar las relaciones ' +
+      'de corte (solo GERENTE_GENERAL). En modo normal procesa las Sucursales ' +
+      'cuyo branch_cutoff.cutoff_day coincide con HOY. ' +
+      'Opcionalmente acepta forceDate (YYYY-MM-DD) para simular otra fecha ' +
+      'y/o branchId (UUID) para restringir a una sola Sucursal. Si branchId ' +
+      'no tiene branch_cutoff sembrado, el backend cae a las columnas ' +
+      'legacy de app.branch (sandbox QA).',
   })
   @ApiEnvelopeOkResponse({
     message: 'Proceso automatizado disparado correctamente',
@@ -118,6 +158,7 @@ export class CutsController {
   })
   async triggerCut(
     @CurrentUser() actor: RequestUser,
+    @Body() dto: TriggerCutRequestDto,
   ): Promise<TriggerCutResponseDto> {
     if (actor.role !== 'GERENTE_GENERAL') {
       throw new ForbiddenException({
@@ -125,6 +166,12 @@ export class CutsController {
         message: 'solo el GERENTE_GENERAL puede forzar la generación de cortes',
       });
     }
-    return this.cronService.triggerManualCut();
+    return this.cronService.triggerManualCut(
+      {
+        forceDate: dto.forceDate,
+        branchId: dto.branchId,
+      },
+      actor,
+    );
   }
 }
