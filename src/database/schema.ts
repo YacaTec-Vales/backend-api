@@ -668,7 +668,7 @@ export type NewEmailLogEntity = typeof emailLog.$inferInsert;
  * @author Equipo de desarrollo Mis Vales
  * @since 2.1.0
  */
-export const categories = appSchema.table('catogory', {
+export const categories = appSchema.table('category', {
   id: uuid('id')
     .primaryKey()
     .default(sql`gen_random_uuid()`),
