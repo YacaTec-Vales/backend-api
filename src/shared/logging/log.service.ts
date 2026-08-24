@@ -89,14 +89,22 @@ export class LogService {
   async logEvent(input: LogEventInput): Promise<void> {
     try {
       const db = this.resolveDb();
+      // Auto-fill ip/device/userAgent desde el ALS si no se pasaron
+      // explicitamente. Asi, llamadas como LogService.logout()
+      // heredan el contexto del request sin que el caller lo copie.
+      const ctx = getAuditContextStoreFromGlobal()?.get();
+      const ipAddress = input.ipAddress ?? ctx?.ipAddress ?? null;
+      const userAgent = input.userAgent ?? ctx?.userAgent ?? null;
+      const device = input.device ?? ctx?.device ?? null;
+
       await db.insert(systemLogs).values({
         logType: input.logType,
         userId: input.userId ?? null,
         action: input.action ?? null,
         metadata: input.metadata ?? {},
-        ipAddress: input.ipAddress ?? null,
-        userAgent: input.userAgent ?? null,
-        device: input.device ?? null,
+        ipAddress,
+        userAgent,
+        device,
         durationMs: input.durationMs ?? null,
         message: input.message ?? null,
       });

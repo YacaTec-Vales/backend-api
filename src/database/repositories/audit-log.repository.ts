@@ -148,6 +148,15 @@ export class AuditLogRepository {
     userAgent?: string | null;
     device?: string | null;
   }): Promise<AuditLogEntity> {
+    // Si el caller no paso ip/device/userAgent pero existe ALS activo
+    // (estamos dentro de un request), auto-rellenar desde el contexto.
+    // Asi, llamadas `logEvent` simples (ej. logout) heredan las 4
+    // vars de transporte que el interceptor ya seteo en el TX.
+    const ctx = this.auditContext.get();
+    const ipAddress = event.ipAddress ?? ctx?.ipAddress ?? null;
+    const userAgent = event.userAgent ?? ctx?.userAgent ?? null;
+    const device = event.device ?? ctx?.device ?? null;
+
     const operation: AuditOperation = event.operation ?? 'UPDATE';
     const values: NewAuditLogEntity = {
       userId: event.actorUserId,
@@ -160,9 +169,9 @@ export class AuditLogRepository {
       oldValues: null,
       newValues: null,
       changedFields: null,
-      device: event.device ?? null,
-      ipAddress: event.ipAddress ?? null,
-      userAgent: event.userAgent ?? null,
+      device,
+      ipAddress,
+      userAgent,
     };
 
     // Si hay TX activa en el ALS, usarla (atomicidad con mutaciones
