@@ -39,6 +39,24 @@ describe('envValidationSchema', () => {
     expect(value.PORT).toBe(3000);
     expect(value.JWT_ACCESS_TTL).toBe(900);
     expect(value.AUTH_MAX_FAILED_ATTEMPTS).toBe(5);
+    expect(value.SERVER_ID).toBe('unknown');
+  });
+
+  it('acepta SERVER_ID valido (slug simple)', () => {
+    const { error, value } = envValidationSchema.validate(
+      { ...BASE_ENV, SERVER_ID: 'app-03' },
+      { abortEarly: false },
+    );
+    expect(error).toBeUndefined();
+    expect(value.SERVER_ID).toBe('app-03');
+  });
+
+  it('rechaza SERVER_ID con caracteres fuera de [a-z0-9-]', () => {
+    const { error } = envValidationSchema.validate(
+      { ...BASE_ENV, SERVER_ID: 'App 03!' },
+      { abortEarly: false },
+    );
+    expect(error?.details.some((d) => d.path.includes('SERVER_ID'))).toBe(true);
   });
 
   it('rechaza JWT_SECRET con menos de 32 caracteres', () => {

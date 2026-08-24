@@ -24,6 +24,10 @@ import { registerAs } from '@nestjs/config';
  * - `corsOrigins`: lista de origenes CORS permitidos (CSV desde env).
  * - `cookieDomain` / `cookieSecure`: politica de cookies (no usada
  *   actualmente,预留 para futuras integraciones).
+ * - `serverId`: identificador unico del proceso backend. Cada droplet
+ *   (app-02, app-03) exporta `SERVER_ID` con su nombre canonico para
+ *   correlacionar logs con la instancia que atendio la peticion.
+ *   Default `unknown` en dev (process unico).
  */
 export interface AppConfig {
   nodeEnv: 'development' | 'test' | 'production';
@@ -33,6 +37,7 @@ export interface AppConfig {
   corsOrigins: string[];
   cookieDomain: string;
   cookieSecure: boolean;
+  serverId: string;
 }
 
 /**
@@ -54,4 +59,5 @@ export const appConfig = registerAs('app', (): AppConfig => ({
     .filter(Boolean),
   cookieDomain: process.env.COOKIE_DOMAIN ?? '',
   cookieSecure: process.env.COOKIE_SECURE === 'true',
+  serverId: process.env.SERVER_ID ?? 'unknown',
 }));
