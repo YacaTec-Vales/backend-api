@@ -28,6 +28,7 @@ import {
 import { SolicitationsService } from './solicitations.service';
 import { createSolicitationRepositoryMock } from '../../test/mocks/solicitation.repository.mock';
 import type { SolicitationEntity } from '../database/schema';
+import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 
 // ===========================================================================
 // Fixtures
@@ -131,6 +132,15 @@ function buildService() {
   const distributorRepo = buildDistributorRepositoryMock();
   const documentsService = {
     findById: jest.fn().mockResolvedValue({ id: 'doc-ok' }),
+  };
+  const auditRepo = {
+    runWithContext: jest
+      .fn()
+      .mockImplementation(
+        async <T>(_ctx: unknown, work: (tx: unknown) => Promise<T>) =>
+          work({ __isTx: true }),
+      ),
+    logEvent: jest.fn().mockResolvedValue(undefined),
   };
   const service = new SolicitationsService(
     solicitationRepo,

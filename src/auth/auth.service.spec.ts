@@ -420,6 +420,28 @@ describe('AuthService', () => {
         sessionService,
         permissionCache,
         { get: jest.fn() } as unknown as ConfigService,
+        {
+          logEvent: jest.fn().mockResolvedValue(undefined),
+          runWithContext: jest
+            .fn()
+            .mockImplementation(
+              async <T>(
+                _ctx: unknown,
+                work: (tx: unknown) => Promise<T>,
+              ): Promise<T> => work(undefined),
+            ),
+        } as unknown as AuditLogRepository,
+        {
+          loginSuccess: jest.fn().mockResolvedValue(undefined),
+          loginFailed: jest.fn().mockResolvedValue(undefined),
+          logout: jest.fn().mockResolvedValue(undefined),
+          tokenRefreshed: jest.fn().mockResolvedValue(undefined),
+          error: jest.fn().mockResolvedValue(undefined),
+          httpRequest: jest.fn().mockResolvedValue(undefined),
+          vpnGuardRejected: jest.fn().mockResolvedValue(undefined),
+          permissionDenied: jest.fn().mockResolvedValue(undefined),
+          logEvent: jest.fn().mockResolvedValue(undefined),
+        } as unknown as LogService,
         mfaStub,
       );
     }

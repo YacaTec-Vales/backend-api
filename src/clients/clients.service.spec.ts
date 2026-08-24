@@ -374,6 +374,18 @@ describe('ClientsService', () => {
         ClientsService,
         { provide: ClientRepository, useValue: clientRepo },
         { provide: VoucherRepository, useValue: voucherRepo },
+        {
+          provide: AuditLogRepository,
+          useValue: {
+            runWithContext: jest
+              .fn()
+              .mockImplementation(
+                async <T>(_ctx: unknown, work: (tx: unknown) => Promise<T>) =>
+                  work({ __isTx: true }),
+              ),
+            logEvent: jest.fn().mockResolvedValue(undefined),
+          },
+        },
         { provide: DRIZZLE_READ, useValue: stub },
         { provide: DocumentsService, useValue: documentsService },
       ],
@@ -411,6 +423,18 @@ describe('ClientsService', () => {
         ClientsService,
         { provide: ClientRepository, useValue: clientRepo },
         { provide: VoucherRepository, useValue: voucherRepo },
+        {
+          provide: AuditLogRepository,
+          useValue: {
+            runWithContext: jest
+              .fn()
+              .mockImplementation(
+                async <T>(_ctx: unknown, work: (tx: unknown) => Promise<T>) =>
+                  work({ __isTx: true }),
+              ),
+            logEvent: jest.fn().mockResolvedValue(undefined),
+          },
+        },
         { provide: DRIZZLE_READ, useValue: stub },
         { provide: DocumentsService, useValue: documentsService },
       ],
@@ -471,6 +495,18 @@ describe('ClientsService', () => {
         ClientsService,
         { provide: ClientRepository, useValue: clientRepo },
         { provide: VoucherRepository, useValue: voucherRepo },
+        {
+          provide: AuditLogRepository,
+          useValue: {
+            runWithContext: jest
+              .fn()
+              .mockImplementation(
+                async <T>(_ctx: unknown, work: (tx: unknown) => Promise<T>) =>
+                  work({ __isTx: true }),
+              ),
+            logEvent: jest.fn().mockResolvedValue(undefined),
+          },
+        },
         { provide: DRIZZLE_READ, useValue: stub },
         { provide: DocumentsService, useValue: documentsService },
       ],
