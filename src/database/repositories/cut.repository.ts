@@ -168,6 +168,17 @@ export class CutRepository {
   /**
    * Busca `branch_cutoff` de la Sucursal. La fecha se pasa para
    * deducir la posicion (1 si day<=15, 2 si >15) segun el seed.
+   *
+   * Si la Sucursal NO tiene filas en `app.branch_cutoff` (caso real:
+   * Sucursal matriz sin cutoff sembrado porque solo se ejecuta en
+   * fechas arbitrarias desde QA), el metodo cae a las columnas legacy
+   * `cutoff_day` / `payment_day` / `early_payment_days` de `app.branch`
+   * para derivar la configuracion del corte. El flag `sandbox` del
+   * resultado indica si se uso ese fallback (true) o un
+   * `branch_cutoff` real (false).
+   *
+   * Devuelve `null` solo si la Sucursal directamente no existe o esta
+   * borrada (en cuyo caso no hay manera de derivar nada).
    */
   async findBranchCutoffForDate(
     branchId: string,
@@ -179,6 +190,8 @@ export class CutRepository {
     earlyPaymentDays: number;
     cutWindowStart: string;
     cutWindowEnd: string;
+    /** true cuando el resultado se derivo del fallback legacy de app.branch. */
+    sandbox: boolean;
   } | null> {
     const result = await this.readPool.query(
       `SELECT position::int AS position,
@@ -190,28 +203,75 @@ export class CutRepository {
         ORDER BY position`,
       [branchId],
     );
-    if (result.rows.length === 0) return null;
     const day = Number(cutDate.slice(8, 10));
-    const position: 1 | 2 = day <= 15 ? 1 : 2;
-    const match =
-      result.rows.find((r) => Number(r['position']) === position) ??
-      result.rows[0];
-    // Ventana de inicio/fin del periodo de vales:
-    //   posicion 1: 1 al 15 del mes del cutDate.
-    //   posicion 2: 16 al 28 (o fin de mes) del mes del cutDate.
     const year = cutDate.slice(0, 4);
     const month = cutDate.slice(5, 7);
+
+    if (result.rows.length > 0) {
+      const position: 1 | 2 = day <= 15 ? 1 : 2;
+      const match =
+        result.rows.find((r) => Number(r['position']) === position) ??
+        result.rows[0];
+      // Ventana de inicio/fin del periodo de vales:
+      //   posicion 1: 1 al 15 del mes del cutDate.
+      //   posicion 2: 16 al 28 (o fin de mes) del mes del cutDate.
+      const cutWindowStart =
+        position === 1 ? `${year}-${month}-01` : `${year}-${month}-16`;
+      const cutWindowEnd =
+        position === 1 ? `${year}-${month}-15` : `${year}-${month}-28`;
+      return {
+        position: Number(match['position']) as 1 | 2,
+        cutoffDay: Number(match['cutoff_day']),
+        paymentDay: Number(match['payment_day']),
+        earlyPaymentDays: Number(match['early_payment_days']),
+        cutWindowStart,
+        cutWindowEnd,
+        sandbox: false,
+      };
+    }
+
+    // Fallback a las columnas legacy de app.branch (sucursales nuevas /
+    // Sucursal matriz sin branch_cutoff sembrado). Mantiene la API
+    // homogenea para que el resto del flujo (computePaymentDeadline,
+    // findActiveVouchersForCut, etc.) siga funcionando igual.
+    const branchResult = await this.readPool.query(
+      `SELECT cutoff_day::int AS cutoff_day,
+              payment_day::int AS payment_day,
+              early_payment_days::int AS early_payment_days,
+              branch_type::text AS branch_type,
+              es_matriz::boolean AS es_matriz,
+              deleted_at AS deleted_at,
+              is_active::boolean AS is_active
+         FROM app.branch
+        WHERE id = $1
+        LIMIT 1`,
+      [branchId],
+    );
+    const row = branchResult.rows[0];
+    if (!row) return null;
+    if (row['deleted_at'] !== null || row['is_active'] === false) return null;
+
+    const cutoffDay = Number(row['cutoff_day']);
+    const paymentDay = Number(row['payment_day']);
+    const earlyPaymentDays = Number(row['early_payment_days']);
+    if (!cutoffDay || !paymentDay || !earlyPaymentDays) return null;
+
+    const position: 1 | 2 = day <= 15 ? 1 : 2;
+    // Para el fallback, la ventana del periodo sigue la misma regla
+    // (<=15 -> qna 1, >15 -> qna 2) y los limites son los naturales
+    // (1..15, 16..fin de mes usando el dia del cutoff como tope).
     const cutWindowStart =
       position === 1 ? `${year}-${month}-01` : `${year}-${month}-16`;
     const cutWindowEnd =
       position === 1 ? `${year}-${month}-15` : `${year}-${month}-28`;
     return {
-      position: Number(match['position']) as 1 | 2,
-      cutoffDay: Number(match['cutoff_day']),
-      paymentDay: Number(match['payment_day']),
-      earlyPaymentDays: Number(match['early_payment_days']),
+      position,
+      cutoffDay,
+      paymentDay,
+      earlyPaymentDays,
       cutWindowStart,
       cutWindowEnd,
+      sandbox: true,
     };
   }
 

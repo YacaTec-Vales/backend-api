@@ -40,6 +40,7 @@ const BASE_CUTOFF = {
   earlyPaymentDays: 3,
   cutWindowStart: '2026-08-16',
   cutWindowEnd: '2026-08-28',
+  sandbox: false,
 };
 
 /**
@@ -693,6 +694,79 @@ describe('CutService', () => {
       expect(result.relationsCreated).toBe(1);
       expect(result.warnings.length).toBe(1);
       expect(result.warnings[0]).toContain(DIST_GHOST);
+    });
+  });
+
+  describe('modo sandbox (soporte matriz / QA)', () => {
+    it('rechaza force=true para roles distintos a GERENTE_GENERAL', async () => {
+      const { service } = buildService();
+      const gsActor = {
+        ...buildActor(),
+        role: 'GERENTE_SUCURSAL' as const,
+      };
+      await expect(
+        service.runCut(gsActor, BRANCH_ID, '2026-08-24', { force: true }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('cuando el repo marca sandbox=true sin force del caller, sigue lanzando NOT_FOUND', async () => {
+      // Politica: NO exponemos sandbox implicitamente. El caller debe
+      // pedirlo explicitamente con force=true; si el repo cayo al
+      // fallback legacy sin que el caller lo pidiera, lo tratamos como
+      // un NOT_FOUND normal.
+      const sandboxCutoff = { ...BASE_CUTOFF, sandbox: true };
+      const { service } = buildService({
+        cutRepo: buildCutRepo({
+          findBranchCutoffForDate: jest.fn().mockResolvedValue(sandboxCutoff),
+        }),
+      });
+      await expect(
+        service.runCut(buildActor(), BRANCH_ID, '2026-08-24'),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('cuando el caller envia force=true y el repo cae al fallback legacy, el corte corre y sandbox=true', async () => {
+      const sandboxCutoff = {
+        ...BASE_CUTOFF,
+        cutoffDay: 24,
+        cutWindowStart: '2026-08-16',
+        cutWindowEnd: '2026-08-28',
+        sandbox: true,
+      };
+      const vouchers = [buildVoucher({ id: 'v-1', folio: 'T-1' })];
+      const { service } = buildService({
+        cutRepo: buildCutRepo({
+          findBranchCutoffForDate: jest.fn().mockResolvedValue(sandboxCutoff),
+          findActiveVouchersForCut: jest.fn().mockResolvedValue(vouchers),
+        }),
+      });
+      const result = await service.runCut(
+        buildActor(),
+        BRANCH_ID,
+        '2026-08-24',
+        { force: true },
+      );
+      expect(result.sandbox).toBe(true);
+      expect(result.relationsCreated).toBe(1);
+      // El calculo es el mismo que un Cobre 3% estandar (19625).
+      expect(result.totalToPayCents).toBe(19625);
+    });
+
+    it('cuando el caller envia force=true y branch_cutoff no existe (repo devuelve null), lanza NOT_FOUND con mensaje sandbox', async () => {
+      const { service } = buildService({
+        cutRepo: buildCutRepo({
+          findBranchCutoffForDate: jest.fn().mockResolvedValue(null),
+        }),
+      });
+      try {
+        await service.runCut(buildActor(), BRANCH_ID, '2026-08-24', {
+          force: true,
+        });
+        fail('Debio lanzar NotFoundException');
+      } catch (err) {
+        expect(err).toBeInstanceOf(NotFoundException);
+        expect((err as { getStatus(): number }).getStatus()).toBe(404);
+      }
     });
   });
 });
