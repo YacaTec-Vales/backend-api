@@ -16,6 +16,7 @@ import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsDateString,
   IsEmail,
   IsIn,
@@ -138,6 +139,7 @@ class LimiteCreditoOtraRelacionDto {
   monto_centavos!: number;
 
   @ApiProperty({ example: true })
+  @IsBoolean()
   carta_acredita!: boolean;
 }
 
