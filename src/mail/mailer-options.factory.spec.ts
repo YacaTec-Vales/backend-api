@@ -51,13 +51,17 @@ const TEMPLATE_CONTEXT: Record<string, Record<string, unknown>> = {
  * Valores que DEBEN aparecer en el HTML final (interpolados).
  */
 const TEMPLATE_MARKERS: Record<string, string[]> = {
-  'reset-password': ['https://app.test/reset?token=abc123'],
+  // Handlebars auto-escapa el HTML en las interpolaciones: el `=`
+  // aparece como `&#x3D;` en el html resultante (los clientes de
+  // correo decodifican al renderizar). Por eso validamos contra
+  // substrings que sobreviven la codificacion.
+  'reset-password': ['app.test/reset?token', 'abc123'],
   'session-revoked': ['Operador QA'],
-  'user-welcome': ['distrib_0001', 'temp-pass-123', 'https://app.test/login'],
+  'user-welcome': ['distrib_0001', 'temp-pass-123', 'app.test/login'],
   'user-password-reset-by-admin': [
     'distrib_0001',
     'temp-pass-456',
-    'https://app.test/login',
+    'app.test/login',
   ],
 };
 
@@ -65,12 +69,23 @@ const TEMPLATE_MARKERS: Record<string, string[]> = {
  * Compila+renderiza una plantilla con el adapter real. Devuelve el
  * html resultante o lanza si el adapter aborta via callback.
  */
+/**
+ * Compila+renderiza una plantilla usando el MISMO HandlebarsAdapter
+ * registrado por el factory en `template.adapter`. Asi, si en el
+ * futuro alguien borra esa inyeccion, este test falla (en lugar
+ * de pasar con un adapter fresco que no es el que el binario usa
+ * en produccion).
+ */
 function compileWith(
   options: Record<string, unknown>,
   templateFile: string,
   context: Record<string, unknown>,
 ): { html?: string; error?: Error } {
-  const adapter = new HandlebarsAdapter();
+  const adapter = (options as { template?: { adapter?: HandlebarsAdapter } })
+    .template?.adapter;
+  if (!adapter) {
+    return { error: new Error('template.adapter no registrado') };
+  }
   const mail = {
     data: {
       template: templateFile,
@@ -143,6 +158,27 @@ describe('mailer-options.factory (registro de partials)', () => {
       const runtime = (options as { options?: { partials?: { dir?: string } } })
         .options;
       expect(runtime?.partials?.dir).toContain('partials');
+    });
+
+    it('adjunta una instancia de HandlebarsAdapter en template.adapter (sin esto, los correos salen vacios)', () => {
+      const options = createMailerOptions({
+        driver: 'smtp',
+        host: 'smtp.test',
+        port: 587,
+        secure: false,
+        user: 'u',
+        password: 'p',
+        from: 'no-reply@test',
+      });
+      const adapter = (options as { template?: { adapter?: unknown } }).template
+        ?.adapter;
+      expect(adapter).toBeInstanceOf(HandlebarsAdapter);
+      // Saltamos el inline-CSS porque los estilos ya viven en un
+      // <style> dentro del partial `header` del repositorio.
+      expect(
+        (adapter as { config?: { inlineCssEnabled?: boolean } }).config
+          ?.inlineCssEnabled,
+      ).toBe(false);
     });
 
     it.each(Object.keys(TEMPLATE_MANIFEST))(

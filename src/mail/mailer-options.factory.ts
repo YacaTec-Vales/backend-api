@@ -16,6 +16,7 @@
  */
 
 import { join } from 'path';
+import { HandlebarsAdapter } from '@nestjs-modules/mailer/adapters/handlebars.adapter';
 
 /**
  * Config cruda leida desde `ConfigService` (keys de `mail.config`).
@@ -53,6 +54,27 @@ export const MAILER_RUNTIME_OPTIONS = {
 };
 
 /**
+ * Adapter Handlebars cableado al transporter de nodemailer.
+ *
+ * Sin esta instancia, `MailerService.initTemplateAdapter` recibe
+ * `undefined` y NO registra el compile hook en el transporter, asi
+ * que `sendMail` envia el correo SIN parte HTML (solo subject ->
+ * `Content-Type: text/plain`, cuerpo vacio). Esto fue el bug que
+ * dejaba los correos de bienvenida llegando como "solo subject".
+ *
+ * Ademas pasamos `inlineCssEnabled: false`: `@css-inline/css-inline`
+ * (que viene como dependencia opcional y trae binarios nativos) es
+ * innecesario cuando nuestra plantilla ya embebe los estilos en un
+ * `<style>` dentro del `<head>` (definido en
+ * `src/mail/templates/partials/header.hbs`). Saltar la pasada de
+ * inline-CSS evita arrastrar una dependencia binaria que no aporta
+ * valor ahi.
+ */
+const TEMPLATE_ADAPTER = new HandlebarsAdapter(undefined, {
+  inlineCssEnabled: false,
+});
+
+/**
  * Opciones completas para `MailerModule.forRootAsync`.
  *
  *  - Sin SMTP (`driver !== 'smtp'` o host vacio): transport
@@ -73,6 +95,7 @@ export function createMailerOptions(
   const template = {
     dir: MAIL_TEMPLATES_DIR,
     options: { strict: true },
+    adapter: TEMPLATE_ADAPTER,
   };
   if (!enabled) {
     return {
