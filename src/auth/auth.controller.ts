@@ -198,6 +198,7 @@ export class AuthController {
     );
   }
 
+  @AllowBeforePasswordChange()
   @UseGuards(JwtAuthGuard)
   @Post('logout')
   @ApiOperation({
@@ -231,6 +232,7 @@ export class AuthController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @AllowBeforePasswordChange()
   @Get('me')
   @ApiOperation({
     summary: 'Perfil autenticado',
@@ -251,6 +253,7 @@ export class AuthController {
     return this.authService.getAuthenticatedUser(user.id, user.tokenVersion);
   }
 
+  @AllowBeforePasswordChange()
   @UseGuards(JwtAuthGuard)
   @Post('change-password')
   @ApiOperation({
