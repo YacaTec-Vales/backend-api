@@ -26,6 +26,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 import { ClientRepository } from '../database/repositories/client.repository';
 import { DistributorRepository } from '../database/repositories/distributor.repository';
 import { VoucherRepository } from '../database/repositories/voucher.repository';
@@ -63,6 +64,7 @@ export class CashierService {
     private readonly distributorRepo: DistributorRepository,
     private readonly branchesRepo: BranchesRepository,
     private readonly documentsService: DocumentsService,
+    private readonly auditRepo: AuditLogRepository,
   ) {}
 
   /**
@@ -242,9 +244,24 @@ export class CashierService {
     }
 
     if (dto.dataConfirmed) {
-      const updated = await this.voucherRepo.confirmFeriado(
-        voucher.id,
-        dto.authorizationNumber.trim(),
+      const updated = await this.auditRepo.runWithContext(
+        {
+          actorUserId: actor.id,
+          action: 'VOUCHER.LIQUIDATED',
+          metadata: {
+            voucherId: voucher.id,
+            folio,
+            distributorId: distributor.id,
+            amountCents: voucher.amountCents,
+            authorizationNumber: dto.authorizationNumber.trim(),
+          },
+        },
+        async (tx) =>
+          this.voucherRepo.confirmFeriado(
+            voucher.id,
+            dto.authorizationNumber.trim(),
+            tx,
+          ),
       );
       if (!updated) {
         throw new ConflictException({
@@ -291,7 +308,7 @@ export class CashierService {
   private async createComplaint(
     distributorId: string,
     voucher: VoucherEntity,
-    _actorId: string,
+    actorId: string,
     description: string,
     documents: Array<{ docId: string; documentType: string }>,
   ): Promise<string> {
@@ -311,6 +328,26 @@ export class CashierService {
     this.logger.log(
       `complaint creada: id=${complaintId} distributor=${distributorId} voucher=${voucher.folio}`,
     );
+
+    // Compensacion audit: el INSERT en app.complaint usa SQL crudo
+    // sobre `rawQuery` (conexion distinta del interceptor), por lo
+    // que el trigger se dispara sin actor. Registramos el evento
+    // con actor, IP y device para que el admin lo vea.
+    void this.auditRepo.logEvent({
+      action: 'COMPLAINT.RAISED',
+      actorUserId: actorId,
+      targetUserId: null,
+      tableName: 'complaint',
+      recordId: complaintId,
+      metadata: {
+        distributorId,
+        voucherId: voucher.id,
+        folio: voucher.folio,
+        documentId: firstDocId,
+        descriptionPreview: description.slice(0, 100),
+      },
+    });
+
     return complaintId;
   }
 }
