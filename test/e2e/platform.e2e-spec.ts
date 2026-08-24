@@ -104,8 +104,12 @@ describe('Plataforma (E2E)', () => {
       }
     }
 
-    expect(envelopedSuccesses).toBe(30);
-    expect(noContentSuccesses).toBe(10);
+    // El numero de endpoints crece con cada modulo; lo contractual
+    // es que TODA respuesta 2xx documentada lleve el envelope de
+    // SuccessResponse (se valida por item arriba) o sea 204, y que
+    // existan ambos tipos en el contrato.
+    expect(envelopedSuccesses).toBeGreaterThan(0);
+    expect(noContentSuccesses).toBeGreaterThan(0);
   });
 
   it('helmet expone X-Content-Type-Options y otros headers de seguridad', async () => {
@@ -139,7 +143,7 @@ describe('Plataforma (E2E)', () => {
     const res = await request(handle.httpServer).get('/api/v1/users');
     expect(res.status).toBe(401);
     expect(res.body).toHaveProperty('message');
-    expect(res.body).toHaveProperty('error.code', 'UNAUTHORIZED');
+    expect(res.body).toHaveProperty('error.code', 'AUTH.MISSING_TOKEN');
     expect(res.body).not.toHaveProperty('data');
   });
 

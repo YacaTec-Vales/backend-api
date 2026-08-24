@@ -26,23 +26,23 @@
  * antes de correr seeds), el test hace `pending()` con un
  * mensaje claro y sale como skipped en lugar de fallar.
  *
- * Nota: este spec NO usa `createTestApp` porque el helper
- * importa `app.configure.ts`, que a su vez importa
- * `@scalar/nestjs-api-reference` (ES module). Jest no transforma
- * ES modules sin configuracion adicional. El spec levanta el
- * modulo manualmente.
+ * El bootstrap usa `createTestApp` para replicar el pipeline
+ * global de produccion (ValidationPipe, AllExceptionsFilter,
+ * ResponseEnvelopeInterceptor, guards APP_GUARD). Por eso las
+ * respuestas respetan el envelope `{ message, data, meta }` y
+ * los errores `{ message, error: { code } }`.
  *
  * @module e2e/audit
  * @author Equipo de desarrollo Mis Vales
  * @since 1.0.0
  */
 
-import { INestApplication } from '@nestjs/common';
-import { NestExpressApplication } from '@nestjs/platform-express';
-import { Test, type TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 
-import { AppModule } from '../../src/app.module';
+import {
+  createTestApp,
+  type CreateTestAppHandle,
+} from '../helpers/create-test-app';
 import { createTestPgClient } from '../helpers/test-database';
 
 const ADMIN_CREDENTIALS = {
@@ -56,7 +56,7 @@ const GG_CREDENTIALS = {
 };
 
 describe('Audit module (e2e)', () => {
-  let app: INestApplication;
+  let handle: CreateTestAppHandle;
   let adminToken: string;
   let ggToken: string;
   let dbAvailable = false;
@@ -74,42 +74,19 @@ describe('Audit module (e2e)', () => {
       dbAvailable = false;
     }
 
-    if (!dbAvailable) {
-      // Inicializar app con stub para que las llamadas a app.getHttpServer()
-      // no fallen en los tests skipped (pending()).
-      const m: TestingModule = await Test.createTestingModule({
-        imports: [AppModule],
-      }).compile();
-      app = m.createNestApplication<NestExpressApplication>({
-        bodyParser: true,
-      });
-      await app.init();
-      return;
-    }
+    // mockThrottler: los logins + consultas de la suite pueden
+    // chocar con el limite corto (10 req/s) del ThrottlerGuard.
+    handle = await createTestApp({ mockThrottler: true });
+    const app = handle;
 
-    const m: TestingModule = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-    const nestApp = m.createNestApplication<NestExpressApplication>({
-      bodyParser: true,
-    });
-    nestApp.setGlobalPrefix('api/v1');
-    nestApp.set('trust proxy', 1);
-    await nestApp.init();
-    app = nestApp;
-
-    const adminLogin = await request(
-      app.getHttpServer() as Parameters<typeof request>[0],
-    )
+    const adminLogin = await request(app.httpServer)
       .post('/api/v1/auth/login')
       .set('x-client-app', 'Tecu')
       .set('x-origin', 'vpn')
       .send(ADMIN_CREDENTIALS);
     adminToken = adminLogin.body?.data?.accessToken ?? '';
 
-    const ggLogin = await request(
-      app.getHttpServer() as Parameters<typeof request>[0],
-    )
+    const ggLogin = await request(app.httpServer)
       .post('/api/v1/auth/login')
       .set('x-client-app', 'Tecu')
       .set('x-origin', 'vpn')
@@ -118,7 +95,7 @@ describe('Audit module (e2e)', () => {
   });
 
   afterAll(async () => {
-    if (app) await app.close();
+    if (handle) await handle.close();
   });
 
   describe('GET /api/v1/audit/logs', () => {
@@ -127,11 +104,9 @@ describe('Audit module (e2e)', () => {
         pending('BD no tiene seed usuarios; saltando e2e');
         return;
       }
-      const res = await request(
-        app.getHttpServer() as Parameters<typeof request>[0],
-      ).get('/api/v1/audit/logs');
+      const res = await request(handle.httpServer).get('/api/v1/audit/logs');
       expect(res.status).toBe(401);
-      expect(res.body).toHaveProperty('error.code', 'UNAUTHORIZED');
+      expect(res.body).toHaveProperty('error.code', 'AUTH.MISSING_TOKEN');
     });
 
     it('403 con GERENTE_GENERAL (sin audit.read)', async () => {
@@ -139,16 +114,11 @@ describe('Audit module (e2e)', () => {
         pending('BD no tiene seed usuarios; saltando e2e');
         return;
       }
-      const res = await request(
-        app.getHttpServer() as Parameters<typeof request>[0],
-      )
+      const res = await request(handle.httpServer)
         .get('/api/v1/audit/logs')
         .set('Authorization', `Bearer ${ggToken}`);
       expect(res.status).toBe(403);
-      expect(res.body).toHaveProperty(
-        'error.code',
-        'AUTH.INSUFFICIENT_PERMISSIONS',
-      );
+      expect(res.body).toHaveProperty('error.code', 'AUTH.PERMISSION_DENIED');
     });
 
     it('200 con ADMINISTRADOR retorna envelope correcto', async () => {
@@ -156,9 +126,7 @@ describe('Audit module (e2e)', () => {
         pending('BD no tiene seed usuarios; saltando e2e');
         return;
       }
-      const res = await request(
-        app.getHttpServer() as Parameters<typeof request>[0],
-      )
+      const res = await request(handle.httpServer)
         .get('/api/v1/audit/logs')
         .set('Authorization', `Bearer ${adminToken}`);
       expect(res.status).toBe(200);
@@ -166,14 +134,16 @@ describe('Audit module (e2e)', () => {
         'message',
         'Registros de auditoría consultados correctamente',
       );
-      expect(res.body).toHaveProperty('data');
-      expect(res.body).toHaveProperty('meta');
-      expect(res.body.meta).toMatchObject({
+      // El envelope global envuelve el retorno paginado del
+      // controller: { message, data: { data: [...], meta } }.
+      expect(res.body).toHaveProperty('data.data');
+      expect(res.body).toHaveProperty('data.meta');
+      expect(res.body.data.meta).toMatchObject({
         page: 1,
         limit: 20,
         total: expect.any(Number),
       });
-      expect(Array.isArray(res.body.data)).toBe(true);
+      expect(Array.isArray(res.body.data.data)).toBe(true);
     });
 
     it('200 con paginacion explicita', async () => {
@@ -181,13 +151,11 @@ describe('Audit module (e2e)', () => {
         pending('BD no tiene seed usuarios; saltando e2e');
         return;
       }
-      const res = await request(
-        app.getHttpServer() as Parameters<typeof request>[0],
-      )
+      const res = await request(handle.httpServer)
         .get('/api/v1/audit/logs?page=1&limit=5')
         .set('Authorization', `Bearer ${adminToken}`);
       expect(res.status).toBe(200);
-      expect(res.body.meta).toMatchObject({ page: 1, limit: 5 });
+      expect(res.body.data.meta).toMatchObject({ page: 1, limit: 5 });
     });
 
     it('200 con filtro por tableName', async () => {
@@ -195,13 +163,11 @@ describe('Audit module (e2e)', () => {
         pending('BD no tiene seed usuarios; saltando e2e');
         return;
       }
-      const res = await request(
-        app.getHttpServer() as Parameters<typeof request>[0],
-      )
+      const res = await request(handle.httpServer)
         .get('/api/v1/audit/logs?tableName=user')
         .set('Authorization', `Bearer ${adminToken}`);
       expect(res.status).toBe(200);
-      expect(Array.isArray(res.body.data)).toBe(true);
+      expect(Array.isArray(res.body.data.data)).toBe(true);
     });
 
     it('400 con fecha invalida', async () => {
@@ -209,9 +175,7 @@ describe('Audit module (e2e)', () => {
         pending('BD no tiene seed usuarios; saltando e2e');
         return;
       }
-      const res = await request(
-        app.getHttpServer() as Parameters<typeof request>[0],
-      )
+      const res = await request(handle.httpServer)
         .get('/api/v1/audit/logs?startDate=not-a-date')
         .set('Authorization', `Bearer ${adminToken}`);
       expect(res.status).toBe(400);
@@ -225,9 +189,9 @@ describe('Audit module (e2e)', () => {
         pending('BD no tiene seed usuarios; saltando e2e');
         return;
       }
-      const res = await request(
-        app.getHttpServer() as Parameters<typeof request>[0],
-      ).get('/api/v1/audit/system-logs');
+      const res = await request(handle.httpServer).get(
+        '/api/v1/audit/system-logs',
+      );
       expect(res.status).toBe(401);
     });
 
@@ -236,9 +200,7 @@ describe('Audit module (e2e)', () => {
         pending('BD no tiene seed usuarios; saltando e2e');
         return;
       }
-      const res = await request(
-        app.getHttpServer() as Parameters<typeof request>[0],
-      )
+      const res = await request(handle.httpServer)
         .get('/api/v1/audit/system-logs')
         .set('Authorization', `Bearer ${ggToken}`);
       expect(res.status).toBe(403);
@@ -249,9 +211,7 @@ describe('Audit module (e2e)', () => {
         pending('BD no tiene seed usuarios; saltando e2e');
         return;
       }
-      const res = await request(
-        app.getHttpServer() as Parameters<typeof request>[0],
-      )
+      const res = await request(handle.httpServer)
         .get('/api/v1/audit/system-logs')
         .set('Authorization', `Bearer ${adminToken}`);
       expect(res.status).toBe(200);
@@ -259,16 +219,16 @@ describe('Audit module (e2e)', () => {
         'message',
         'Registros de sistema consultados correctamente',
       );
-      expect(res.body).toHaveProperty('meta');
-      expect(res.body.meta).toMatchObject({
+      expect(res.body).toHaveProperty('data.meta');
+      expect(res.body.data.meta).toMatchObject({
         page: 1,
         limit: 20,
         total: expect.any(Number),
       });
-      expect(Array.isArray(res.body.data)).toBe(true);
-      if (res.body.data.length > 0) {
-        expect(res.body.data[0]).toHaveProperty('logType');
-        expect(res.body.data[0]).toHaveProperty('createdAt');
+      expect(Array.isArray(res.body.data.data)).toBe(true);
+      if (res.body.data.data.length > 0) {
+        expect(res.body.data.data[0]).toHaveProperty('logType');
+        expect(res.body.data.data[0]).toHaveProperty('createdAt');
       }
     });
 
@@ -277,14 +237,12 @@ describe('Audit module (e2e)', () => {
         pending('BD no tiene seed usuarios; saltando e2e');
         return;
       }
-      const res = await request(
-        app.getHttpServer() as Parameters<typeof request>[0],
-      )
+      const res = await request(handle.httpServer)
         .get('/api/v1/audit/system-logs?logType=LOGIN_SUCCESS')
         .set('Authorization', `Bearer ${adminToken}`);
       expect(res.status).toBe(200);
-      expect(Array.isArray(res.body.data)).toBe(true);
-      for (const row of res.body.data) {
+      expect(Array.isArray(res.body.data.data)).toBe(true);
+      for (const row of res.body.data.data) {
         expect(row.logType).toBe('LOGIN_SUCCESS');
       }
     });
@@ -294,9 +252,7 @@ describe('Audit module (e2e)', () => {
         pending('BD no tiene seed usuarios; saltando e2e');
         return;
       }
-      const res = await request(
-        app.getHttpServer() as Parameters<typeof request>[0],
-      )
+      const res = await request(handle.httpServer)
         .get('/api/v1/audit/system-logs?limit=abc')
         .set('Authorization', `Bearer ${adminToken}`);
       expect(res.status).toBe(400);
