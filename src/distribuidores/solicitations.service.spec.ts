@@ -137,7 +137,7 @@ function buildService() {
       publicUrl: 'https://signed.example/doc-ok',
     }),
   };
-const auditRepo = {
+  const auditRepo = {
     runWithContext: jest
       .fn()
       .mockImplementation(

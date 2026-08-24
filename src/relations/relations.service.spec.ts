@@ -244,7 +244,7 @@ function buildService(
   const service = new RelationsService(
     relationsRepo as never,
     distRepo as never,
-{
+    {
       runWithContext: jest
         .fn()
         .mockImplementation(

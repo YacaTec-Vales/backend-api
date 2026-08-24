@@ -46,7 +46,8 @@ import { SolicitationRepository } from '../database/repositories/solicitation.re
 import { DRIZZLE_WRITE, type DrizzleWrite } from '../database/drizzle.provider';
 import { PasswordService } from '../auth/services/password.service';
 import { MailService } from '../mail/mail.service';
-import { AuditLogRepository } from '../database/repositories/audit-log.repository';
+// AuditLogRepository no se usa directamente aqui; el modulo de auditorias
+// se aplica via AuditContextInterceptor a nivel de pipeline.
 import type { RequestUser } from '../shared/guards/auth.guards';
 import { ConfigService } from '@nestjs/config';
 import { AuthorizeSolicitationDto } from './dto/authorize-solicitation.dto';
