@@ -358,7 +358,33 @@ describe('SolicitationsAuthorizeService', () => {
         dto,
       );
       expect(result.welcomeEmailSent).toBe(false);
+      expect(result.welcomeEmailError).toBe('unexpected');
       expect(result.solicitation.status).toBe('AUTORIZADA');
+    });
+
+    it('welcomeEmailError=null cuando el correo se envio OK', async () => {
+      const { service, solicitationRepo } = buildService();
+      solicitationRepo.findById.mockResolvedValueOnce(BASE_ROW);
+      const result = await service.authorize(
+        buildActor('GERENTE_GENERAL', null),
+        SOL_ID,
+        dto,
+      );
+      expect(result.welcomeEmailSent).toBe(true);
+      expect(result.welcomeEmailError).toBeNull();
+    });
+
+    it('welcomeEmailError=null cuando SMTP rechazo sin throw (sent=false)', async () => {
+      const { service, solicitationRepo, mailService } = buildService();
+      solicitationRepo.findById.mockResolvedValueOnce(BASE_ROW);
+      mailService.sendUserWelcome.mockResolvedValueOnce({ sent: false });
+      const result = await service.authorize(
+        buildActor('GERENTE_GENERAL', null),
+        SOL_ID,
+        dto,
+      );
+      expect(result.welcomeEmailSent).toBe(false);
+      expect(result.welcomeEmailError).toBeNull();
     });
   });
 

@@ -358,6 +358,7 @@ export class SolicitationsController {
       distributorNumber: r.distributorNumber,
       userId: r.userId,
       welcomeEmailSent: r.welcomeEmailSent,
+      welcomeEmailError: r.welcomeEmailError ?? undefined,
     }));
   }
 

@@ -70,7 +70,19 @@ export class TemplateRendererService {
     to: string,
     vars: TemplateVars,
   ): Promise<MailDeliveryResultDto> {
-    const entry = getTemplateEntry(key);
+    let entry: ReturnType<typeof getTemplateEntry>;
+    try {
+      entry = getTemplateEntry(key);
+    } catch (err) {
+      // Manifest desincronizado (alguien agrego una entrada al union
+      // TemplateKey pero olvido meterla en TEMPLATE_MANIFEST). No
+      // lanzamos: devolvemos { sent: false } para que el caller pueda
+      // reportarlo al operador sin abortar el flujo de negocio.
+      this.logger.error(
+        `plantilla ${key} no registrada en TEMPLATE_MANIFEST; no se envia. (${(err as Error).message})`,
+      );
+      return { sent: false };
+    }
 
     if (!this.config.enabled) {
       this.logger.warn(
