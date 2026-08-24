@@ -113,18 +113,25 @@ export class ClientRepository {
    *    (todavia no se ha marcado). Si ya esta marcado, la
    *    operacion es un no-op (idempotente, no devuelve error).
    *
-   * Conexion: `DRIZZLE_WRITE`.
+   * Conexion: `DRIZZLE_WRITE` (o el `tx` recibido si el caller
+   * esta dentro de un `AuditLogRepository.runWithContext`).
    *
    * @param clientId - UUID del cliente.
    * @param voucherId - UUID del voucher que sera su primer vale.
+   * @param tx - Transaccion del ALS opcional; cuando se provee,
+   *   el UPDATE se ejecuta dentro de la misma TX que la mutacion
+   *   que lo origino (ej. creacion del voucher) para que el
+   *   trigger vea el actor correcto.
    * @returns `true` si la actualizacion afecto una fila; `false`
    *   si el cliente no existe o ya tenia un primer vale.
    */
   async updateFirstVoucher(
     clientId: string,
     voucherId: string,
+    tx?: DrizzleWrite,
   ): Promise<boolean> {
-    const result = await this.writeDb
+    const db = tx ?? this.writeDb;
+    const result = await db
       .update(clients)
       .set({
         firstVoucherWithCurrentDistributorId: voucherId,
@@ -153,14 +160,22 @@ export class ClientRepository {
    *
    * Idempotente: si el campo ya es NULL, el UPDATE no afecta filas.
    *
-   * Conexion: `DRIZZLE_WRITE`.
+   * Conexion: `DRIZZLE_WRITE` (o el `tx` recibido si el caller
+   * esta dentro de un `AuditLogRepository.runWithContext`).
    *
    * @param clientId - UUID del cliente.
+   * @param tx - Transaccion del ALS opcional; cuando se provee,
+   *   el UPDATE se ejecuta dentro de la misma TX que la mutacion
+   *   que lo origino (ej. cancelacion del voucher).
    * @returns `true` si la actualizacion afecto una fila; `false` si
    *   el campo ya era NULL.
    */
-  async clearFirstVoucher(clientId: string): Promise<boolean> {
-    const result = await this.writeDb
+  async clearFirstVoucher(
+    clientId: string,
+    tx?: DrizzleWrite,
+  ): Promise<boolean> {
+    const db = tx ?? this.writeDb;
+    const result = await db
       .update(clients)
       .set({
         firstVoucherWithCurrentDistributorId: null,

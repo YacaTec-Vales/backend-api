@@ -159,7 +159,11 @@ describe('VouchersService', () => {
     });
     expect(result.folio).toMatch(/^D-TSL-\d{8}-\d{5}$/);
     expect(result.voucherType).toBe('PREVALE');
-    expect(clientRepo.updateFirstVoucher).toHaveBeenCalledWith('c-1', 'v-1');
+    expect(clientRepo.updateFirstVoucher).toHaveBeenCalledWith(
+      'c-1',
+      'v-1',
+      expect.anything(),
+    );
   });
 
   it('emite DIGITAL cuando cliente ya tenia firstVoucher', async () => {
