@@ -68,7 +68,7 @@ describe('VpnOriginGuard (e2e)', () => {
     });
 
     afterAll(async () => {
-      await handle.close();
+      if (handle) await handle.close();
     });
 
     it.each([
@@ -117,7 +117,7 @@ describe('VpnOriginGuard (e2e)', () => {
 
     afterAll(async () => {
       delete process.env.VPN_ORIGIN_GUARD_ENABLED;
-      await handle.close();
+      if (handle) await handle.close();
     });
 
     // ---------- Tests positivos: Tecu+VPN acepta ----------

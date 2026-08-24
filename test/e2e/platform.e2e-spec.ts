@@ -32,7 +32,7 @@ describe('Plataforma (E2E)', () => {
   });
 
   afterAll(async () => {
-    await handle.close();
+    if (handle) await handle.close();
   });
 
   it('GET / envuelve un exito con mensaje y data', async () => {
