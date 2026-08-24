@@ -17,6 +17,9 @@
  *    sin romper el historial de vales emitidos, que tienen snapshot
  *    de los campos financieros al momento de emision (ver `app.voucher`
  *    en `schema.ts:499-509`).
+ *  - `penaltyCents` (>=0) llega gratis via `PartialType(CreateProductDto)`
+ *    desde el feature que agrega el campo de multa
+ *    (`infrastructure/database/updates/23-agregar-penalty-cents.sql`).
  *
  * Modo de uso del frontend (Tecu Desktop / Gerente General):
  *  ```http
@@ -28,7 +31,8 @@
  *
  *  {
  *    "isActive": false,
- *    "interestPerPeriodBps": 750
+ *    "interestPerPeriodBps": 750,
+ *    "penaltyCents": 5000
  *  }
  *  ```
  *

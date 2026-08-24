@@ -33,6 +33,7 @@ describe('ProductsService', () => {
     commissionBps: 0,
     insuranceCents: 0,
     interestPerPeriodBps: 500,
+    penaltyCents: 5000,
   };
 
   describe('create', () => {
@@ -103,6 +104,62 @@ describe('ProductsService', () => {
       });
       expect(productRepo.create).not.toHaveBeenCalled();
     });
+
+    it('persiste penaltyCents cuando viene en el body', async () => {
+      productRepo.findActiveByCode.mockResolvedValue(null);
+      productRepo.create.mockResolvedValue({
+        id: 'p-penalty',
+        code: '5/10',
+        variant: 'NORMAL',
+        costCents: 500000,
+        totalPeriods: 10,
+        commissionBps: 0,
+        insuranceCents: 0,
+        interestPerPeriodBps: 500,
+        penaltyCents: 5000,
+        isActive: true,
+        deletedAt: null,
+        createdAt: new Date('2026-08-03T18:30:00Z'),
+        updatedAt: new Date('2026-08-03T18:30:00Z'),
+      } as never);
+      await service.create({ ...validDto, penaltyCents: 5000 });
+      expect(productRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ penaltyCents: 5000 }),
+      );
+    });
+
+    it('default penaltyCents a 0 cuando no viene en el body (sin multa)', async () => {
+      productRepo.findActiveByCode.mockResolvedValue(null);
+      productRepo.create.mockResolvedValue({
+        id: 'p-no-penalty',
+        code: '5/10',
+        variant: 'NORMAL',
+        costCents: 500000,
+        totalPeriods: 10,
+        commissionBps: 0,
+        insuranceCents: 0,
+        interestPerPeriodBps: 500,
+        penaltyCents: 0,
+        isActive: true,
+        deletedAt: null,
+        createdAt: new Date('2026-08-03T18:30:00Z'),
+        updatedAt: new Date('2026-08-03T18:30:00Z'),
+      } as never);
+      // DTO sin penaltyCents: simula un cliente que no incluye la multa en el body.
+      const dtoSinPenalty = {
+        code: validDto.code,
+        variant: validDto.variant,
+        costCents: validDto.costCents,
+        totalPeriods: validDto.totalPeriods,
+        commissionBps: validDto.commissionBps,
+        insuranceCents: validDto.insuranceCents,
+        interestPerPeriodBps: validDto.interestPerPeriodBps,
+      } as Parameters<typeof service.create>[0];
+      await service.create(dtoSinPenalty);
+      expect(productRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ penaltyCents: 0 }),
+      );
+    });
   });
 
   describe('findById', () => {
@@ -168,6 +225,7 @@ describe('ProductsService', () => {
       commissionBps: 0,
       insuranceCents: 0,
       interestPerPeriodBps: 500,
+      penaltyCents: 5000,
       isActive: true,
       deletedAt: null,
       createdAt: new Date('2026-08-03T18:30:00Z'),
@@ -243,6 +301,7 @@ describe('ProductsService', () => {
       commissionBps: 0,
       insuranceCents: 0,
       interestPerPeriodBps: 500,
+      penaltyCents: 5000,
       isActive: true,
       deletedAt: null,
       createdAt: new Date('2026-08-03T18:30:00Z'),
@@ -272,6 +331,20 @@ describe('ProductsService', () => {
       // El patch enviado al repo solo debe contener el campo cambiado.
       expect(productRepo.update).toHaveBeenCalledWith(PRODUCT_ID, {
         interestPerPeriodBps: 750,
+      });
+    });
+
+    it('persiste penaltyCents cuando viene en el PATCH', async () => {
+      productRepo.findActiveById.mockResolvedValue(existingProduct);
+      productRepo.update.mockResolvedValue({
+        ...existingProduct,
+        penaltyCents: 7500,
+      });
+      const result = await service.update(PRODUCT_ID, { penaltyCents: 7500 });
+      expect(result.penaltyCents).toBe(7500);
+      // El patch enviado al repo solo debe contener penaltyCents.
+      expect(productRepo.update).toHaveBeenCalledWith(PRODUCT_ID, {
+        penaltyCents: 7500,
       });
     });
 
