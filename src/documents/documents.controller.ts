@@ -2,8 +2,16 @@
  * @fileoverview Controlador del modulo `documents`.
  *
  * Endpoints (prefijo global `api/v1`):
- *  - `POST /uploads`  subir un archivo (multipart/form-data).
- *  - `GET /uploads/:id` obtener metadata + URL firmada de un documento.
+ *  - `POST  /uploads`                          subir un archivo (multipart/form-data).
+ *  - `POST  /uploads/verification/:solicitationId`  subir foto asociada a una verificacion.
+ *  - `GET   /uploads/:id`                       metadata + URL firmada de un documento.
+ *  - `GET   /uploads`                           lista paginada de todos los documentos.
+ *  - `GET   /uploads/client/:clientId`          documentos de un cliente.
+ *  - `GET   /uploads/verification/:solicitationId`  documentos de una verificacion.
+ *  - `GET   /uploads/type/:documentType`        documentos por tipo.
+ *
+ * Guia de consumo para frontends: ver `docs/uploads-api-frontends.md`.
+ * Detalle de URLs firmadas y storage: `docs/storage-presigned-urls.md`.
  *
  * @module documents
  * @author Equipo de desarrollo Mis Vales

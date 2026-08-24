@@ -23,6 +23,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { MailModule } from '../mail/mail.module';
 import { DatabaseModule } from '../database/database.module';
+import { DocumentsModule } from '../documents/documents.module';
 import { SolicitationsController } from './solicitations.controller';
 import { SolicitationsService } from './solicitations.service';
 import { SolicitationsAuthorizeService } from './solicitations.authorize.service';
@@ -31,7 +32,7 @@ import { BranchRepository } from '../database/repositories/branch.repository';
 import { DistributorRepository } from '../database/repositories/distributor.repository';
 
 @Module({
-  imports: [AuthModule, MailModule, DatabaseModule],
+  imports: [AuthModule, MailModule, DatabaseModule, DocumentsModule],
   controllers: [SolicitationsController],
   providers: [
     SolicitationsService,

@@ -129,12 +129,16 @@ function buildService() {
   const readDb = buildReadDbMock();
   const userRepository = buildUserRepositoryMock();
   const distributorRepo = buildDistributorRepositoryMock();
+  const documentsService = {
+    findById: jest.fn().mockResolvedValue({ id: 'doc-ok' }),
+  };
   const service = new SolicitationsService(
     solicitationRepo,
     branchRepo as never,
     userRepository as never,
     distributorRepo as never,
     readDb as never,
+    documentsService as never,
   );
   return {
     service,
@@ -143,6 +147,7 @@ function buildService() {
     userRepository,
     distributorRepo,
     readDb,
+    documentsService,
   };
 }
 

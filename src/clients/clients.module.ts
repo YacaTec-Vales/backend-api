@@ -15,6 +15,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { DatabaseModule } from '../database/database.module';
+import { DocumentsModule } from '../documents/documents.module';
 import { ClientsController } from './clients.controller';
 import { ClientsService } from './clients.service';
 import { ClientRepository } from '../database/repositories/client.repository';
@@ -23,7 +24,7 @@ import { DistributorRepository } from '../database/repositories/distributor.repo
 import { AuthorizationRepository } from '../database/repositories/authorization.repository';
 
 @Module({
-  imports: [AuthModule, DatabaseModule],
+  imports: [AuthModule, DatabaseModule, DocumentsModule],
   controllers: [ClientsController],
   providers: [
     ClientsService,
