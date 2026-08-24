@@ -6,6 +6,10 @@
  *  - `@AllowBeforePasswordChange()` permite aunque el flag este activo.
  *  - Sin decorator y `mustChangePassword=true` lanza.
  *  - `mustChangePassword=false` o undefined permite.
+ *  - Regresion: los endpoints sensibles del flujo de identidad
+ *    (`change-password`, `logout`, `me`) tienen aplicado el decorador
+ *    para evitar el bloqueo tipo "no puedes cambiar la contrasena
+ *    porque debes cambiarla".
  *
  * @module shared
  * @author Equipo de desarrollo Mis Vales
@@ -17,6 +21,7 @@ import { Reflector } from '@nestjs/core';
 import { MustChangePasswordGuard } from './must-change-password.guard';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { ALLOW_BEFORE_PASSWORD_CHANGE_KEY } from '../decorators/allow-before-password-change.decorator';
+import { AuthController } from '../../auth/auth.controller';
 
 interface MockRequest {
   user?: { mustChangePassword?: boolean };
@@ -78,5 +83,52 @@ describe('MustChangePasswordGuard', () => {
   it('sin usuario deja pasar (otro guard se encargara del 401)', () => {
     reflector.getAllAndOverride.mockReturnValue(undefined);
     expect(guard.canActivate(buildContext({}))).toBe(true);
+  });
+
+  describe('regresion: endpoints sensibles deben tener @AllowBeforePasswordChange', () => {
+    /**
+     * Lee la metadata del handler contra el AuthController real.
+     * Si alguien borra el decorador de uno de estos endpoints, este
+     * test falla y el guard volveria a bloquear al usuario que justo
+     * intenta cambiar su contrasena. Es el bug clasico de
+     * "no puedes cambiar la contrasena porque debes cambiarla".
+     */
+    const reflector = new Reflector();
+
+    it('POST /auth/change-password permite cambiar contrasena con mustChangePassword=true', () => {
+      expect(
+        reflector.get(
+          ALLOW_BEFORE_PASSWORD_CHANGE_KEY,
+          AuthController.prototype.changePassword,
+        ),
+      ).toBe(true);
+    });
+
+    it('POST /auth/logout permite cerrar sesion con mustChangePassword=true', () => {
+      expect(
+        reflector.get(
+          ALLOW_BEFORE_PASSWORD_CHANGE_KEY,
+          AuthController.prototype.logout,
+        ),
+      ).toBe(true);
+    });
+
+    it('GET /auth/me permite consultar perfil con mustChangePassword=true', () => {
+      expect(
+        reflector.get(
+          ALLOW_BEFORE_PASSWORD_CHANGE_KEY,
+          AuthController.prototype.me,
+        ),
+      ).toBe(true);
+    });
+
+    it('POST /auth/mfa-verify sigue marcado (no se rompio al tocar otros endpoints)', () => {
+      expect(
+        reflector.get(
+          ALLOW_BEFORE_PASSWORD_CHANGE_KEY,
+          AuthController.prototype.verifyMfa,
+        ),
+      ).toBe(true);
+    });
   });
 });

@@ -11,6 +11,15 @@
  * @since 1.0.0
  */
 
+// Forzar TZ a una ciudad americana (default America/Monterrey, donde
+// corre el backend en produccion). Sin esto, Node usa UTC y los logs
+// de NestJS aparecen desfasados respecto a la hora local del server,
+// dificultando correlacionar con incidentes. Si se necesita otra TZ,
+// sobreescribir via env var TZ antes de arrancar el proceso.
+if (!process.env.TZ) {
+  process.env.TZ = 'America/Monterrey';
+}
+
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { Logger } from '@nestjs/common';
