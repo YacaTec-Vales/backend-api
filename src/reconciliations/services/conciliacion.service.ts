@@ -39,112 +39,126 @@ export class ConciliacionService {
     // 1. Extraemos los movimientos usando el servicio de parsing
     const parsedMovements = this.excelParser.parseBankExcel(fileBuffer);
 
-    // 2. Ejecutamos la lógica en una transacción garantizando atomicidad
-    await this.db.transaction(async (tx) => {
-      // Crear el lote de conciliación en estado inicial
-      const [batch] = await tx
-        .insert(reconciliationBatches)
-        .values({
-          uploadedBy,
+    // 2. Ejecutamos la lógica en una transacción garantizando atomicidad.
+    //    Envolvemos la TX con runWithContext para que el trigger vea
+    //    actor + action + metadata; sin esto, los INSERT/UPDATE de
+    //    esta mutacion salen con user_id NULL en app.audit_log.
+    await this.auditRepo.runWithContext(
+      {
+        actorUserId: uploadedBy,
+        action: 'RECONCILIATION.AUTOMATIC',
+        metadata: {
           originalFileName,
           storagePath,
-          sheetName: 'Hoja1',
-          status: 'PROCESANDO',
-        })
-        .returning();
-
-      let matchedCount = 0;
-      let branchCreditBalance = 0;
-
-      for (const movement of parsedMovements) {
-        // Ignoramos concepto, cruzamos exclusivamente por Referencia
-        const relationList = await tx
-          .select()
-          .from(relations)
-          .where(eq(relations.referencePayment, movement.reference))
-          .limit(1);
-
-        const relation = relationList[0];
-
-        // Convertir el monto flotante a centavos
-        const paymentCents = Math.round(movement.paymentAmount * 100);
-
-        // Insertar siempre el movimiento bancario extraído del archivo
-        const [insertedMovement] = await tx
-          .insert(bankMovements)
+          parsedMovements: parsedMovements.length,
+        },
+      },
+      async (tx) => {
+        // Crear el lote de conciliación en estado inicial
+        const [batch] = await tx
+          .insert(reconciliationBatches)
           .values({
-            batchId: batch.id,
-            item: movement.item,
-            concept: movement.concept, // Se ignora para el cruce, pero se guarda para auditoría
-            reference: movement.reference,
-            paymentCents,
-            paymentFolio: movement.paymentFolio,
-            paymentDate: movement.paymentDate, // Formato normalizado a YYYY-MM-DD o texto plano
-            paymentTime: movement.paymentTime, // Formato normalizado a HH:mm
-            paymentType: movement.paymentType,
-            rawRow: movement.rawRow,
+            uploadedBy,
+            originalFileName,
+            storagePath,
+            sheetName: 'Hoja1',
+            status: 'PROCESANDO',
           })
           .returning();
 
-        if (relation) {
-          // MATCH ENCONTRADO
-          const newPaidCents = Number(relation.totalPaidCents) + paymentCents;
-          const newStatus =
-            newPaidCents >= Number(relation.totalToPayCents)
-              ? 'LIQUIDADO'
-              : 'PARCIAL';
+        let matchedCount = 0;
+        let branchCreditBalance = 0;
 
-          // Actualizar saldo y estado de la relación
-          await tx
-            .update(relations)
-            .set({
-              totalPaidCents: newPaidCents,
-              reconciliationStatus: newStatus,
-              updatedAt: new Date(),
-            })
-            .where(eq(relations.id, relation.id));
+        for (const movement of parsedMovements) {
+          // Ignoramos concepto, cruzamos exclusivamente por Referencia
+          const relationList = await tx
+            .select()
+            .from(relations)
+            .where(eq(relations.referencePayment, movement.reference))
+            .limit(1);
 
-          // Registrar el cruce en la tabla reconciliation
-          const [reconciliationRecord] = await tx
-            .insert(reconciliations)
+          const relation = relationList[0];
+
+          // Convertir el monto flotante a centavos
+          const paymentCents = Math.round(movement.paymentAmount * 100);
+
+          // Insertar siempre el movimiento bancario extraído del archivo
+          const [insertedMovement] = await tx
+            .insert(bankMovements)
             .values({
-              relationId: relation.id,
-              bankMovementId: insertedMovement.id,
-              montoAplicadoCents: paymentCents,
-              reconciliationType: 'AUTOMATICA',
+              batchId: batch.id,
+              item: movement.item,
+              concept: movement.concept, // Se ignora para el cruce, pero se guarda para auditoría
+              reference: movement.reference,
+              paymentCents,
+              paymentFolio: movement.paymentFolio,
+              paymentDate: movement.paymentDate, // Formato normalizado a YYYY-MM-DD o texto plano
+              paymentTime: movement.paymentTime, // Formato normalizado a HH:mm
+              paymentType: movement.paymentType,
+              rawRow: movement.rawRow,
             })
             .returning();
 
-          // Ligar el bank_movement con su reconciliation id
-          await tx
-            .update(bankMovements)
-            .set({ reconciliationId: reconciliationRecord.id })
-            .where(eq(bankMovements.id, insertedMovement.id));
+          if (relation) {
+            // MATCH ENCONTRADO
+            const newPaidCents = Number(relation.totalPaidCents) + paymentCents;
+            const newStatus =
+              newPaidCents >= Number(relation.totalToPayCents)
+                ? 'LIQUIDADO'
+                : 'PARCIAL';
 
-          matchedCount++;
-        } else {
-          // SIN MATCH: Se registra como SALDO_FAVOR_SUCURSAL sumándolo al total del batch.
-          // El bank_movement se queda sin reconciliationId y sirve como histórico del sobrante.
-          branchCreditBalance += paymentCents;
+            // Actualizar saldo y estado de la relación
+            await tx
+              .update(relations)
+              .set({
+                totalPaidCents: newPaidCents,
+                reconciliationStatus: newStatus,
+                updatedAt: new Date(),
+              })
+              .where(eq(relations.id, relation.id));
+
+            // Registrar el cruce en la tabla reconciliation
+            const [reconciliationRecord] = await tx
+              .insert(reconciliations)
+              .values({
+                relationId: relation.id,
+                bankMovementId: insertedMovement.id,
+                montoAplicadoCents: paymentCents,
+                reconciliationType: 'AUTOMATICA',
+              })
+              .returning();
+
+            // Ligar el bank_movement con su reconciliation id
+            await tx
+              .update(bankMovements)
+              .set({ reconciliationId: reconciliationRecord.id })
+              .where(eq(bankMovements.id, insertedMovement.id));
+
+            matchedCount++;
+          } else {
+            // SIN MATCH: Se registra como SALDO_FAVOR_SUCURSAL sumándolo al total del batch.
+            // El bank_movement se queda sin reconciliationId y sirve como histórico del sobrante.
+            branchCreditBalance += paymentCents;
+          }
         }
-      }
 
-      // 3. Finalizar y actualizar el estado y contadores del lote
-      await tx
-        .update(reconciliationBatches)
-        .set({
-          totalMovements: parsedMovements.length,
-          totalReconciled: matchedCount,
-          totalBranchCreditBalance: branchCreditBalance,
-          status: 'COMPLETADO',
-          completedAt: new Date(),
-        })
-        .where(eq(reconciliationBatches.id, batch.id));
+        // 3. Finalizar y actualizar el estado y contadores del lote
+        await tx
+          .update(reconciliationBatches)
+          .set({
+            totalMovements: parsedMovements.length,
+            totalReconciled: matchedCount,
+            totalBranchCreditBalance: branchCreditBalance,
+            status: 'COMPLETADO',
+            completedAt: new Date(),
+          })
+          .where(eq(reconciliationBatches.id, batch.id));
 
-      this.logger.log(
-        `Lote ${batch.id} procesado exitosamente. Movimientos totales: ${parsedMovements.length}, Cruzados: ${matchedCount}, Saldo huérfano (cents): ${branchCreditBalance}`,
-      );
-    });
+        this.logger.log(
+          `Lote ${batch.id} procesado exitosamente. Movimientos totales: ${parsedMovements.length}, Cruzados: ${matchedCount}, Saldo huérfano (cents): ${branchCreditBalance}`,
+        );
+      },
+    );
   }
 
   /**
