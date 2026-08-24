@@ -44,6 +44,7 @@ import { VoucherRepository } from '../database/repositories/voucher.repository';
 import { DistributorRepository } from '../database/repositories/distributor.repository';
 import { AuthorizationRepository } from '../database/repositories/authorization.repository';
 import { buildTransferClient } from './transfer-client.service';
+import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 import { AuthorizationResponseDto } from '../autorizaciones/dto/authorization-response.dto';
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import {
@@ -69,6 +70,7 @@ export class ClientsController {
     private readonly voucherRepo: VoucherRepository,
     private readonly distributorRepo: DistributorRepository,
     private readonly authRepo: AuthorizationRepository,
+    private readonly auditRepo: AuditLogRepository,
   ) {}
 
   /**
@@ -235,6 +237,7 @@ export class ClientsController {
       this.voucherRepo,
       this.distributorRepo,
       this.authRepo,
+      this.auditRepo,
     );
     return transfer(actor, dto.clientId, dto);
   }
