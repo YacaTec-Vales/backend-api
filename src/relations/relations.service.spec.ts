@@ -112,6 +112,11 @@ function buildRel(overrides: Partial<RelationEntity> = {}): RelationEntity {
  * Repositorio mockeado. `getBranchCutoffFor` y `getDistributorBranchId`
  * devuelven valores por defecto que colocan a la relacion en
  * branch Lerdo TEST con earlyPaymentDays=3.
+ *
+ * `findById` por defecto devuelve una `RelationEntity` valida (la
+ * fixture BASE) para que los tests que no mockean este metodo puedan
+ * ejercitar el flujo end-to-end. Si el test necesita una relacion
+ * distinta (LIQUIDADA, etc.), sobrescribe `findById`.
  */
 function buildRelationsRepo(
   overrides: {
@@ -124,8 +129,35 @@ function buildRelationsRepo(
     getDistributorBranchId?: jest.Mock;
   } = {},
 ) {
+  // Fixture local minima (la `BASE_DIST` requiere REL_ID global, por
+  // eso la construimos aqui). Usada SOLO como default de findById
+  // cuando el test no mockea explicitamente.
+  const defaultRel: RelationEntity = {
+    id: REL_ID,
+    referencePayment: 'TEST-REL-001',
+    distributorId: DIST_ID,
+    cutDate: '2026-08-01',
+    paymentDeadlineDate: '2026-08-10',
+    earlyPaymentDates: [],
+    totalCommissionCents: 12_000,
+    totalPaymentCents: 100_000,
+    totalPenaltiesCents: 0,
+    totalToPayCents: 112_000,
+    totalPaidCents: 0,
+    creditLimitAtCutCents: 1_000_000,
+    creditAvailableAtCutCents: 1_000_000,
+    pointsAtCut: 0,
+    reconciliationStatus: 'PENDIENTE',
+    destinationAccounts: [],
+    declaredDelinquentAt: null,
+    forgivenAt: null,
+    isActive: true,
+    deletedAt: null,
+    createdAt: new Date('2026-08-01T00:00:00Z'),
+    updatedAt: new Date('2026-08-01T00:00:00Z'),
+  };
   return {
-    findById: overrides.findById ?? jest.fn(),
+    findById: overrides.findById ?? jest.fn().mockResolvedValue(defaultRel),
     listByDistributor:
       overrides.listByDistributor ?? jest.fn().mockResolvedValue([]),
     listByBranch: overrides.listByBranch ?? jest.fn().mockResolvedValue([]),
@@ -158,18 +190,61 @@ function buildDistRepo(
   };
 }
 
+/**
+ * Repositorio mockeado para el historial de pagos. Por defecto `create`
+ * resuelve con un row que tiene el id generado por la BD (uuid v4) y
+ * `paidAt` con la fecha del test. Los tests que necesiten inspeccionar
+ * los parametros pueden sobreescribir `create` con un jest.fn() que
+ * registre la llamada.
+ */
+function buildPaymentRepo(
+  overrides: {
+    create?: jest.Mock;
+    listByRelation?: jest.Mock;
+    findById?: jest.Mock;
+    countByRelation?: jest.Mock;
+  } = {},
+) {
+  return {
+    create:
+      overrides.create ??
+      jest.fn().mockResolvedValue({
+        id: '99999999-9999-9999-9999-999999999999',
+        relationId: REL_ID,
+        registeredById: DIST_USER_ID,
+        amountCents: 50_000,
+        paymentMethod: null,
+        notes: null,
+        outstandingBalanceBeforeCents: 112_000,
+        outstandingBalanceAfterCents: 62_000,
+        reconciliationStatusAfter: 'PARCIAL',
+        paidAt: new Date('2026-08-24T10:00:00Z'),
+        createdAt: new Date('2026-08-24T10:00:00Z'),
+        updatedAt: new Date('2026-08-24T10:00:00Z'),
+      }),
+    listByRelation: overrides.listByRelation ?? jest.fn().mockResolvedValue([]),
+    findById: overrides.findById ?? jest.fn().mockResolvedValue(null),
+    countByRelation:
+      overrides.countByRelation ?? jest.fn().mockResolvedValue(0),
+  };
+}
+
 function buildService(
   opts: {
     relationsRepo?: ReturnType<typeof buildRelationsRepo>;
     distRepo?: ReturnType<typeof buildDistRepo>;
+    paymentRepo?: ReturnType<typeof buildPaymentRepo>;
+    writeDb?: ReturnType<typeof buildWriteDb>;
   } = {},
 ) {
   const relationsRepo = opts.relationsRepo ?? buildRelationsRepo();
   const distRepo = opts.distRepo ?? buildDistRepo();
+  const paymentRepo = opts.paymentRepo ?? buildPaymentRepo();
+  const writeDb = opts.writeDb ?? buildWriteDb();
   const service = new RelationsService(
     relationsRepo as never,
     distRepo as never,
-    {
+{
       runWithContext: jest
         .fn()
         .mockImplementation(
@@ -178,8 +253,30 @@ function buildService(
         ),
       logEvent: jest.fn().mockResolvedValue(undefined),
     } as never,
+    paymentRepo as never,
+    writeDb as never,
   );
-  return { service, relationsRepo, distRepo };
+  return { service, relationsRepo, distRepo, paymentRepo, writeDb };
+}
+
+/**
+ * Mock del pool de escritura. Por defecto `query` rechaza con un error
+ * informativo para que los tests que SI ejercen registerPayment inyecten
+ * uno propio. El default sirve para los tests de `pay` legacy que no
+ * tocan este codigo.
+ */
+function buildWriteDb() {
+  return {
+    $client: {
+      query: jest
+        .fn()
+        .mockRejectedValue(
+          new Error(
+            'writeDb mock no configurado: el test deberia mockear este query',
+          ),
+        ),
+    },
+  };
 }
 
 function buildActor(
@@ -677,6 +774,432 @@ describe('RelationsService', () => {
         112_000,
         expect.anything(),
       );
+    });
+  });
+
+  describe('registerPayment (POST /relations/:id/payments)', () => {
+    const today = new Date('2026-08-05T12:00:00Z');
+
+    /**
+     * Helper para simular el pool de escritura. Devuelve un mock que
+     * responde segun el SQL que recibe (string match). Cubre los
+     * statements emitidos por `registerPayment`:
+     *  - `BEGIN`
+     *  - `INSERT INTO app.relation_payment ...`
+     *  - `UPDATE app.relation SET total_paid_cents = ...`
+     *  - `UPDATE app.relation SET reconciliation_status = ...` (opcional)
+     *  - `UPDATE app.relation_payment SET reconciliation_status_after = ...` (opcional)
+     *  - `UPDATE app.distributor SET credit_available_cents = ...`
+     *  - `COMMIT`
+     *  - `ROLLBACK` (si alguna falla)
+     */
+    function buildMockedWriteDb(
+      opts: {
+        insertPaymentId?: string;
+        insertPaidAt?: string;
+        relationUpdate?: {
+          totalPaidCents: number;
+          totalToPayCents: number;
+        };
+        distributorCreditAfter?: number;
+        failOn?: 'insert' | 'relation' | 'distributor';
+        initialStatus?: string;
+      } = {},
+    ) {
+      const calls: Array<{ sql: string; params: unknown[] }> = [];
+      const queryFn = jest.fn(async (sql: string, params: unknown[] = []) => {
+        calls.push({ sql: sql.trim(), params });
+        const sqlLower = sql.toLowerCase();
+        if (
+          sqlLower === 'begin' ||
+          sqlLower === 'commit' ||
+          sqlLower === 'rollback'
+        ) {
+          return { rows: [] };
+        }
+        if (sqlLower.includes('insert into app.relation_payment')) {
+          if (opts.failOn === 'insert') {
+            throw new Error('insert failed (test)');
+          }
+          return {
+            rows: [
+              {
+                id: opts.insertPaymentId ?? 'pay-uuid-001',
+                paid_at: opts.insertPaidAt ?? '2026-08-24 10:00:00+00',
+              },
+            ],
+          };
+        }
+        if (
+          sqlLower.includes('update app.relation') &&
+          sqlLower.includes('total_paid_cents')
+        ) {
+          if (opts.failOn === 'relation') {
+            throw new Error('relation update failed (test)');
+          }
+          return {
+            rows: [
+              {
+                total_paid_cents: String(
+                  opts.relationUpdate?.totalPaidCents ?? 50_000,
+                ),
+                total_to_pay_cents: String(
+                  opts.relationUpdate?.totalToPayCents ?? 112_000,
+                ),
+              },
+            ],
+          };
+        }
+        if (
+          sqlLower.includes('update app.relation') &&
+          sqlLower.includes('reconciliation_status')
+        ) {
+          return { rows: [] };
+        }
+        if (sqlLower.includes('update app.relation_payment')) {
+          return { rows: [] };
+        }
+        if (sqlLower.includes('update app.distributor')) {
+          if (opts.failOn === 'distributor') {
+            throw new Error('distributor update failed (test)');
+          }
+          return {
+            rows: [
+              {
+                credit_available_cents: String(
+                  opts.distributorCreditAfter ?? 950_000,
+                ),
+              },
+            ],
+          };
+        }
+        return { rows: [] };
+      });
+      return {
+        pool: { $client: { query: queryFn } },
+        calls,
+      };
+    }
+
+    it('pago parcial: status=PARCIAL, devuelve saldos nuevos', async () => {
+      const tx = buildMockedWriteDb({
+        relationUpdate: {
+          totalPaidCents: 50_000,
+          totalToPayCents: 112_000,
+        },
+        distributorCreditAfter: 950_000,
+      });
+      const { service } = buildService({
+        writeDb: tx.pool,
+      });
+      const dto = await service.registerPayment(
+        buildActor('DISTRIBUIDOR'),
+        REL_ID,
+        {
+          amount: 500.0,
+          paymentDate: '2026-08-24T10:00:00Z',
+          notes: 'Abono q1',
+        },
+        today,
+      );
+      // Payment registrado.
+      expect(dto.paymentId).toBe('pay-uuid-001');
+      expect(dto.relationId).toBe(REL_ID);
+      expect(dto.amountPaid).toBe(50_000);
+      // Saldo nuevo (outstanding: 112000 - 50000 = 62000).
+      expect(dto.newOutstandingBalance).toBe(62_000);
+      // Credito disponible: 950000 (el mock devuelve este valor).
+      expect(dto.newAvailableCredit).toBe(950_000);
+      expect(dto.newStatus).toBe('PARCIAL');
+      // BEGIN/COMMIT ejecutados.
+      const sqls = tx.calls.map((c) => c.sql);
+      expect(sqls.some((s) => s === 'BEGIN')).toBe(true);
+      expect(sqls.some((s) => s === 'COMMIT')).toBe(true);
+      expect(sqls.some((s) => s === 'ROLLBACK')).toBe(false);
+      // El INSERT del pago se ejecuto con los parametros correctos.
+      const insertCall = tx.calls.find((c) =>
+        c.sql.includes('INSERT INTO app.relation_payment'),
+      );
+      expect(insertCall).toBeDefined();
+      expect(insertCall?.params[0]).toBe(REL_ID);
+      expect(insertCall?.params[2]).toBe(50_000); // amountCents
+      expect(insertCall?.params[3]).toBe('Abono q1'); // notes
+      // El UPDATE del distributor sumo el monto al credito disponible.
+      const distUpdateCall = tx.calls.find((c) =>
+        c.sql.includes('UPDATE app.distributor'),
+      );
+      expect(distUpdateCall).toBeDefined();
+      expect(distUpdateCall?.params[0]).toBe(50_000);
+      expect(distUpdateCall?.params[1]).toBe(DIST_ID);
+    });
+
+    it('pago total exacto: status=LIQUIDADO', async () => {
+      const tx = buildMockedWriteDb({
+        relationUpdate: {
+          totalPaidCents: 112_000,
+          totalToPayCents: 112_000,
+        },
+        distributorCreditAfter: 1_000_000,
+      });
+      const { service } = buildService({
+        writeDb: tx.pool,
+      });
+      const dto = await service.registerPayment(
+        buildActor('DISTRIBUIDOR'),
+        REL_ID,
+        {
+          amount: 1120.0, // $1,120 = 112000 centavos
+          paymentDate: '2026-08-24T10:00:00Z',
+        },
+        today,
+      );
+      expect(dto.amountPaid).toBe(112_000);
+      expect(dto.newOutstandingBalance).toBe(0);
+      expect(dto.newStatus).toBe('LIQUIDADO');
+    });
+
+    it('convierte decimales: 500.50 -> 50050 centavos', async () => {
+      const tx = buildMockedWriteDb({
+        relationUpdate: { totalPaidCents: 50_050, totalToPayCents: 112_000 },
+        distributorCreditAfter: 950_050,
+      });
+      const { service } = buildService({
+        writeDb: tx.pool,
+      });
+      const dto = await service.registerPayment(
+        buildActor('DISTRIBUIDOR'),
+        REL_ID,
+        {
+          amount: 500.5,
+          paymentDate: '2026-08-24T10:00:00Z',
+        },
+        today,
+      );
+      expect(dto.amountPaid).toBe(50_050);
+      const insertCall = tx.calls.find((c) =>
+        c.sql.includes('INSERT INTO app.relation_payment'),
+      );
+      expect(insertCall?.params[2]).toBe(50_050);
+    });
+
+    it('rechaza monto > saldo pendiente con AMOUNT_EXCEEDS_BALANCE', async () => {
+      const { service, writeDb } = buildService();
+      const queryMock = writeDb.$client.query;
+      await expect(
+        service.registerPayment(
+          buildActor('DISTRIBUIDOR'),
+          REL_ID,
+          {
+            amount: 2000.0, // $2,000 = 200000 > 112000
+            paymentDate: '2026-08-24T10:00:00Z',
+          },
+          today,
+        ),
+      ).rejects.toMatchObject({
+        response: {
+          code: 'RELATION.PAYMENT.AMOUNT_EXCEEDS_BALANCE',
+        },
+      });
+      // Ninguna query se ejecuto (las validaciones son antes de BEGIN).
+      expect(queryMock).not.toHaveBeenCalled();
+    });
+
+    it('rechaza monto <= 0', async () => {
+      const { service } = buildService();
+      await expect(
+        service.registerPayment(
+          buildActor('DISTRIBUIDOR'),
+          REL_ID,
+          {
+            amount: 0,
+            paymentDate: '2026-08-24T10:00:00Z',
+          },
+          today,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      await expect(
+        service.registerPayment(
+          buildActor('DISTRIBUIDOR'),
+          REL_ID,
+          {
+            amount: -10,
+            paymentDate: '2026-08-24T10:00:00Z',
+          },
+          today,
+        ),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('rechaza si la ventana esta CLOSED', async () => {
+      const { service } = buildService();
+      const closed = new Date('2026-08-20T12:00:00Z');
+      await expect(
+        service.registerPayment(
+          buildActor('DISTRIBUIDOR'),
+          REL_ID,
+          {
+            amount: 100,
+            paymentDate: '2026-08-20T12:00:00Z',
+          },
+          closed,
+        ),
+      ).rejects.toMatchObject({
+        response: {
+          code: 'RELATION.PAYMENT_WINDOW_CLOSED',
+        },
+      });
+    });
+
+    it('rechaza si la relacion ya esta LIQUIDADO', async () => {
+      const paid = buildRel({ reconciliationStatus: 'LIQUIDADO' });
+      const { service } = buildService({
+        relationsRepo: buildRelationsRepo({
+          findById: jest.fn().mockResolvedValue(paid),
+        }),
+      });
+      await expect(
+        service.registerPayment(
+          buildActor('DISTRIBUIDOR'),
+          REL_ID,
+          {
+            amount: 100,
+            paymentDate: '2026-08-24T10:00:00Z',
+          },
+          today,
+        ),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('rechaza si la relacion ya esta SALDO_FAVOR_SUCURSAL', async () => {
+      const favor = buildRel({
+        reconciliationStatus: 'SALDO_FAVOR_SUCURSAL',
+      });
+      const { service } = buildService({
+        relationsRepo: buildRelationsRepo({
+          findById: jest.fn().mockResolvedValue(favor),
+        }),
+      });
+      await expect(
+        service.registerPayment(
+          buildActor('DISTRIBUIDOR'),
+          REL_ID,
+          {
+            amount: 100,
+            paymentDate: '2026-08-24T10:00:00Z',
+          },
+          today,
+        ),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('lanza NOT_FOUND si la relacion no existe', async () => {
+      const { service } = buildService({
+        relationsRepo: buildRelationsRepo({
+          findById: jest.fn().mockResolvedValue(null),
+        }),
+      });
+      await expect(
+        service.registerPayment(
+          buildActor('DISTRIBUIDOR'),
+          'MISSING',
+          {
+            amount: 100,
+            paymentDate: '2026-08-24T10:00:00Z',
+          },
+          today,
+        ),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+
+    it('lanza FORBIDDEN si el actor no es dueno de la relacion', async () => {
+      const other = buildRel({ distributorId: 'OTHER-DIST-ID' });
+      const { service } = buildService({
+        relationsRepo: buildRelationsRepo({
+          findById: jest.fn().mockResolvedValue(other),
+        }),
+      });
+      await expect(
+        service.registerPayment(
+          buildActor('DISTRIBUIDOR'),
+          REL_ID,
+          {
+            amount: 100,
+            paymentDate: '2026-08-24T10:00:00Z',
+          },
+          today,
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('Gerente de Sucursal puede registrar pago en nombre de su branch', async () => {
+      const tx = buildMockedWriteDb({
+        relationUpdate: { totalPaidCents: 50_000, totalToPayCents: 112_000 },
+        distributorCreditAfter: 950_000,
+      });
+      const { service } = buildService({
+        writeDb: tx.pool,
+      });
+      const dto = await service.registerPayment(
+        buildActor('GERENTE_SUCURSAL', GG_ID, BRANCH_ID),
+        REL_ID,
+        {
+          amount: 500.0,
+          paymentDate: '2026-08-24T10:00:00Z',
+        },
+        today,
+      );
+      expect(dto.paymentId).toBe('pay-uuid-001');
+      // El INSERT registro al Gerente como `registered_by_id`.
+      const insertCall = tx.calls.find((c) =>
+        c.sql.includes('INSERT INTO app.relation_payment'),
+      );
+      expect(insertCall?.params[1]).toBe(GG_ID);
+    });
+
+    it('hace ROLLBACK si la TX falla en el INSERT del pago', async () => {
+      const tx = buildMockedWriteDb({ failOn: 'insert' });
+      const { service } = buildService({
+        writeDb: tx.pool,
+      });
+      await expect(
+        service.registerPayment(
+          buildActor('DISTRIBUIDOR'),
+          REL_ID,
+          {
+            amount: 100,
+            paymentDate: '2026-08-24T10:00:00Z',
+          },
+          today,
+        ),
+      ).rejects.toThrow(/insert failed/);
+      const sqls = tx.calls.map((c) => c.sql);
+      expect(sqls.some((s) => s === 'BEGIN')).toBe(true);
+      expect(sqls.some((s) => s === 'ROLLBACK')).toBe(true);
+      expect(sqls.some((s) => s === 'COMMIT')).toBe(false);
+    });
+
+    it('hace ROLLBACK si la TX falla en el UPDATE del distributor', async () => {
+      const tx = buildMockedWriteDb({
+        failOn: 'distributor',
+        relationUpdate: { totalPaidCents: 50_000, totalToPayCents: 112_000 },
+      });
+      const { service } = buildService({
+        writeDb: tx.pool,
+      });
+      await expect(
+        service.registerPayment(
+          buildActor('DISTRIBUIDOR'),
+          REL_ID,
+          {
+            amount: 500.0,
+            paymentDate: '2026-08-24T10:00:00Z',
+          },
+          today,
+        ),
+      ).rejects.toThrow(/distributor update failed/);
+      const sqls = tx.calls.map((c) => c.sql);
+      expect(sqls.some((s) => s === 'ROLLBACK')).toBe(true);
+      expect(sqls.some((s) => s === 'COMMIT')).toBe(false);
     });
   });
 });

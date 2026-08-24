@@ -17,7 +17,7 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, sql } from 'drizzle-orm';
 import {
   DRIZZLE_WRITE,
   DRIZZLE_READ,
@@ -154,5 +154,97 @@ export class ProductRepository {
     const db = tx ?? this.writeDb;
     const [row] = await db.insert(products).values(data).returning();
     return row;
+  }
+
+  /**
+   * Soft delete del producto: setea `deletedAt = now()` y
+   * `isActive = false`. El producto deja de aparecer en listados
+   * (`findActive*` filtran `deletedAt IS NULL`) pero la fila
+   * permanece en la BD para preservar la integridad referencial
+   * de los vales historicos (que tienen snapshot de los campos
+   * financieros al momento de emision, ver `app.voucher`).
+   *
+   * No falla si el producto ya estaba soft-deleted: devuelve
+   * `false` en ese caso para que el service decida si devolver
+   * 404 o tratarlo como idempotente.
+   *
+   * Conexion: `DRIZZLE_WRITE`.
+   *
+   * @param id - UUID del producto.
+   * @returns `true` si se actualizo una fila, `false` si ya estaba
+   *   borrado o no existe.
+   */
+  async softDelete(id: string): Promise<boolean> {
+    const result = await this.writeDb
+      .update(products)
+      .set({
+        deletedAt: sql`now()`,
+        isActive: false,
+        updatedAt: sql`now()`,
+      })
+      .where(and(eq(products.id, id), isNull(products.deletedAt)))
+      .returning({ id: products.id });
+    return result.length > 0;
+  }
+
+  /**
+   * Actualizacion parcial (PATCH) del producto. Solo persiste los
+   * campos presentes en `data`; los `undefined` se ignoran (Drizzle
+   * no sobreescribe con NULL). Esto permite PATCH genuinamente
+   * parcial: el caller envia solo lo que quiere cambiar.
+   *
+   * Si se cambia `code` o `variant`, la BD enforce `UNIQUE(code,
+   * variant)` (devuelve 23505) y el service lo traduce a 409
+   * `PRODUCT.ALREADY_EXISTS`. Los CHECKs (`cost_cents` > 0 y
+   * multiplo de 10000, `total_periods` 1..60) devuelven 23514 que
+   * el service traduce a 400 `PRODUCT.CHECK_VIOLATION`.
+   *
+   * No toca `deletedAt` ni `createdAt`. Bump `updatedAt = now()`
+   * siempre para mantener audit trail consistente.
+   *
+   * Conexion: `DRIZZLE_WRITE`.
+   *
+   * @param id - UUID del producto a actualizar.
+   * @param data - Campos a modificar (parcial).
+   * @returns Entidad actualizada, o `null` si el id no existe o
+   *   esta soft-deleted.
+   */
+  async update(
+    id: string,
+    data: Partial<Omit<NewProductEntity, 'id' | 'createdAt'>>,
+  ): Promise<ProductEntity | null> {
+    const [row] = await this.writeDb
+      .update(products)
+      .set({
+        ...data,
+        updatedAt: sql`now()`,
+      })
+      .where(and(eq(products.id, id), isNull(products.deletedAt)))
+      .returning();
+    return row ?? null;
+  }
+
+  /**
+   * Cuenta cuantos vales ACTIVOS (status = 'ACTIVO') estan
+   * referenciando este producto. Usado por el service antes
+   * de hacer soft-delete para evitar desactivar un producto
+   * con vales en circulacion.
+   *
+   * Conexion: `DRIZZLE_READ`.
+   *
+   * @param productId - UUID del producto.
+   * @returns Cantidad de vales activos (0 si ninguno).
+   */
+  async countActiveVouchersByProduct(productId: string): Promise<number> {
+    const result = await this.writeDb.execute<{ count: string }>(sql`
+      SELECT COUNT(*)::text AS count
+      FROM app.voucher
+      WHERE product_id = ${productId}
+        AND status = 'ACTIVO'
+        AND deleted_at IS NULL
+    `);
+    const row = (Array.isArray(result) ? result[0] : result) as
+      { count: string } | undefined;
+    return row ? parseInt(row.count, 10) : 0;
   }
 }

@@ -16,6 +16,7 @@ import {
 } from '@nestjs/common';
 import { SolicitationsAuthorizeService } from './solicitations.authorize.service';
 import { createSolicitationRepositoryMock } from '../../test/mocks/solicitation.repository.mock';
+import { SolicitationResponseMapper } from '../shared/mappers/solicitation.mapper';
 import type { SolicitationEntity } from '../database/schema';
 
 // ===========================================================================
@@ -164,21 +165,20 @@ function buildService() {
   const passwordService = buildPasswordService();
   const mailService = buildMailService();
   const config = buildConfig();
+  const documentsService = {
+    findById: jest.fn().mockResolvedValue({
+      id: 'doc-ok',
+      publicUrl: 'https://signed.example/doc-ok',
+    }),
+  };
+  const mapper = new SolicitationResponseMapper(documentsService as never);
   const service = new SolicitationsAuthorizeService(
     solicitationRepo,
     writeDb as never,
     passwordService as never,
     mailService as never,
     config as never,
-    {
-      runWithContext: jest
-        .fn()
-        .mockImplementation(
-          async <T>(_ctx: unknown, work: (tx: unknown) => Promise<T>) =>
-            work({ __isTx: true }),
-        ),
-      logEvent: jest.fn().mockResolvedValue(undefined),
-    } as never,
+    mapper,
   );
   return {
     service,
@@ -188,6 +188,8 @@ function buildService() {
     passwordService,
     mailService,
     config,
+    documentsService,
+    mapper,
   };
 }
 
@@ -220,21 +222,20 @@ function buildServiceWithSimplePool() {
   const passwordService = buildPasswordService();
   const mailService = buildMailService();
   const config = buildConfig();
+  const documentsService = {
+    findById: jest.fn().mockResolvedValue({
+      id: 'doc-ok',
+      publicUrl: 'https://signed.example/doc-ok',
+    }),
+  };
+  const mapper = new SolicitationResponseMapper(documentsService as never);
   const service = new SolicitationsAuthorizeService(
     solicitationRepo,
     writeDb as never,
     passwordService as never,
     mailService as never,
     config as never,
-    {
-      runWithContext: jest
-        .fn()
-        .mockImplementation(
-          async <T>(_ctx: unknown, work: (tx: unknown) => Promise<T>) =>
-            work({ __isTx: true }),
-        ),
-      logEvent: jest.fn().mockResolvedValue(undefined),
-    } as never,
+    mapper,
   );
   return {
     service,
@@ -243,6 +244,8 @@ function buildServiceWithSimplePool() {
     passwordService,
     mailService,
     config,
+    documentsService,
+    mapper,
   };
 }
 

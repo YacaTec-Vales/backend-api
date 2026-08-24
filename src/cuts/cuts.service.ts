@@ -72,6 +72,8 @@ export const CUT_ERROR_CODES = {
   INVALID_CUT_DATE: 'CUT.INVALID_CUT_DATE',
   BRANCH_CUTOFF_NOT_FOUND: 'CUT.BRANCH_CUTOFF_NOT_FOUND',
   NO_VOUCHERS: 'CUT.NO_VOUCHERS',
+  /** Sandbox no permitido para el rol actual. */
+  SANDBOX_FORBIDDEN: 'CUT.SANDBOX_FORBIDDEN',
 } as const;
 
 /**
@@ -92,20 +94,44 @@ export class CutService {
   /**
    * Ejecuta el corte de quincena para una Sucursal y fecha dada.
    *
-   * @param actor - Usuario que dispara el corte (GG o GS).
+   * Modos:
+   *  - Normal (`force` ausente o `false`): exige una fila en
+   *    `app.branch_cutoff` para la Sucursal. Si no existe, lanza
+   *    `CUT.BRANCH_CUTOFF_NOT_FOUND`.
+   *  - Sandbox (`force=true`, solo GERENTE_GENERAL): si no existe
+   *    `branch_cutoff`, el repositorio cae a las columnas legacy de
+   *    `app.branch` para derivar la configuracion. Esto resuelve el
+   *    caso de QA con la Sucursal matriz en un dia arbitrario.
+   *    El resultado expone `sandbox=true` para que QA pueda auditarlo.
+   *
+   * @param actor - Usuario que dispara el corte.
    * @param branchId - UUID de la Sucursal.
    * @param cutDate - Fecha del corte (YYYY-MM-DD).
+   * @param opts - Opciones adicionales (`force`).
    * @returns Resultado del corte con metricas y resumen por Distribuidora.
    */
   async runCut(
     actor: RequestUser,
     branchId: string,
     cutDate: string,
+    opts: { force?: boolean } = {},
   ): Promise<CutResultDto> {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(cutDate)) {
       throw new BadRequestException({
         code: CUT_ERROR_CODES.INVALID_CUT_DATE,
         message: `cutDate debe ser YYYY-MM-DD, recibido: ${cutDate}`,
+      });
+    }
+
+    // Sandbox solo permitido para GERENTE_GENERAL. Asi el flag queda
+    // documentado como opt-in por auditoria y no se filtra a roles
+    // que harian uso accidental (GS, COORDINADOR, etc.).
+    if (opts.force === true && actor.role !== 'GERENTE_GENERAL') {
+      throw new BadRequestException({
+        code: CUT_ERROR_CODES.SANDBOX_FORBIDDEN,
+        message:
+          'el modo sandbox (force=true) solo esta permitido para GERENTE_GENERAL',
+        details: { role: actor.role },
       });
     }
 
@@ -115,11 +141,35 @@ export class CutService {
       cutDate,
     );
     if (!cutoff) {
+      // Si el caller pidio force y llegamos aqui, significa que ni el
+      // branch_cutoff ni las columnas legacy existen (sucursal sin
+      // config o sucursal borrada). Devolvemos NOT_FOUND con un mensaje
+      // un poco mas explicito.
       throw new NotFoundException({
         code: CUT_ERROR_CODES.BRANCH_CUTOFF_NOT_FOUND,
-        message: `branch_cutoff no encontrado para branch ${branchId} y cutDate ${cutDate}`,
-        details: { branchId, cutDate },
+        message: opts.force
+          ? `branch_cutoff y columnas legacy de app.branch no encontradas para branch ${branchId} (sandbox)`
+          : `branch_cutoff no encontrado para branch ${branchId} y cutDate ${cutDate}`,
+        details: { branchId, cutDate, force: !!opts.force },
       });
+    }
+
+    // Si el repositorio cayo al fallback legacy pero el caller NO pidio
+    // force, tratamos esto como NOT_FOUND (politica: no exponemos
+    // sandbox implicitamente; el caller debe ser explicito).
+    if (cutoff.sandbox && opts.force !== true) {
+      throw new NotFoundException({
+        code: CUT_ERROR_CODES.BRANCH_CUTOFF_NOT_FOUND,
+        message: `branch_cutoff no encontrado para branch ${branchId} y cutDate ${cutDate} (usa force=true para sandbox QA)`,
+        details: { branchId, cutDate, force: false },
+      });
+    }
+
+    if (cutoff.sandbox) {
+      this.logger.warn(
+        `Cut SANDBOX ejecutado por ${actor.id} (rol=${actor.role}): ` +
+          `branch=${branchId} cut=${cutDate} (fallback legacy de app.branch)`,
+      );
     }
 
     // 2. paymentDeadlineDate (lo calcula JS con la misma formula del pago).
@@ -386,6 +436,7 @@ export class CutService {
       totalPointsAwarded,
       relations: relationSummaries,
       warnings,
+      sandbox: cutoff.sandbox,
     };
     this.logger.log(
       `Cut ejecutado por ${actor.id}: branch=${branchId} cut=${cutDate} ` +

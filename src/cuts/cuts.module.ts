@@ -1,7 +1,7 @@
 /**
  * @fileoverview Modulo `cuts` (corte de quincena).
  *
- * Registra el controller, el service, y los repositorios.
+ * Registra el controller, el service, el cron job y los repositorios.
  *
  * Dependencias:
  *  - `AuthModule`: guards, decoradores, tipos.
@@ -22,16 +22,10 @@ import { CutsController } from './cuts.controller';
 import { CutService } from './cuts.service';
 import { CutRepository } from '../database/repositories/cut.repository';
 import { RelationsRepository } from '../database/repositories/relations.repository';
-import { DistribuidoresModule } from '../distribuidores/distribuidores.module';
 import { CutsCronService } from './cuts-cron.service';
 
 @Module({
-  imports: [
-    AuthModule,
-    DatabaseModule,
-    BusinessConfigModule,
-    DistribuidoresModule,
-  ],
+  imports: [AuthModule, DatabaseModule, BusinessConfigModule],
   controllers: [CutsController],
   providers: [CutService, CutRepository, RelationsRepository, CutsCronService],
 })

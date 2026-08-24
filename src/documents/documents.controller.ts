@@ -40,6 +40,7 @@ import {
   ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOperation,
+  ApiQuery,
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
@@ -162,12 +163,39 @@ export class DocumentsController {
   @ApiOperation({
     summary: 'Listar todos los documentos',
     description:
-      'Obtiene una lista paginada de todos los documentos del sistema.',
+      'Obtiene una lista paginada de todos los documentos del sistema. ' +
+      'Cada entrada incluye una `publicUrl` firmada con TTL 15 min.',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    description: 'Cantidad maxima de documentos a devolver.',
+    example: 50,
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    description: 'Desplazamiento para paginacion.',
+    example: 0,
   })
   @ApiEnvelopeOkResponse({
     message: 'Documentos listados correctamente',
     type: DocumentResponseDto,
     isArray: true,
+  })
+  @ApiUnauthorizedResponse({
+    description: 'AUTH.* — token invalido, sesion revocada o expirada.',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description: 'AUTH.PERMISSION_DENIED (sin document.read).',
+    type: ErrorResponseDto,
+  })
+  @ApiBadRequestResponse({
+    description: 'Parametros `limit` u `offset` invalidos.',
+    type: ErrorResponseDto,
   })
   async findAll(
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
@@ -180,12 +208,27 @@ export class DocumentsController {
   @RequirePermissions('document.read')
   @ApiOperation({
     summary: 'Listar documentos de un cliente',
-    description: 'Devuelve todos los documentos vinculados a un cliente.',
+    description:
+      'Devuelve todos los documentos vinculados a un cliente: ' +
+      'subidas con `metadata.clientId` o Foreign Keys ' +
+      '`client.ine_document_id` / `client.address_proof_document_id`.',
   })
   @ApiEnvelopeOkResponse({
     message: 'Documentos del cliente consultados correctamente',
     type: DocumentResponseDto,
     isArray: true,
+  })
+  @ApiUnauthorizedResponse({
+    description: 'AUTH.* — token invalido, sesion revocada o expirada.',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description: 'AUTH.PERMISSION_DENIED (sin document.read).',
+    type: ErrorResponseDto,
+  })
+  @ApiBadRequestResponse({
+    description: 'Parametro `clientId` invalido (debe ser un UUID v4).',
+    type: ErrorResponseDto,
   })
   async findByClient(
     @Param('clientId', new ParseUUIDPipe({ version: '4' })) clientId: string,
@@ -198,12 +241,27 @@ export class DocumentsController {
   @ApiOperation({
     summary: 'Listar documentos de una verificación',
     description:
-      'Devuelve todos los documentos vinculados a una verificación específica.',
+      'Devuelve todos los documentos subidos para una verificacion ' +
+      'especifica (los que tienen `metadata.solicitationId`). Util para ' +
+      'refrescar URLs firmadas de las fotos de una solicitud en una sola ' +
+      'llamada (alternativa a `GET /solicitudes/:id`).',
   })
   @ApiEnvelopeOkResponse({
     message: 'Documentos de verificación consultados correctamente',
     type: DocumentResponseDto,
     isArray: true,
+  })
+  @ApiUnauthorizedResponse({
+    description: 'AUTH.* — token invalido, sesion revocada o expirada.',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description: 'AUTH.PERMISSION_DENIED (sin document.read).',
+    type: ErrorResponseDto,
+  })
+  @ApiBadRequestResponse({
+    description: 'Parametro `solicitationId` invalido (debe ser un UUID v4).',
+    type: ErrorResponseDto,
   })
   async findByVerification(
     @Param('solicitationId', new ParseUUIDPipe({ version: '4' }))
@@ -217,12 +275,22 @@ export class DocumentsController {
   @ApiOperation({
     summary: 'Listar documentos por tipo',
     description:
-      'Devuelve todos los documentos filtrados por un tipo específico.',
+      'Devuelve todos los documentos filtrados por la columna `document_type`. ' +
+      'Tipos validos: `ine`, `address_proof`, `voucher_evidence`, ' +
+      '`conciliacion_evidence`, `photo_verification`, `other`.',
   })
   @ApiEnvelopeOkResponse({
     message: 'Documentos consultados correctamente',
     type: DocumentResponseDto,
     isArray: true,
+  })
+  @ApiUnauthorizedResponse({
+    description: 'AUTH.* — token invalido, sesion revocada o expirada.',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description: 'AUTH.PERMISSION_DENIED (sin document.read).',
+    type: ErrorResponseDto,
   })
   async findByType(
     @Param('documentType') documentType: string,
@@ -236,7 +304,10 @@ export class DocumentsController {
   @ApiOperation({
     summary: 'Subir foto para una verificación',
     description:
-      'Sube un archivo e inyecta automáticamente el solicitationId en la metadata.',
+      'Sube un archivo e inyecta automáticamente el solicitationId en la ' +
+      'metadata. Endpoint usado por el Verificador para subir las fotos de ' +
+      'INE/comprobante/fachada que luego se vinculan al dictamen via ' +
+      '`ineDocumentId` / `addressProofDocumentId` / `fachadaDocumentId`.',
   })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -246,7 +317,13 @@ export class DocumentsController {
         file: { type: 'string', format: 'binary' },
         documentType: {
           type: 'string',
-          enum: ['ine', 'address_proof', 'voucher_evidence', 'other'],
+          enum: [
+            'ine',
+            'address_proof',
+            'voucher_evidence',
+            'photo_verification',
+            'other',
+          ],
           default: 'other',
         },
         metadata: { type: 'string', description: 'JSON libre extra' },
@@ -257,6 +334,20 @@ export class DocumentsController {
   @ApiEnvelopeCreatedResponse({
     message: 'Foto de verificación subida correctamente',
     type: DocumentResponseDto,
+  })
+  @ApiUnauthorizedResponse({
+    description: 'AUTH.* — token invalido, sesion revocada o expirada.',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description: 'AUTH.PERMISSION_DENIED (sin document.upload).',
+    type: ErrorResponseDto,
+  })
+  @ApiBadRequestResponse({
+    description:
+      'DOCUMENT.FILE_REQUIRED | DOCUMENT.UNSUPPORTED_MIME_TYPE | ' +
+      'DOCUMENT.FILE_TOO_LARGE | `solicitationId` invalido.',
+    type: ErrorResponseDto,
   })
   async uploadForVerification(
     @CurrentUser() actor: RequestUser,

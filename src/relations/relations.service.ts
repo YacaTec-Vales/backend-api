@@ -39,6 +39,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
@@ -46,11 +47,15 @@ import {
 import { RelationsRepository } from '../database/repositories/relations.repository';
 import { DistributorRepository } from '../database/repositories/distributor.repository';
 import { AuditLogRepository } from '../database/repositories/audit-log.repository';
+import { RelationPaymentRepository } from '../database/repositories/relation-payment.repository';
+import { DRIZZLE_WRITE, type DrizzleWrite } from '../database/drizzle.provider';
 import type { RequestUser } from '../shared/guards/auth.guards';
 import type { RelationEntity } from '../database/schema';
 import { RelationResponseDto } from './dto/relation-response.dto';
 import { PaymentWindowDto } from './dto/payment-window.dto';
 import { PayRelationDto } from './dto/pay-relation.dto';
+import { RegisterRelationPaymentDto } from './dto/register-relation-payment.dto';
+import { RelationPaymentResponseDto } from './dto/relation-payment-response.dto';
 
 /**
  * Codigos de error del modulo relations. Aislados aqui para que
@@ -63,6 +68,7 @@ export const RELATION_ERROR_CODES = {
   ALREADY_PAID: 'RELATION.ALREADY_PAID',
   PAYMENT_WINDOW_CLOSED: 'RELATION.PAYMENT_WINDOW_CLOSED',
   INVALID_AMOUNT: 'RELATION.INVALID_AMOUNT',
+  AMOUNT_EXCEEDS_BALANCE: 'RELATION.PAYMENT.AMOUNT_EXCEEDS_BALANCE',
   WRONG_BRANCH: 'RELATION.WRONG_BRANCH',
   NOT_A_DISTRIBUTOR: 'RELATION.NOT_A_DISTRIBUTOR',
 } as const;
@@ -79,6 +85,8 @@ export class RelationsService {
     private readonly relationsRepo: RelationsRepository,
     private readonly distributorRepo: DistributorRepository,
     private readonly auditRepo: AuditLogRepository,
+    private readonly relationPaymentRepo: RelationPaymentRepository,
+    @Inject(DRIZZLE_WRITE) private readonly writeDb: DrizzleWrite,
   ) {}
 
   /**
@@ -318,6 +326,285 @@ export class RelationsService {
         `metodo=${dto.paymentMethod ?? 'N/D'} actor=${actor.role}/${actor.id}`,
     );
     return this.toDto(updated);
+  }
+
+  /**
+   * Registra un pago contra la relacion, con historial (`app.relation_payment`)
+   * y devolucion de credito a la distribuidora (`credit_available_cents`).
+   *
+   * Es la version "contabilidad" de `pay()`:
+   *  - Inserta una fila inmutable en `app.relation_payment` con snapshots
+   *    antes/despues del saldo y del `reconciliation_status`.
+   *  - Incrementa `app.distributor.credit_available_cents` por el monto
+   *    pagado (regla 2.0 §6.1.2: el pago del cliente final libera el
+   *    credito que la distribuidora otorgo al inicio).
+   *  - Devuelve `paymentId`, `newOutstandingBalance` y `newAvailableCredit`
+   *    para que el frontend de caja/distribuidor actualice la UI sin
+   *    recargar.
+   *
+   * Validaciones (mismas reglas que `pay()`):
+   *  - Actor autorizado (DISTRIBUIDOR dueno, GERENTE_SUCURSAL de su
+   *    branch, o GERENTE_GENERAL).
+   *  - Relacion existe y no esta LIQUIDADO/SALDO_FAVOR_SUCURSAL.
+   *  - Ventana de pago abierta (EARLY o NORMAL).
+   *  - `amount` > 0 (en pesos; convertido a centavos con `Math.round`).
+   *  - `amount` <= saldo pendiente (`outstandingBalance`).
+   *
+   * Atomicidad: TODO (validaciones + INSERT payment + UPDATE relation +
+   * UPDATE distributor) corre dentro de una sola transaccion SQL
+   * (`BEGIN`/`COMMIT`/`ROLLBACK`). Si cualquier paso falla, ningun cambio
+   * queda persistido.
+   *
+   * @param actor - Distribuidor dueno o Gerente de la branch.
+   * @param relationId - UUID de la relacion.
+   * @param dto - Payload del frontend (`amount` en pesos, `paymentDate`,
+   *   `notes` opcional).
+   * @param today - Fecha actual (parametro para test). Por defecto
+   *   `new Date()`.
+   * @returns DTO con el `paymentId` y los saldos nuevos.
+   */
+  async registerPayment(
+    actor: RequestUser,
+    relationId: string,
+    dto: RegisterRelationPaymentDto,
+    today: Date = new Date(),
+  ): Promise<RelationPaymentResponseDto> {
+    // 1. Validaciones previas (sin TX porque son SELECTs puros).
+    const rel = await this.relationsRepo.findById(relationId);
+    if (!rel) {
+      throw new NotFoundException({
+        code: RELATION_ERROR_CODES.NOT_FOUND,
+        message: 'la relacion no existe',
+      });
+    }
+    await this.assertActorCanPay(actor, rel);
+    if (
+      rel.reconciliationStatus === 'LIQUIDADO' ||
+      rel.reconciliationStatus === 'SALDO_FAVOR_SUCURSAL'
+    ) {
+      throw new ConflictException({
+        code: RELATION_ERROR_CODES.ALREADY_PAID,
+        message: 'la relacion ya esta liquidada; no se aceptan mas pagos',
+        details: { currentStatus: rel.reconciliationStatus },
+      });
+    }
+    const window = await this.computePaymentWindow(rel, today);
+    if (window.state === 'CLOSED') {
+      throw new ConflictException({
+        code: RELATION_ERROR_CODES.PAYMENT_WINDOW_CLOSED,
+        message:
+          'la ventana de pago esta cerrada (morosa); el castigo se acumula automaticamente',
+        details: {
+          paymentDeadlineDate: rel.paymentDeadlineDate,
+          today: window.today,
+        },
+      });
+    }
+    if (window.state === 'PAID') {
+      throw new ConflictException({
+        code: RELATION_ERROR_CODES.ALREADY_PAID,
+        message: 'la relacion ya esta pagada',
+      });
+    }
+
+    // 2. Conversion pesos -> centavos (regla del sistema: centavos BIGINT).
+    // Math.round para no perder precision cuando el frontend envia 2
+    // decimales exactos (e.g. 500.00 -> 50000).
+    const amountCents = Math.round(dto.amount * 100);
+    if (amountCents <= 0) {
+      throw new BadRequestException({
+        code: RELATION_ERROR_CODES.INVALID_AMOUNT,
+        message: 'el monto del pago debe ser positivo',
+        details: { montoCentavos: amountCents },
+      });
+    }
+
+    // 3. Validar contra el saldo pendiente.
+    const outstandingBeforeCents =
+      Number(rel.totalToPayCents) - Number(rel.totalPaidCents);
+    if (amountCents > outstandingBeforeCents) {
+      throw new BadRequestException({
+        code: RELATION_ERROR_CODES.AMOUNT_EXCEEDS_BALANCE,
+        message: 'el monto del pago supera el saldo pendiente',
+        details: {
+          montoCentavos: amountCents,
+          saldoPendienteCentavos: outstandingBeforeCents,
+        },
+      });
+    }
+
+    // 4. TX atomica: INSERT payment + UPDATE relation + UPDATE distributor.
+    // Acceso al pool de escritura via cast generico (mismo patron que
+    // relations.repository.ts:283-300 y autorizaciones.service.ts:327-336).
+    // Mantenemos SQL crudo con BEGIN/COMMIT explicito porque la TX
+    // cruza 3 tablas (`relation_payment`, `relation`, `distributor`)
+    // con lecturas intermedias que dependen entre si; la API
+    // `.transaction()` de Drizzle no encaja limpiamente con el patron
+    // `applyPayment` legacy.
+    const pool = (
+      this.writeDb as unknown as {
+        $client: {
+          query: (
+            sql: string,
+            params: unknown[],
+          ) => Promise<{ rows: Array<Record<string, unknown>> }>;
+        };
+      }
+    ).$client;
+
+    const outstandingAfterCents = outstandingBeforeCents - amountCents;
+    const initialStatus = this.provisionalStatusAfter(
+      Number(rel.totalPaidCents),
+      amountCents,
+      Number(rel.totalToPayCents),
+    );
+
+    await pool.query('BEGIN', []);
+    let committed = false;
+    try {
+      // 4.1 INSERT en app.relation_payment (historial inmutable).
+      const insertResult = await pool.query(
+        `INSERT INTO app.relation_payment (
+            relation_id, registered_by_id, amount_cents,
+            notes, outstanding_balance_before_cents,
+            outstanding_balance_after_cents, reconciliation_status_after,
+            paid_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING id::text AS id, paid_at::text AS paid_at`,
+        [
+          relationId,
+          actor.id,
+          amountCents,
+          dto.notes ?? null,
+          outstandingBeforeCents,
+          outstandingAfterCents,
+          initialStatus,
+          dto.paymentDate,
+        ],
+      );
+      const paymentId = (insertResult.rows[0]?.['id'] as string | null) ?? '';
+      const paidAtStr =
+        (insertResult.rows[0]?.['paid_at'] as string | null) ?? '';
+
+      // 4.2 UPDATE app.relation: incrementar total_paid_cents.
+      const relationUpdate = await pool.query(
+        `UPDATE app.relation
+            SET total_paid_cents = total_paid_cents + $1,
+                updated_at = NOW()
+          WHERE id = $2 AND deleted_at IS NULL
+          RETURNING total_paid_cents::text AS total_paid_cents,
+                    total_to_pay_cents::text AS total_to_pay_cents`,
+        [amountCents, relationId],
+      );
+      if (relationUpdate.rows.length === 0) {
+        throw new Error(
+          'la relacion desaparecio despues del pago (estado inconsistente)',
+        );
+      }
+      const totalPaidAfter = Number(
+        relationUpdate.rows[0]?.['total_paid_cents'] ?? 0,
+      );
+      const totalToPay = Number(
+        relationUpdate.rows[0]?.['total_to_pay_cents'] ?? 0,
+      );
+      const remaining = totalToPay - totalPaidAfter;
+
+      // 4.3 Recalcular reconciliation_status si cambia.
+      let newStatus:
+        'PENDIENTE' | 'PARCIAL' | 'LIQUIDADO' | 'SALDO_FAVOR_SUCURSAL' =
+        rel.reconciliationStatus;
+      if (remaining > 0) {
+        newStatus = totalPaidAfter > 0 ? 'PARCIAL' : 'PENDIENTE';
+      } else if (remaining === 0) {
+        newStatus = 'LIQUIDADO';
+      } else {
+        newStatus = 'SALDO_FAVOR_SUCURSAL';
+      }
+      if (newStatus !== rel.reconciliationStatus) {
+        await pool.query(
+          `UPDATE app.relation
+              SET reconciliation_status = $1::app.reconciliation_status,
+                  updated_at = NOW()
+            WHERE id = $2`,
+          [newStatus, relationId],
+        );
+        await pool.query(
+          `UPDATE app.relation_payment
+              SET reconciliation_status_after = $1::app.reconciliation_status,
+                  updated_at = NOW()
+            WHERE id = $2`,
+          [newStatus, paymentId],
+        );
+      }
+
+      // 4.4 UPDATE app.distributor: devolver credito disponible.
+      const distributorUpdate = await pool.query(
+        `UPDATE app.distributor
+            SET credit_available_cents = credit_available_cents + $1,
+                updated_at = NOW()
+          WHERE id = $2 AND deleted_at IS NULL
+          RETURNING credit_available_cents::text AS credit_available_cents`,
+        [amountCents, rel.distributorId],
+      );
+      if (distributorUpdate.rows.length === 0) {
+        throw new Error(
+          `la distribuidora ${rel.distributorId} no existe o fue borrada; no se puede devolver credito`,
+        );
+      }
+      const newAvailableCredit = Number(
+        distributorUpdate.rows[0]?.['credit_available_cents'] ?? 0,
+      );
+
+      await pool.query('COMMIT', []);
+      committed = true;
+
+      const qualifiesAsEarly = window.state === 'EARLY';
+      this.logger.log(
+        `Pago registrado (relations.payment): id=${paymentId} ` +
+          `relation=${relationId} monto=${amountCents} ` +
+          `saldoAntes=${outstandingBeforeCents} saldoDespues=${outstandingAfterCents} ` +
+          `status=${newStatus} creditoDisponible=${newAvailableCredit} ` +
+          `anticipado=${qualifiesAsEarly} ` +
+          `actor=${actor.role}/${actor.id}`,
+      );
+
+      return {
+        paymentId,
+        relationId,
+        amountPaid: amountCents,
+        newOutstandingBalance: outstandingAfterCents,
+        newAvailableCredit,
+        newStatus,
+        paidAt: paidAtStr,
+      };
+    } catch (err) {
+      if (!committed) {
+        try {
+          await pool.query('ROLLBACK', []);
+        } catch {
+          // Ignorar errores de rollback; el original es lo que importa.
+        }
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Calcula el `reconciliation_status` que tendra la relacion DESPUES
+   * de aplicar el pago, dado el `totalPaidCents` previo y el monto del
+   * nuevo pago. Helper privado para evitar duplicar la logica entre la
+   * rama INSERT-only y la rama UPDATE-status.
+   */
+  private provisionalStatusAfter(
+    totalPaidCentsBefore: number,
+    deltaCents: number,
+    totalToPayCents: number,
+  ): 'PENDIENTE' | 'PARCIAL' | 'LIQUIDADO' | 'SALDO_FAVOR_SUCURSAL' {
+    const totalPaidAfter = totalPaidCentsBefore + deltaCents;
+    const remaining = totalToPayCents - totalPaidAfter;
+    if (remaining > 0) return totalPaidAfter > 0 ? 'PARCIAL' : 'PENDIENTE';
+    if (remaining === 0) return 'LIQUIDADO';
+    return 'SALDO_FAVOR_SUCURSAL';
   }
 
   // ===========================================================================

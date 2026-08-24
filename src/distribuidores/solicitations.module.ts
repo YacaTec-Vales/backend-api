@@ -27,6 +27,7 @@ import { DocumentsModule } from '../documents/documents.module';
 import { SolicitationsController } from './solicitations.controller';
 import { SolicitationsService } from './solicitations.service';
 import { SolicitationsAuthorizeService } from './solicitations.authorize.service';
+import { SolicitationResponseMapper } from '../shared/mappers/solicitation.mapper';
 import { SolicitationRepository } from '../database/repositories/solicitation.repository';
 import { BranchRepository } from '../database/repositories/branch.repository';
 import { DistributorRepository } from '../database/repositories/distributor.repository';
@@ -37,9 +38,11 @@ import { DistributorRepository } from '../database/repositories/distributor.repo
   providers: [
     SolicitationsService,
     SolicitationsAuthorizeService,
+    SolicitationResponseMapper,
     SolicitationRepository,
     BranchRepository,
     DistributorRepository,
   ],
+  exports: [SolicitationResponseMapper],
 })
 export class SolicitationsModule {}
