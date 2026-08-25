@@ -134,10 +134,19 @@ export const envValidationSchema = Joi.object({
   //   false → fuerza desactivacion (incluido production, rollback rapido)
   VPN_ORIGIN_GUARD_ENABLED: Joi.string().valid('true', 'false').optional(),
 
-  // Identificador unico del backend instance para logging per-server.
-  // Cada droplet (app-02, app-03) debe exportar SERVER_ID con un valor
-  // distinto. Default 'unknown' en dev (un solo process) para no romper
-  // tests existentes.
+  // Identificador unico del backend instance para logging per-server y
+  // header X-Server-Id en cada respuesta. Cada droplet (app-02, app-03)
+  // debe exportar este valor con su nombre canonico. Aceptamos dos
+  // nombres por compatibilidad:
+  //   - NODE_ID:  convencion usada por infrastructure (config-app-0X.md).
+  //   - SERVER_ID: nombre legacy introducido por #88 antes de saber la
+  //                convencion de infra. Si ambos vienen seteados, gana
+  //                NODE_ID para mantener el contrato de infra.
+  // Si ninguno esta seteado, cae a 'unknown' (dev/test con un process
+  // unico) para no romper tests existentes.
+  NODE_ID: Joi.string()
+    .pattern(/^[a-z0-9-]{1,32}$/)
+    .optional(),
   SERVER_ID: Joi.string()
     .pattern(/^[a-z0-9-]{1,32}$/)
     .default('unknown'),

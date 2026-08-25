@@ -7,9 +7,10 @@
  * `server=ID METHOD ORIGINAL_URL STATUS_CODE elapsedMs user=X session=Y device=Z origin=O ip=I realIp=R ua="..."`
  *
  * Campos clave para auditoria y operacion:
- *  - `server`: `SERVER_ID` del proceso (app-02/app-03 en staging,
- *    `unknown` en dev). Permite correlacionar logs con la instancia
- *    backend que atendio la peticion.
+ *  - `server`: identificador del proceso backend (app-02/app-03 en
+ *    staging, `unknown` en dev). Permite correlacionar logs con la
+ *    instancia que atendio la peticion. Resolucion (en orden):
+ *    `NODE_ID` -> `SERVER_ID` -> `'unknown'`.
  *  - `user`: UUID del usuario autenticado (del JwtAuthGuard), o "-" si anonimo.
  *  - `session`: UUID de la sesion (refresh token) del usuario.
  *  - `device`: 'Tecu' | 'Calipx' | 'Poch' | 'unknown' (header `x-client-app`).
@@ -55,11 +56,14 @@ export class RequestLoggingInterceptor implements NestInterceptor {
   private readonly logger = new Logger('HTTP');
   /**
    * Identificador del proceso backend. Se lee una sola vez al
-   * cargar el modulo (el valor de `process.env.SERVER_ID` es fijo
-   * durante la vida del proceso). Default `'unknown'` para dev/test
-   * donde no se setea.
+   * cargar el modulo (los valores de `process.env` son fijos durante
+   * la vida del proceso). Resolucion por prioridad:
+   *   1. `NODE_ID`   (convencion de `infrastructure/`)
+   *   2. `SERVER_ID` (legacy, ver PR #88)
+   *   3. `'unknown'` (dev/test sin setear)
    */
-  private readonly serverId: string = process.env.SERVER_ID ?? 'unknown';
+  private readonly serverId: string =
+    process.env.NODE_ID ?? process.env.SERVER_ID ?? 'unknown';
 
   /**
    * Punto de entrada del interceptor. Captura el timestamp antes
@@ -77,7 +81,7 @@ export class RequestLoggingInterceptor implements NestInterceptor {
     const startMs = Date.now();
     const ctx = contextFromRequest(request);
 
-    // Expone el `SERVER_ID` en cada respuesta para que el frontend
+    // Expone el server id en cada respuesta para que el frontend
     // pueda ver que instancia del backend atendio la peticion (util
     // para debug de routing, especialmente con VPN->app-03 dedicado).
     // Solo si la cabecera no fue ya fijada por nginx/proxy.

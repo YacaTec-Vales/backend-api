@@ -85,6 +85,7 @@ describe('RequestLoggingInterceptor', () => {
     logSpy.mockRestore();
     errorSpy.mockRestore();
     delete process.env.SERVER_ID;
+    delete process.env.NODE_ID;
   });
 
   it('emite una linea estructurada con server=ID METHOD URL STATUS elapsedMs en next', async () => {
@@ -110,8 +111,9 @@ describe('RequestLoggingInterceptor', () => {
     );
   });
 
-  it('usa "unknown" como server id si SERVER_ID no esta seteado', async () => {
+  it('usa "unknown" como server id si ni NODE_ID ni SERVER_ID estan seteados', async () => {
     delete process.env.SERVER_ID;
+    delete process.env.NODE_ID;
     interceptor = new RequestLoggingInterceptor();
     logSpy = jest
       .spyOn(
@@ -125,6 +127,52 @@ describe('RequestLoggingInterceptor', () => {
     await firstValueFrom(interceptor.intercept(context, next));
     const [message] = logSpy.mock.calls[0];
     expect(message).toMatch(/^server=unknown /);
+  });
+
+  it('prefiere NODE_ID sobre SERVER_ID (convencion de infrastructure)', async () => {
+    process.env.NODE_ID = 'app-02';
+    process.env.SERVER_ID = 'legacy-value-should-be-ignored';
+    interceptor = new RequestLoggingInterceptor();
+    logSpy = jest
+      .spyOn(
+        (interceptor as unknown as { logger: { log: jest.Mock } }).logger,
+        'log',
+      )
+      .mockImplementation(() => undefined);
+    const { context, response } = buildContext();
+    response.statusCode = 200;
+    const next: CallHandler = { handle: () => of(null) };
+    await firstValueFrom(interceptor.intercept(context, next));
+    const [message] = logSpy.mock.calls[0];
+    expect(message).toMatch(/^server=app-02 /);
+  });
+
+  it('usa SERVER_ID como fallback cuando NODE_ID no esta seteado', async () => {
+    delete process.env.NODE_ID;
+    process.env.SERVER_ID = 'app-03';
+    interceptor = new RequestLoggingInterceptor();
+    logSpy = jest
+      .spyOn(
+        (interceptor as unknown as { logger: { log: jest.Mock } }).logger,
+        'log',
+      )
+      .mockImplementation(() => undefined);
+    const { context, response } = buildContext();
+    response.statusCode = 200;
+    const next: CallHandler = { handle: () => of(null) };
+    await firstValueFrom(interceptor.intercept(context, next));
+    const [message] = logSpy.mock.calls[0];
+    expect(message).toMatch(/^server=app-03 /);
+  });
+
+  it('expone X-Server-Id con el valor de NODE_ID cuando solo NODE_ID esta seteado', async () => {
+    delete process.env.SERVER_ID;
+    process.env.NODE_ID = 'app-02';
+    interceptor = new RequestLoggingInterceptor();
+    const { context, response } = buildContext();
+    const next: CallHandler = { handle: () => of(null) };
+    await firstValueFrom(interceptor.intercept(context, next));
+    expect(response.headers['x-server-id']).toBe('app-02');
   });
 
   it('expone X-Server-Id en la respuesta para que el frontend sepa que instancia atendio', async () => {
