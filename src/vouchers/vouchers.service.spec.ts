@@ -93,6 +93,8 @@ describe('VouchersService', () => {
       findByUserId: jest.fn(),
       findById: jest.fn(),
       create: jest.fn(),
+      decrementCredit: jest.fn(),
+      incrementCreditAvailableTx: jest.fn(),
     } as unknown as jest.Mocked<DistributorRepository>;
     readDb = createOneRowDrizzleStub<Record<string, unknown>>([
       { folioPrefix: 'TSL' },
@@ -322,6 +324,48 @@ describe('VouchersService', () => {
       service.emit(actor, { clientId: 'c-1', productId: 'p-1' }),
     ).rejects.toMatchObject({
       response: { code: 'VOUCHER.CLIENT_HAS_ACTIVE' },
+    });
+  });
+
+  describe('cancel', () => {
+    it('lanza 400 VOUCHER.ALREADY_CASHED si el vale ya fue fereado', async () => {
+      voucherRepo.findByFolio.mockResolvedValue({
+        id: 'v-1',
+        folio: 'D-TSL-20260803-00001',
+        authorizationNumber: '123456',
+      } as never);
+      await expect(
+        service.cancel(actor, 'D-TSL-20260803-00001', 'Motivo'),
+      ).rejects.toMatchObject({
+        response: { code: 'VOUCHER.ALREADY_CASHED' },
+      });
+    });
+
+    it('cancela y devuelve el credito si el vale no ha sido fereado', async () => {
+      distributorRepo.findByUserId.mockResolvedValue(distributor as never);
+      voucherRepo.findByFolio.mockResolvedValue({
+        id: 'v-1',
+        folio: 'D-TSL-20260803-00001',
+        distributorId: 'd-1',
+        amountCents: 500000,
+        authorizationNumber: null,
+      } as never);
+      voucherRepo.cancelByFolio.mockResolvedValue({
+        id: 'v-1',
+        distributorId: 'd-1',
+        amountCents: 500000,
+      } as never);
+      await service.cancel(actor, 'D-TSL-20260803-00001', 'Motivo');
+      expect(voucherRepo.cancelByFolio).toHaveBeenCalledWith(
+        'D-TSL-20260803-00001',
+        'Motivo',
+        expect.anything(),
+      );
+      expect(distributorRepo.incrementCreditAvailableTx).toHaveBeenCalledWith(
+        'd-1',
+        500000,
+        expect.anything(),
+      );
     });
   });
 });
