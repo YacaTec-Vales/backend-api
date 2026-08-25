@@ -1,16 +1,15 @@
 /**
- * @fileoverview Repositorio de `app.business_config`.
+ * @fileoverview Repositorio de `app.configuration`.
  *
- * Encapsula el acceso a la tabla `app.business_config`. Usado por
- * `BusinessConfigService` (lecturas cacheadas + escrituras con
- * versionado optimista).
+ * Encapsula el acceso a la tabla `app.configuration`. Usado por
+ * `BusinessConfigService` (lecturas cacheadas + escrituras sobre
+ * jsonb libre).
  *
  * Convenciones:
  *  - Doble pool: `writeDb` para UPDATE, `readDb` para SELECT.
- *  - `findAllByKeys` es la lectura canonica del cache (un solo
- *    round-trip para todas las claves pedidas).
+ *  - `findAll` aplica soft-delete (`deleted_at IS NULL`).
  *  - `applyPatch` recibe un arreglo de cambios y los aplica en
- *    una sola TX, retornando el MAX `version` resultante.
+ *    una sola TX, retornando los items actualizados.
  *
  * @module database/repositories
  * @author Equipo de desarrollo Mis Vales
@@ -18,126 +17,96 @@
  */
 
 import { Inject, Injectable } from '@nestjs/common';
-import { eq, inArray, sql } from 'drizzle-orm';
+import { eq, inArray, isNull } from 'drizzle-orm';
 import {
   DRIZZLE_WRITE,
   DRIZZLE_READ,
   type DrizzleWrite,
   type DrizzleRead,
 } from '../drizzle.provider';
-import { businessConfig } from '../schema';
-import type { BusinessConfigEntity } from '../schema';
+import { configuration } from '../schema';
+import type { ConfigurationEntity } from '../schema';
 
 /**
  * Cambio a aplicar a una clave de configuracion.
+ *
+ * `value` es jsonb libre: la forma interna depende de la clave
+ * (ver JSDoc de `configuration` en `schema.ts`).
  */
-export interface BusinessConfigChange {
+export interface ConfigurationChange {
   key: string;
-  valueCents?: number | null;
-  valueBps?: number | null;
+  value: unknown;
   actorId: string | null;
 }
 
 /**
- * Acceso de bajo nivel a `app.business_config`.
+ * Acceso de bajo nivel a `app.configuration`.
  */
 @Injectable()
-export class BusinessConfigRepository {
+export class ConfigurationRepository {
   constructor(
     @Inject(DRIZZLE_WRITE) private readonly writeDb: DrizzleWrite,
     @Inject(DRIZZLE_READ) private readonly readDb: DrizzleRead,
   ) {}
 
   /**
-   * Lista todos los items. Usado por `GET /business-config` y al
-   * inicializar el cache.
+   * Lista todos los items visibles (soft-delete aplicado).
+   * Usado por `GET /business-config` y al inicializar el cache.
    */
-  async findAll(): Promise<BusinessConfigEntity[]> {
-    return this.readDb.select().from(businessConfig);
+  async findAll(): Promise<ConfigurationEntity[]> {
+    return this.readDb
+      .select()
+      .from(configuration)
+      .where(isNull(configuration.deletedAt));
   }
 
   /**
    * Lista solo los items cuyas claves estan en `keys`. Usado por
    * el cache para refresh parcial.
    */
-  async findAllByKeys(keys: string[]): Promise<BusinessConfigEntity[]> {
+  async findAllByKeys(keys: string[]): Promise<ConfigurationEntity[]> {
     if (keys.length === 0) return [];
     return this.readDb
       .select()
-      .from(businessConfig)
-      .where(inArray(businessConfig.configKey, keys));
+      .from(configuration)
+      .where(inArray(configuration.key, keys));
   }
 
   /**
-   * Busca un solo item por clave.
+   * Busca un solo item por clave (PK).
    */
-  async findByKey(key: string): Promise<BusinessConfigEntity | null> {
+  async findByKey(key: string): Promise<ConfigurationEntity | null> {
     const [row] = await this.readDb
       .select()
-      .from(businessConfig)
-      .where(eq(businessConfig.configKey, key))
+      .from(configuration)
+      .where(eq(configuration.key, key))
       .limit(1);
     return row ?? null;
   }
 
   /**
    * Aplica un batch de cambios en una sola TX. Cada cambio
-   * incrementa `version` en 1, valida que la forma (`cents` vs
-   * `bps`) sea consistente con la clave, y escribe `updated_by`
-   * con el actor del cambio.
+   * actualiza `value` (jsonb) y escribe `updated_by` con el actor.
    *
    * Retorna los items actualizados (los devuelve con su nuevo
-   * `version`).
+   * `updated_at`).
    */
   async applyPatch(
-    changes: BusinessConfigChange[],
+    changes: ConfigurationChange[],
     tx?: DrizzleWrite,
-  ): Promise<BusinessConfigEntity[]> {
+  ): Promise<ConfigurationEntity[]> {
     if (changes.length === 0) return [];
     const writeDb = tx ?? this.writeDb;
-    const updated: BusinessConfigEntity[] = [];
+    const updated: ConfigurationEntity[] = [];
     for (const change of changes) {
-      // Valida forma: una clave "cents" no acepta `valueBps` y
-      // viceversa. El caller (service) ya hace esto, pero el repo
-      // lo confirma para evitar escrituras corruptas.
-      const current = await this.findByKey(change.key);
-      if (!current) {
-        throw new Error(`business_config: clave desconocida ${change.key}`);
-      }
-      const isCents =
-        current.valueCents !== null && current.valueCents !== undefined;
-      if (
-        isCents &&
-        change.valueBps !== undefined &&
-        change.valueBps !== null
-      ) {
-        throw new Error(
-          `business_config: ${change.key} es monetario (cents), no acepta bps`,
-        );
-      }
-      if (
-        !isCents &&
-        change.valueCents !== undefined &&
-        change.valueCents !== null
-      ) {
-        throw new Error(
-          `business_config: ${change.key} es porcentual (bps), no acepta cents`,
-        );
-      }
       const [row] = await writeDb
-        .update(businessConfig)
+        .update(configuration)
         .set({
-          valueCents:
-            change.valueCents !== undefined
-              ? change.valueCents
-              : current.valueCents,
-          valueBps:
-            change.valueBps !== undefined ? change.valueBps : current.valueBps,
-          version: sql`${businessConfig.version} + 1`,
+          value: change.value,
           updatedBy: change.actorId,
           updatedAt: new Date(),
         })
-        .where(eq(businessConfig.configKey, change.key))
+        .where(eq(configuration.key, change.key))
         .returning();
       if (row) updated.push(row);
     }

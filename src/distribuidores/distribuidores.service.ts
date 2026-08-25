@@ -832,9 +832,10 @@ export class DistribuidoresService {
     }));
 
     // 2. Obtener cuentas destino de BBVA/Banorte
-    // TODO: (Opción C) - Stub documentado. En un paso posterior, se modificará
-    // la tabla business_config para soportar valores de texto/JSON y así
-    // obtener estas cuentas desde BusinessConfigService dinámicamente.
+    // TODO: (Opción C) - Stub documentado. app.configuration ya tiene
+    // los keys `cuenta_destino_banorte` y `cuenta_destino_bbva` con
+    // jsonb; en un paso posterior se leen desde BusinessConfigService
+    // dinamicamente en lugar de este stub.
     const destinationAccountsStub = [
       'BBVA - 0123456789 (STUB)',
       'Banorte - 9876543210 (STUB)',
