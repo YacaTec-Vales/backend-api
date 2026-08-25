@@ -309,11 +309,6 @@ export class CashierService {
         });
       }
 
-      await this.distributorRepo.decrementCredit(
-        distributor.id,
-        voucher.amountCents,
-      );
-
       this.logger.log(
         `cashier.confirmVoucher folio=${folio} dataConfirmed=true actor=${actor.id}`,
       );

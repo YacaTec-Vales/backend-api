@@ -166,6 +166,11 @@ describe('VouchersService', () => {
       'v-1',
       expect.anything(),
     );
+    expect(distributorRepo.decrementCredit).toHaveBeenCalledWith(
+      'd-1',
+      500000,
+      expect.anything(),
+    );
   });
 
   it('emite DIGITAL cuando cliente ya tenia firstVoucher', async () => {
@@ -220,6 +225,11 @@ describe('VouchersService', () => {
     });
     expect(result.voucherType).toBe('DIGITAL');
     expect(clientRepo.updateFirstVoucher).not.toHaveBeenCalled();
+    expect(distributorRepo.decrementCredit).toHaveBeenCalledWith(
+      'd-1',
+      500000,
+      expect.anything(),
+    );
   });
 
   it('lanza 403 CLIENT.DISTRIBUTOR_NOT_FOUND si actor no tiene distribuidora', async () => {
