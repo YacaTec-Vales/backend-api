@@ -25,9 +25,16 @@ import { registerAs } from '@nestjs/config';
  * - `cookieDomain` / `cookieSecure`: politica de cookies (no usada
  *   actualmente,预留 para futuras integraciones).
  * - `serverId`: identificador unico del proceso backend. Cada droplet
- *   (app-02, app-03) exporta `SERVER_ID` con su nombre canonico para
- *   correlacionar logs con la instancia que atendio la peticion.
- *   Default `unknown` en dev (process unico).
+ *   (app-02, app-03) exporta el valor con su nombre canonico para
+ *   correlacionar logs con la instancia que atendio la peticion y
+ *   exponerlo en el header `X-Server-Id` de cada respuesta.
+ *
+ *   Resolucion (en orden de prioridad):
+ *     1. `NODE_ID`   (convencion del repo `infrastructure`)
+ *     2. `SERVER_ID` (nombre legacy previo a la unificacion)
+ *     3. `'unknown'` (dev/test con un unico process)
+ *
+ *   Default `'unknown'` en dev (process unico).
  */
 export interface AppConfig {
   nodeEnv: 'development' | 'test' | 'production';
@@ -59,5 +66,5 @@ export const appConfig = registerAs('app', (): AppConfig => ({
     .filter(Boolean),
   cookieDomain: process.env.COOKIE_DOMAIN ?? '',
   cookieSecure: process.env.COOKIE_SECURE === 'true',
-  serverId: process.env.SERVER_ID ?? 'unknown',
+  serverId: process.env.NODE_ID ?? process.env.SERVER_ID ?? 'unknown',
 }));

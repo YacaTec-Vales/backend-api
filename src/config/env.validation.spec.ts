@@ -59,6 +59,23 @@ describe('envValidationSchema', () => {
     expect(error?.details.some((d) => d.path.includes('SERVER_ID'))).toBe(true);
   });
 
+  it('acepta NODE_ID valido (slug simple, convencion de infrastructure)', () => {
+    const { error, value } = envValidationSchema.validate(
+      { ...BASE_ENV, NODE_ID: 'app-02' },
+      { abortEarly: false },
+    );
+    expect(error).toBeUndefined();
+    expect(value.NODE_ID).toBe('app-02');
+  });
+
+  it('rechaza NODE_ID con caracteres fuera de [a-z0-9-]', () => {
+    const { error } = envValidationSchema.validate(
+      { ...BASE_ENV, NODE_ID: 'App 02!' },
+      { abortEarly: false },
+    );
+    expect(error?.details.some((d) => d.path.includes('NODE_ID'))).toBe(true);
+  });
+
   it('rechaza JWT_SECRET con menos de 32 caracteres', () => {
     const { error } = envValidationSchema.validate(
       { ...BASE_ENV, JWT_SECRET: 'short' },
