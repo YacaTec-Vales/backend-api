@@ -17,9 +17,8 @@
  * `client.first_voucher_with_current_distributor_id` para que las
  * siguientes emisiones con esta distribuidora sean DIGITAL.
  *
- * El descuento del credito disponible del distribuidor queda
- * pendiente para un commit posterior (5b-3c) que anada el
- * metodo `decrementCredit` al DistributorRepository.
+ * En la emision se descuenta el credito de la distribuidora y
+ * al cancelar un vale no feriado, se le reembolsa el saldo.
  *
  * @module vouchers
  * @author Equipo de desarrollo Mis Vales
@@ -71,6 +70,7 @@ export const VOUCHER_ERROR_CODES = {
   VOUCHER_NOT_OWNED: 'VOUCHER.NOT_OWNED',
   VOUCHER_NOT_ACTIVE: 'VOUCHER.NOT_ACTIVE',
   CANCELLATION_REASON_REQUIRED: 'VOUCHER.CANCELLATION_REASON_REQUIRED',
+  VOUCHER_ALREADY_CASHED: 'VOUCHER.ALREADY_CASHED',
 } as const;
 
 /**
@@ -259,8 +259,8 @@ export class VouchersService {
           isPrevale,
         },
       },
-      async (tx) =>
-        this.voucherRepo.create(
+      async (tx) => {
+        const voucher = await this.voucherRepo.create(
           {
             folio,
             voucherType,
@@ -292,7 +292,14 @@ export class VouchersService {
             insuranceRuleSnapshot: {},
           },
           tx,
-        ),
+        );
+        await this.distributorRepo.decrementCredit(
+          distributor.id,
+          amountCents,
+          tx,
+        );
+        return voucher;
+      },
     );
 
     // 10. Si fue PREVALE, marcar el voucher como primer vale del cliente.
@@ -337,8 +344,8 @@ export class VouchersService {
    *    vuelva a ser PREVALE (porque el primer vale formal fue
    *    cancelado, no feriado).
    *
-   * El credito disponible del distribuidor NO se devuelve aqui
-   * (queda pendiente para el commit 5b-3c).
+   * El credito disponible del distribuidor se devuelve en la misma
+   * transaccion de cancelacion.
    *
    * @param actor - Usuario autenticado (DISTRIBUIDOR).
    * @param folio - Folio del vale a cancelar.
@@ -367,6 +374,13 @@ export class VouchersService {
       });
     }
 
+    if (voucher.authorizationNumber !== null) {
+      throw new BadRequestException({
+        code: VOUCHER_ERROR_CODES.VOUCHER_ALREADY_CASHED,
+        message: 'El vale ya fue fereado y no se puede cancelar.',
+      });
+    }
+
     // 2. Distribuidora del actor (si la tiene). Para gerentes sin
     //    distribuidora propia, permitimos cancelar cualquier vale.
     const distributor = await this.distributorRepo.findByUserId(actor.id);
@@ -389,7 +403,21 @@ export class VouchersService {
         action: 'VOUCHER.CANCELLED',
         metadata: { folio, reason: reason.trim() },
       },
-      async (tx) => this.voucherRepo.cancelByFolio(folio, reason.trim(), tx),
+      async (tx) => {
+        const cancelledVoucher = await this.voucherRepo.cancelByFolio(
+          folio,
+          reason.trim(),
+          tx,
+        );
+        if (cancelledVoucher) {
+          await this.distributorRepo.incrementCreditAvailableTx(
+            cancelledVoucher.distributorId,
+            cancelledVoucher.amountCents,
+            tx,
+          );
+        }
+        return cancelledVoucher;
+      },
     );
     if (!cancelled) {
       // Ya estaba cancelado, liquidado, o borrado.

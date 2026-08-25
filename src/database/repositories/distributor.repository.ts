@@ -263,13 +263,16 @@ export class DistributorRepository {
    *
    * @param id - UUID del distribuidor.
    * @param amountCents - Cantidad a restar.
+   * @param tx - Opcional. Cliente Drizzle de la transaccion.
    * @returns Entidad actualizada o `null` si no se pudo actualizar.
    */
   async decrementCredit(
     id: string,
     amountCents: number,
+    tx?: DrizzleWrite,
   ): Promise<DistributorEntity | null> {
-    const [row] = await this.writeDb
+    const db = tx ?? this.writeDb;
+    const [row] = await db
       .update(distributors)
       .set({
         creditAvailableCents: sql`${distributors.creditAvailableCents} - ${amountCents}`,
@@ -281,28 +284,22 @@ export class DistributorRepository {
   }
 
   /**
-   * Incrementa el credito disponible de una distribuidora dentro de una
-   * transaccion (TX) activa. Usado por `RelationsService.registerPayment`
-   * para devolver a la distribuidora el credito correspondiente al pago
-   * que el cliente final le hizo (regla 2.0 §6.1.2).
-   *
-   * El caller DEBE haber llamado `BEGIN` antes y hacer `COMMIT`/`ROLLBACK`
-   * despues; este metodo solo ejecuta el UPDATE dentro de la TX abierta.
-   * Esto garantiza atomicidad con el INSERT en `app.relation_payment` y
-   * el UPDATE en `app.relation`.
-   *
-   * Ademas enforce la invariante `credit_available_cents <= credit_limit_cents`
-   * vigente en la BD (`chk_distributor_credit_available_cents_check`).
+   * Incrementa el credito disponible de una distribuidora. Usado por
+   * `RelationsService.registerPayment` para devolver el credito tras
+   * pagos, o `VouchersService` tras cancelacion.
    *
    * @param id - UUID del distribuidor.
    * @param amountCents - Cantidad a sumar (siempre > 0).
+   * @param tx - Opcional. Cliente Drizzle de la transaccion.
    * @returns Entidad actualizada o `null` si no existe / está borrada.
    */
   async incrementCreditAvailableTx(
     id: string,
     amountCents: number,
+    tx?: DrizzleWrite,
   ): Promise<DistributorEntity | null> {
-    const [row] = await this.writeDb
+    const db = tx ?? this.writeDb;
+    const [row] = await db
       .update(distributors)
       .set({
         creditAvailableCents: sql`${distributors.creditAvailableCents} + ${amountCents}`,
