@@ -33,6 +33,7 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { sql } from 'drizzle-orm';
 import {
   UserRepository,
   type UserAdminRow,
@@ -75,9 +76,9 @@ import type {
 
 /**
  * Roles que un `GERENTE_GENERAL` puede asignar al crear usuarios
- * desde `POST /users`. NO incluye `GERENTE_GENERAL` (el GG se
- * mantiene por bootstrap/seed) ni `DISTRIBUIDOR` (se gestiona
- * desde el flujo de solicitud de distribuidora).
+ * desde `POST /users`. NO incluye `GERENTE_GENERAL` (solo el
+ * ADMINISTRADOR del sistema lo crea via API ni `DISTRIBUIDOR`
+ * (se gestiona desde el flujo de solicitud de distribuidora).
  */
 const ROLES_CREATABLE_BY_GG: UserType[] = [
   'GERENTE_SUCURSAL',
@@ -282,11 +283,14 @@ export class UsersService {
     ctx: { ipAddress: string; userAgent: string; device: string },
   ): Promise<CreateUserResponseDto> {
     this.assertActorCanCreateRole(actor, dto.roleCode);
-    await this.resolveAndValidateBranch(
-      actor,
-      dto.roleCode,
-      dto.branchId ?? null,
-    );
+
+    // El GERENTE_GENERAL debe tener `branchId = null` (forzado por la
+    // CHECK `chk_user_gerente_general_branch` del schema 200_identity.sql).
+    // Si el admin intenta crearlo con un branchId, lo ignoramos.
+    const branchIdForCreate =
+      dto.roleCode === 'GERENTE_GENERAL' ? null : (dto.branchId ?? null);
+
+    await this.resolveAndValidateBranch(actor, dto.roleCode, branchIdForCreate);
 
     // Generar contrasena temporal (CSPRNG, valida contra la politica).
     let tempPassword: string;
@@ -311,11 +315,35 @@ export class UsersService {
       device: ctx.device,
       metadata: {
         roleCode: dto.roleCode,
-        branchId: dto.branchId ?? null,
+        branchId: branchIdForCreate,
       },
     };
 
+    const isGeneralManagerCreation = dto.roleCode === 'GERENTE_GENERAL';
+
     const entity = await this.auditRepo.runWithContext(auditCtx, async (tx) => {
+      // Bloqueo pesimista cuando se crea al Gerente General para evitar
+      // race conditions entre dos peticiones simultaneas del ADMIN.
+      // Combinado con el indice unico parcial uq_user_single_active_general_manager
+      // (infrastructure update 37) esto enforce la regla "1 solo GG activo"
+      // incluso bajo concurrencia. `pg_advisory_xact_lock` se libera al
+      // COMMIT/ROLLBACK de la TX actual (la del AuditContextInterceptor).
+      if (isGeneralManagerCreation) {
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtext('gerente_general_creation'))`,
+        );
+        const existing = await this.userRepo.countByRoleAndStatus(
+          'GERENTE_GENERAL',
+          ['ACTIVO'],
+        );
+        if (existing > 0) {
+          throw new ConflictException({
+            code: 'USERS.GENERAL_MANAGER_ALREADY_EXISTS',
+            message: 'ya existe un gerente general activo',
+          });
+        }
+      }
+
       // Verificar conflictos de identidad dentro del contexto
       // de auditoria para reducir la ventana de carrera. La
       // captura de SQLSTATE 23505 cubre concurrencia: ver
@@ -336,24 +364,39 @@ export class UsersService {
           message: 'el nombre de usuario ya esta registrado',
         });
       }
-      return this.userRepo.create(
-        {
-          roleCode: dto.roleCode,
-          branchId: dto.branchId ?? null,
-          firstName: dto.firstName,
-          lastNamePaternal: dto.lastNamePaternal,
-          lastNameMaternal: dto.lastNameMaternal,
-          email: dto.email,
-          phone: dto.phone ?? null,
-          username: dto.username,
-          passwordHash,
-          mustChangePassword: true,
-          userStatus: 'ACTIVO',
-          isActive: true,
-          personalData: dto.personalData ?? {},
-        },
-        tx,
-      );
+      try {
+        return await this.userRepo.create(
+          {
+            roleCode: dto.roleCode,
+            branchId: branchIdForCreate,
+            firstName: dto.firstName,
+            lastNamePaternal: dto.lastNamePaternal,
+            lastNameMaternal: dto.lastNameMaternal,
+            email: dto.email,
+            phone: dto.phone ?? null,
+            username: dto.username,
+            passwordHash,
+            mustChangePassword: true,
+            userStatus: 'ACTIVO',
+            isActive: true,
+            personalData: dto.personalData ?? {},
+          },
+          tx,
+        );
+      } catch (err) {
+        // Defense in depth: el indice unico parcial
+        // `uq_user_single_active_general_manager` rechaza un segundo GG activo
+        // con SQLSTATE 23505. Si llegamos aqui es porque el lock no
+        // contuvo la carrera (ej. dos conexiones con TX independientes);
+        // mapeamos al mismo codigo publico para no leak de implementacion.
+        if (isGeneralManagerCreation && isUniqueViolation(err)) {
+          throw new ConflictException({
+            code: 'USERS.GENERAL_MANAGER_ALREADY_EXISTS',
+            message: 'ya existe un gerente general activo',
+          });
+        }
+        throw err;
+      }
     });
 
     // Si el nuevo usuario es un GS, sincronizamos branch.manager_user_id.
@@ -472,12 +515,14 @@ export class UsersService {
       }
     }
 
-    // Prohibido ascender a GERENTE_GENERAL por API.
+    // Prohibido ascender a GERENTE_GENERAL por PATCH: el GG solo se
+    // crea en el alta (`createUser`). No se puede convertir un usuario
+    // existente en GG.
     if (dto.roleCode === 'GERENTE_GENERAL') {
       throw new ConflictException({
         code: 'USERS.GENERAL_MANAGER_CREATION_FORBIDDEN',
         message:
-          'el gerente general se administra mediante el bootstrap del sistema',
+          'no se puede ascender un usuario a gerente general; el GG solo se crea en el alta administrativa',
       });
     }
     if (dto.roleCode === 'DISTRIBUIDOR') {
@@ -997,17 +1042,36 @@ export class UsersService {
 
   /**
    * Valida que el actor pueda crear el rol destino.
+   *
+   * Reglas:
+   *   - `GERENTE_GENERAL`: solo `ADMINISTRADOR` puede crearlo
+   *     (bootstrap del sistema). El control de unicidad se valida
+   *     en `createUser` con `pg_advisory_xact_lock` + indice unico
+   *     parcial `uq_user_single_active_general_manager`.
+   *   - `DISTRIBUIDOR`: nadie puede crearlo aqui, se genera al
+   *     aprobar la solicitud de distribuidora.
+   *   - `GERENTE_GENERAL` puede crear los roles de su lista
+   *     (`ROLES_CREATABLE_BY_GG`).
+   *   - `GERENTE_SUCURSAL` puede crear los roles de su lista
+   *     (`ROLES_CREATABLE_BY_GS`).
+   *   - `ADMINISTRADOR` solo puede crear `GERENTE_GENERAL`; cualquier
+   *     otro intento es rechazado (mantiene el principio read-only).
+   *   - Cualquier otro actor (COORDINADOR, VERIFICADOR, CAJERO,
+   *     DISTRIBUIDOR) es rechazado.
    */
   private assertActorCanCreateRole(
     actor: RequestUser,
     roleCode: UserType,
   ): void {
     if (roleCode === 'GERENTE_GENERAL') {
-      throw new ConflictException({
-        code: 'USERS.GENERAL_MANAGER_CREATION_FORBIDDEN',
-        message:
-          'el gerente general se administra mediante el bootstrap del sistema',
-      });
+      if (actor.role !== 'ADMINISTRADOR') {
+        throw new ConflictException({
+          code: 'USERS.GENERAL_MANAGER_CREATION_FORBIDDEN',
+          message:
+            'solo el administrador del sistema puede crear al gerente general',
+        });
+      }
+      return;
     }
     if (roleCode === 'DISTRIBUIDOR') {
       throw new UnprocessableEntityException({
@@ -1026,16 +1090,21 @@ export class UsersService {
     }
     if (actor.role === 'GERENTE_SUCURSAL') {
       if (!ROLES_CREATABLE_BY_GS.includes(roleCode)) {
-        // ROLES_CREATABLE_BY_GS excluye GERENTE_GENERAL y
-        // DISTRIBUIDOR; la primera exclusion se valida arriba, asi
-        // que aqui solo aplica a cualquier rol fuera de la lista
-        // (ADMINISTRADOR, por ejemplo).
         throw new ForbiddenException({
           code: 'USERS.ROLE_CREATION_FORBIDDEN',
           message: 'no puedes crear usuarios con este rol',
         });
       }
       return;
+    }
+    if (actor.role === 'ADMINISTRADOR') {
+      // ADMINISTRADOR no tiene user.create general; solo puede crear
+      // GERENTE_GENERAL (caso anterior) o cualquier otra operacion
+      // fuera del modulo users (reset password, disaster recovery).
+      throw new ForbiddenException({
+        code: 'USERS.ROLE_CREATION_FORBIDDEN',
+        message: 'el administrador solo puede crear al gerente general',
+      });
     }
     throw new ForbiddenException({
       code: 'USERS.ROLE_CREATION_FORBIDDEN',
@@ -1207,4 +1276,16 @@ export class UsersService {
   }): PermissionOverrideResponseDto {
     return toOverrideResponseDto(o);
   }
+}
+
+/**
+ * Detecta si un error proveniento del driver de Postgres es una
+ * violacion de unique constraint (SQLSTATE 23505). Usado para
+ * mapear defense-in-depth cuando el indice unico parcial
+ * `uq_user_single_active_general_manager` rechaza un segundo GG.
+ */
+function isUniqueViolation(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const code = (err as { code?: unknown }).code;
+  return code === '23505';
 }

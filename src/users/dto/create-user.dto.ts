@@ -49,8 +49,13 @@ const trimOnly = ({ value }: { value: unknown }): unknown => {
  * del actor):
  *  - rol destino debe estar permitido para el actor.
  *  - sucursal obligatoria para GS, Coord, Verif, Cajero.
- *  - sucursal prohibida para GERENTE_GENERAL.
+ *  - sucursal prohibida para GERENTE_GENERAL (`branchId` se fuerza
+ *    a `null` en el servicio aunque el cliente lo envie; enforced
+ *    por la CHECK `chk_user_gerente_general_branch` del schema).
  *  - DISTRIBUIDOR siempre rechazado.
+ *  - GERENTE_GENERAL solo lo puede crear el ADMINISTRADOR del
+ *    sistema (bootstrap); unicidad enforced por lock +
+ *    `uq_user_single_active_general_manager`.
  */
 export class CreateUserDto {
   @ApiProperty({ example: 'Ana', minLength: 2, maxLength: 100 })

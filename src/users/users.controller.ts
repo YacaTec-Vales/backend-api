@@ -156,11 +156,13 @@ export class UsersController {
    */
   @Post()
   @RequireVpnOrigin('Tecu')
-  @RequirePermissions('user.create')
+  @RequirePermissions('user.create', 'user.create.general_manager')
   @ApiOperation({
     summary: 'Crear usuario',
     description:
-      'Crea un usuario con contrasena temporal generada por el sistema. Envia correo de bienvenida. Marca mustChangePassword=true.',
+      'Crea un usuario con contrasena temporal generada por el sistema. Envia correo de bienvenida. Marca mustChangePassword=true. ' +
+      'Roles permitidos: GERENTE_GENERAL usa `user.create`; ADMINISTRADOR usa `user.create.general_manager` ' +
+      'para crear unicamente al Gerente General (unico GG activo, branchId=null).',
   })
   @ApiEnvelopeCreatedResponse({
     message: 'Usuario creado correctamente',

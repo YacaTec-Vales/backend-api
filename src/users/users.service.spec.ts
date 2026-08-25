@@ -55,6 +55,7 @@ import {
   createPermissionRepositoryMock,
   createRefreshTokenRepositoryMock,
   createUserRepositoryMock,
+  getTxExecuteMock,
 } from '../../test/mocks/repositories.mock';
 
 /**
@@ -225,9 +226,98 @@ describe('UsersService', () => {
       ).rejects.toBeInstanceOf(UnprocessableEntityException);
     });
 
-    it('rechaza GERENTE_GENERAL con USERS.GENERAL_MANAGER_CREATION_FORBIDDEN', async () => {
+    it('rechaza GERENTE_GENERAL para actores != ADMINISTRADOR con USERS.GENERAL_MANAGER_CREATION_FORBIDDEN', async () => {
+      // El actor por defecto es GERENTE_GENERAL (factory) → no es ADMIN.
       await expect(
         service.createUser(actor(), withRole('GERENTE_GENERAL'), {
+          ipAddress: '127.0.0.1',
+          userAgent: 'test',
+          device: 'unknown',
+        }),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('ADMINISTRADOR crea GERENTE_GENERAL: lock + count + branchId forzado a null', async () => {
+      const admin = actor({ role: 'ADMINISTRADOR' });
+      userRepo.countByRoleAndStatus.mockResolvedValue(0);
+      userRepo.findIdentityConflicts.mockResolvedValue({
+        emailExists: false,
+        usernameExists: false,
+      });
+      const created = sampleRow({
+        roleCode: 'GERENTE_GENERAL',
+        branchId: null,
+        id: '99999999-9999-9999-9999-999999999999',
+      });
+      userRepo.create.mockResolvedValue(created as unknown as UserEntity);
+      userRepo.findByIdWithLastSession.mockResolvedValue(created);
+      mailService.sendUserWelcome.mockResolvedValue({ sent: true });
+
+      const result = await service.createUser(
+        admin,
+        withRole('GERENTE_GENERAL'),
+        {
+          ipAddress: '127.0.0.1',
+          userAgent: 'jest',
+          device: 'unknown',
+        },
+      );
+
+      // El lock pesimista se ejecuta via tx.execute sobre la TX simulada.
+      expect(getTxExecuteMock()).toHaveBeenCalled();
+      // branchId se fuerza a null aunque el DTO original lo traiga.
+      expect(userRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          branchId: null,
+          roleCode: 'GERENTE_GENERAL',
+        }),
+        expect.anything(),
+      );
+      // El correo de bienvenida se envia al GG.
+      expect(result.welcomeEmailSent).toBe(true);
+      expect(mailService.sendUserWelcome).toHaveBeenCalledWith(
+        expect.objectContaining({ temporaryPassword: 'Temp#Aa1xyz!' }),
+      );
+    });
+
+    it('ADMINISTRADOR creando 2do GG activo: USERS.GENERAL_MANAGER_ALREADY_EXISTS', async () => {
+      const admin = actor({ role: 'ADMINISTRADOR' });
+      userRepo.countByRoleAndStatus.mockResolvedValue(1);
+      await expect(
+        service.createUser(admin, withRole('GERENTE_GENERAL'), {
+          ipAddress: '127.0.0.1',
+          userAgent: 'test',
+          device: 'unknown',
+        }),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('ADMINISTRADOR creando COORDINADOR: USERS.ROLE_CREATION_FORBIDDEN (mantiene read-only)', async () => {
+      const admin = actor({ role: 'ADMINISTRADOR' });
+      await expect(
+        service.createUser(admin, baseDto, {
+          ipAddress: '127.0.0.1',
+          userAgent: 'test',
+          device: 'unknown',
+        }),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('mapea SQLSTATE 23505 (unique violation) del indice de GG a USERS.GENERAL_MANAGER_ALREADY_EXISTS', async () => {
+      const admin = actor({ role: 'ADMINISTRADOR' });
+      userRepo.countByRoleAndStatus.mockResolvedValue(0);
+      userRepo.findIdentityConflicts.mockResolvedValue({
+        emailExists: false,
+        usernameExists: false,
+      });
+      // Simula que la BD rechazo el INSERT por el indice unico parcial
+      // (escenario en el que el lock no contuvo la carrera).
+      const dbError = Object.assign(new Error('duplicate key'), {
+        code: '23505',
+      });
+      userRepo.create.mockRejectedValue(dbError);
+      await expect(
+        service.createUser(admin, withRole('GERENTE_GENERAL'), {
           ipAddress: '127.0.0.1',
           userAgent: 'test',
           device: 'unknown',

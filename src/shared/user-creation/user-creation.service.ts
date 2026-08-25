@@ -19,7 +19,10 @@
  *  - `verificadores/verificadores.service.ts`.
  *  - `cajeros/cajeros.service.ts`.
  *  - `distribuidores/` (cuando se implemente el modulo).
- *  - `scripts/seed-admin.ts` y `scripts/seed-gerente-general.ts`.
+ *  - `scripts/seed-admin.ts` (unico script de bootstrap del sistema;
+ *    el Gerente General ya no se siembra por CLI: lo crea el
+ *    ADMINISTRADOR via `POST /api/v1/users` con
+ *    `roleCode='GERENTE_GENERAL'` y `branchId=null`).
  *
  * Convenciones aplicadas:
  *  - Mensajes en espanol, lowercase inicial, sin punto final.

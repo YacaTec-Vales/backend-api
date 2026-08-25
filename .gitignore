@@ -49,6 +49,9 @@ lerna-debug.log*
 .temp
 .tmp
 
+# Node 25+ localstorage artefact (cuando se pasa --localstorage-file=null)
+/null
+
 # Runtime data
 pids
 *.pid

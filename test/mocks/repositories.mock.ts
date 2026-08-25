@@ -38,10 +38,72 @@ import type { DocumentRepository } from '../../src/database/repositories/documen
  * Cualquier assertion que necesite verificar que una operacion
  * mutadora recibio el executor puede comparar contra esta
  * identidad.
+ *
+ * Es un Proxy que satisface cualquier llamada a metodos tipicos
+ * de Drizzle (execute, transaction, select, insert, etc.) y los
+ * mockea como `jest.fn()` perezosos. Asi el callback de
+ * `runWithContext` puede ejecutar `tx.execute(sql\`...\`)` sin
+ * lanzar TypeError y los tests existentes que usan
+ * `expect.anything()` siguen matcheando.
+ *
+ * NOTA: la presencia del getter `then` en versiones previas
+ * hacia que Jest lo tratara como thenable, rompiendo
+ * `expect.anything()`. Esta version usa un flag interno
+ * (`hasInitialized`) para devolver `undefined` por primera vez y
+ * `jest.fn()` en adelante, evitando la confusion.
  */
-export const writeExecutorMock: DrizzleWrite = Symbol.for(
-  'test:writeExecutorMock',
+let txExecuteMock = jest.fn().mockResolvedValue({ rows: [], rowCount: 0 });
+
+const writeExecutorMockTarget: Record<string, unknown> = {
+  execute: (...args: unknown[]) => txExecuteMock(...args),
+  transaction: jest.fn(),
+  select: jest.fn(),
+  insert: jest.fn(),
+  update: jest.fn(),
+  delete: jest.fn(),
+};
+
+const PROXY = Symbol('writeExecutorMock:proxy');
+
+export const writeExecutorMock: DrizzleWrite = new Proxy(
+  writeExecutorMockTarget,
+  {
+    get(target, prop, receiver) {
+      // Refleja la identidad del Symbol para que `===` comparisons
+      // (ej. `expect(tx).toBe(writeExecutorMock)`) distingan instancias.
+      if (prop === PROXY) return true;
+      const key = typeof prop === 'string' ? prop : String(prop);
+      if (key in target) {
+        return Reflect.get(target, prop, receiver);
+      }
+      return undefined;
+    },
+  },
 ) as unknown as DrizzleWrite;
+
+/**
+ * Hook para que los tests que si ejercitan `tx.execute(sql\`...\`)`
+ * (ej. los del flujo de creacion del GG con `pg_advisory_xact_lock`)
+ * puedan assertear la llamada. Se obtiene el mock interno via
+ * `getTxExecuteMock()` y se hace `expect(mock).toHaveBeenCalled()`.
+ */
+export function getTxExecuteMock(): jest.Mock {
+  return txExecuteMock;
+}
+
+/**
+ * Resetea el mock interno de `tx.execute` y los demas miembros
+ * para evitar contaminacion entre tests.
+ */
+export function resetWriteExecutorMock(): void {
+  txExecuteMock = jest.fn().mockResolvedValue({ rows: [], rowCount: 0 });
+  writeExecutorMockTarget.execute = (...args: unknown[]) =>
+    txExecuteMock(...args);
+  for (const key of Object.keys(writeExecutorMockTarget)) {
+    if (key === 'execute') continue;
+    (writeExecutorMockTarget[key] as { mockClear?: () => void })?.mockClear?.();
+  }
+}
 
 /**
  * Mock tipado de `UserRepository`. Todos los metodos publicos

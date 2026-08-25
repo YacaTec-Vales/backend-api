@@ -144,11 +144,11 @@ export class BranchesController {
    */
   @Post()
   @RequireVpnOrigin('Tecu')
-  @RequirePermissions('branch.create')
+  @RequirePermissions('branch.create', 'branch.create.matriz')
   @ApiOperation({
     summary: 'Crear sucursal',
     description:
-      'Solo GERENTE_GENERAL. Valida unicidad de matriz y consistencia del manager.',
+      'GERENTE_GENERAL usa `branch.create`; ADMINISTRADOR usa `branch.create.matriz` unicamente para crear/rotar la sucursal MATRIZ. Valida unicidad de matriz y consistencia del manager.',
   })
   @ApiEnvelopeCreatedResponse({
     message: 'Sucursal creada correctamente',
@@ -185,11 +185,11 @@ export class BranchesController {
    */
   @Patch(':id')
   @RequireVpnOrigin('Tecu')
-  @RequirePermissions('branch.update')
+  @RequirePermissions('branch.update', 'branch.create.matriz')
   @ApiOperation({
     summary: 'Actualizar sucursal (patch parcial)',
     description:
-      'Solo GERENTE_GENERAL. Si se convierte en matriz, valida unicidad.',
+      'GERENTE_GENERAL usa `branch.update`. Si se cambia el campo `esMatriz=true` (rotar la MATRIZ a esta sucursal), tambien requiere `branch.create.matriz` (otorgado al ADMINISTRADOR). El indice unico parcial `uq_branch_single_matriz` del schema enforces la unicidad.',
   })
   @ApiEnvelopeOkResponse({
     message: 'Sucursal actualizada correctamente',
