@@ -443,10 +443,15 @@ export class UsersService {
     // local se sobrescribe y la GC la recogera.
     tempPassword = '';
 
-    // Devolvemos el detalle sin el passwordHash.
-    const detail = await this.userRepo.findByIdWithLastSession(entity.id);
+    // Devolvemos la entidad creada sin re-leer via el read pool:
+    // el `findByIdWithLastSession` usa un pool separado y no ve
+    // el insert no-commiteado dentro de la TX del interceptor
+    // (rollback invisible desde la perspectiva del read). Para
+    // un usuario recien creado, `lastSession` es siempre `null`,
+    // asi que no perdemos informacion al proyectar directamente
+    // la entidad retornada por `create` con `lastSession: null`.
     return {
-      user: this.toUserResponse(detail!),
+      user: this.toUserResponse({ ...entity, lastSession: null }),
       welcomeEmailSent: mailResult.sent,
     };
   }
