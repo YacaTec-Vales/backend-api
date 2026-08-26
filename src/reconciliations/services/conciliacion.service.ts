@@ -1,4 +1,10 @@
-import { Injectable, Inject, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  Logger,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { DRIZZLE_WRITE } from '../../database/drizzle.provider';
 import type { DrizzleWrite } from '../../database/drizzle.provider';
 import { AuditLogRepository } from '../../database/repositories/audit-log.repository';
@@ -194,9 +200,18 @@ export class ConciliacionService {
           .where(eq(bankMovements.id, bankMovementId))
           .limit(1);
 
-        if (!movement) throw new Error('Movimiento bancario no encontrado');
-        if (movement.reconciliationId)
-          throw new Error('El movimiento ya se encuentra conciliado');
+        if (!movement) {
+          throw new NotFoundException({
+            code: 'BANK_MOVEMENT.NOT_FOUND',
+            message: 'el movimiento bancario no existe',
+          });
+        }
+        if (movement.reconciliationId) {
+          throw new ConflictException({
+            code: 'BANK_MOVEMENT.ALREADY_RECONCILED',
+            message: 'el movimiento ya se encuentra conciliado',
+          });
+        }
 
         // Validar relación
         const [relation] = await tx
@@ -205,7 +220,12 @@ export class ConciliacionService {
           .where(eq(relations.id, relationId))
           .limit(1);
 
-        if (!relation) throw new Error('Relación no encontrada');
+        if (!relation) {
+          throw new NotFoundException({
+            code: 'RELATION.NOT_FOUND',
+            message: 'la relacion no existe',
+          });
+        }
 
         // (Nota: En un entorno real validaríamos que la autorización existe,
         // es del tipo CONCILIACION_MANUAL, está APROBADA y pertenece a esto).

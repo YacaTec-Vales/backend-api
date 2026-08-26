@@ -74,11 +74,14 @@ describe('PasswordService', () => {
       });
     });
 
-    it('relanza como Error generico si argon2 falla', async () => {
+    it('relanza como InternalServerErrorException tipado si argon2 falla', async () => {
       mockedArgon2.hash.mockRejectedValue(new Error('boom'));
-      await expect(service.hash('PlainPass1')).rejects.toThrow(
-        'Error al hashear la contrasena',
-      );
+      await expect(service.hash('PlainPass1')).rejects.toMatchObject({
+        response: {
+          code: 'AUTH.HASH_FAILED',
+          message: 'no se pudo procesar la contrasena',
+        },
+      });
     });
   });
 

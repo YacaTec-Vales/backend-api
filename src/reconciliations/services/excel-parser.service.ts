@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import * as xlsx from 'xlsx';
 
 export interface BankMovementRow {
@@ -30,7 +30,10 @@ export class ExcelParserService {
     const sheet = workbook.Sheets[sheetName];
 
     if (!sheet) {
-      throw new Error(`No se encontró la hoja '${sheetName}' en el archivo.`);
+      throw new BadRequestException({
+        code: 'RECONCILIATION.INVALID_SHEET',
+        message: `el archivo no contiene la hoja '${sheetName}' requerida`,
+      });
     }
 
     // El requerimiento establece exclusivamente el rango A1:H4

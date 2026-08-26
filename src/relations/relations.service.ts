@@ -497,9 +497,11 @@ export class RelationsService {
         [amountCents, relationId],
       );
       if (relationUpdate.rows.length === 0) {
-        throw new Error(
-          'la relacion desaparecio despues del pago (estado inconsistente)',
-        );
+        throw new NotFoundException({
+          code: RELATION_ERROR_CODES.NOT_FOUND,
+          message:
+            'la relacion desaparecio despues del pago (estado inconsistente)',
+        });
       }
       const totalPaidAfter = Number(
         relationUpdate.rows[0]?.['total_paid_cents'] ?? 0,
@@ -547,9 +549,10 @@ export class RelationsService {
         [amountCents, rel.distributorId],
       );
       if (distributorUpdate.rows.length === 0) {
-        throw new Error(
-          `la distribuidora ${rel.distributorId} no existe o fue borrada; no se puede devolver credito`,
-        );
+        throw new NotFoundException({
+          code: 'DISTRIBUTOR.NOT_FOUND',
+          message: `la distribuidora ${rel.distributorId} no existe o fue borrada; no se puede devolver credito`,
+        });
       }
       const newAvailableCredit = Number(
         distributorUpdate.rows[0]?.['credit_available_cents'] ?? 0,

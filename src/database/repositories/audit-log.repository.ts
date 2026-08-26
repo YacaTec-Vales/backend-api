@@ -34,7 +34,12 @@
  * @since 1.0.0
  */
 
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import {
   DRIZZLE_WRITE,
@@ -101,11 +106,11 @@ export class AuditLogRepository {
     const ctxSnapshot = this.auditContext.get();
     const tx = ctxSnapshot?.txHandle as DrizzleWrite | undefined;
     if (!tx) {
-      throw new Error(
-        'AuditLogRepository.runWithContext fue invocado fuera del ' +
-          'AuditContextInterceptor. La TX del interceptor es la unica ' +
-          'forma atomica de setear las session vars de auditoria.',
-      );
+      throw new InternalServerErrorException({
+        code: 'AUDIT.CTX_MISSING',
+        message:
+          'el contexto de auditoria no esta disponible; la operacion requiere el AuditContextInterceptor',
+      });
     }
 
     const metadataJson = JSON.stringify(ctx.metadata ?? {});

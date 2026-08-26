@@ -28,7 +28,13 @@
  * @author Equipo de desarrollo Mis Vales
  */
 
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   S3Client,
@@ -85,15 +91,19 @@ export class StorageService {
     },
   ): Promise<{ path: string; publicUrl: string }> {
     if (buffer.length > this.maxUploadBytes) {
-      throw new Error(
-        `archivo excede STORAGE_MAX_UPLOAD_BYTES (${this.maxUploadBytes} bytes)`,
-      );
+      throw new BadRequestException({
+        code: 'STORAGE.FILE_TOO_LARGE',
+        message: `archivo excede STORAGE_MAX_UPLOAD_BYTES (${this.maxUploadBytes} bytes)`,
+      });
     }
     if (
       this.allowedMimeTypes.size > 0 &&
       !this.allowedMimeTypes.has(opts.mimeType)
     ) {
-      throw new Error(`mimeType no permitido: ${opts.mimeType}`);
+      throw new BadRequestException({
+        code: 'STORAGE.MIME_NOT_ALLOWED',
+        message: `mimeType no permitido: ${opts.mimeType}`,
+      });
     }
     const command = new PutObjectCommand({
       Bucket: this.bucket,
@@ -146,7 +156,12 @@ export class StorageService {
 
   private require(config: ConfigService, key: string): string {
     const v = config.get<string>(key);
-    if (!v) throw new Error(`STORAGE env: ${key} requerida`);
+    if (!v) {
+      throw new InternalServerErrorException({
+        code: 'STORAGE.ENV_MISSING',
+        message: `STORAGE env: ${key} requerida`,
+      });
+    }
     return v;
   }
 }
@@ -172,9 +187,11 @@ export const buildS3Client = (
   const forcePathStyle =
     rawForcePathStyle === true || rawForcePathStyle === 'true';
   if (!endpoint || !accessKeyId || !secretAccessKey) {
-    throw new Error(
-      'STORAGE env: endpoint, accessKeyId, secretAccessKey son requeridas',
-    );
+    throw new InternalServerErrorException({
+      code: 'STORAGE.CLIENT_INIT_FAILED',
+      message:
+        'STORAGE env: endpoint, accessKeyId, secretAccessKey son requeridas',
+    });
   }
   return new S3Client({
     endpoint,

@@ -53,6 +53,7 @@
 import {
   BadRequestException,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
@@ -200,14 +201,22 @@ export class CutService {
     const getCents = (k: string): number => {
       const item = configMap.get(k);
       if (!item || item.valueCents === null) {
-        throw new Error(`business_config: ${k} no tiene valueCents`);
+        throw new InternalServerErrorException({
+          code: 'BUSINESS_CONFIG.MISSING_VALUE',
+          message: `business_config: la clave ${k} no tiene valueCents`,
+          details: { key: k, expectedShape: 'cents' },
+        });
       }
       return item.valueCents;
     };
     const getBps = (k: string): number => {
       const item = configMap.get(k);
       if (!item || item.valueBps === null) {
-        throw new Error(`business_config: ${k} no tiene valueBps`);
+        throw new InternalServerErrorException({
+          code: 'BUSINESS_CONFIG.MISSING_VALUE',
+          message: `business_config: la clave ${k} no tiene valueBps`,
+          details: { key: k, expectedShape: 'bps' },
+        });
       }
       return item.valueBps;
     };

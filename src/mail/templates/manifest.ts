@@ -19,6 +19,8 @@
  * @since 1.0.0
  */
 
+import { InternalServerErrorException } from '@nestjs/common';
+
 /**
  * Categorias que el `TemplateRendererService` usa para elegir el
  * remitente. Coinciden con la division funcional del modulo mail:
@@ -95,7 +97,10 @@ export const TEMPLATE_MANIFEST: Readonly<
 export function getTemplateEntry(key: TemplateKey): TemplateManifestEntry {
   const entry = TEMPLATE_MANIFEST[key];
   if (!entry) {
-    throw new Error(`Plantilla de mail no registrada: ${key}`);
+    throw new InternalServerErrorException({
+      code: 'MAIL.TEMPLATE_MISSING',
+      message: `plantilla de mail no registrada: ${key}`,
+    });
   }
   return entry;
 }

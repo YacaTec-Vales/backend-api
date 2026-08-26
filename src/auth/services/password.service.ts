@@ -10,7 +10,12 @@
  * @since 1.0.0
  */
 
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomInt } from 'crypto';
 import * as argon2 from 'argon2';
@@ -95,7 +100,10 @@ export class PasswordService {
       return await argon2.hash(plain, this.options);
     } catch (err) {
       this.logger.error('Fallo al hashear password', err as Error);
-      throw new Error('Error al hashear la contrasena');
+      throw new InternalServerErrorException({
+        code: 'AUTH.HASH_FAILED',
+        message: 'no se pudo procesar la contrasena',
+      });
     }
   }
 

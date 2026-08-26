@@ -17,7 +17,7 @@
  * @since 2.2.0
  */
 
-import { Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { eq, inArray, sql } from 'drizzle-orm';
 import {
   DRIZZLE_WRITE,
@@ -102,7 +102,10 @@ export class BusinessConfigRepository {
       // lo confirma para evitar escrituras corruptas.
       const current = await this.findByKey(change.key);
       if (!current) {
-        throw new Error(`business_config: clave desconocida ${change.key}`);
+        throw new BadRequestException({
+          code: 'BUSINESS_CONFIG.UNKNOWN_KEY',
+          message: `business_config: clave desconocida ${change.key}`,
+        });
       }
       const isCents =
         current.valueCents !== null && current.valueCents !== undefined;
@@ -111,18 +114,20 @@ export class BusinessConfigRepository {
         change.valueBps !== undefined &&
         change.valueBps !== null
       ) {
-        throw new Error(
-          `business_config: ${change.key} es monetario (cents), no acepta bps`,
-        );
+        throw new BadRequestException({
+          code: 'BUSINESS_CONFIG.SHAPE_MISMATCH',
+          message: `business_config: ${change.key} es monetario (cents), no acepta bps`,
+        });
       }
       if (
         !isCents &&
         change.valueCents !== undefined &&
         change.valueCents !== null
       ) {
-        throw new Error(
-          `business_config: ${change.key} es porcentual (bps), no acepta cents`,
-        );
+        throw new BadRequestException({
+          code: 'BUSINESS_CONFIG.SHAPE_MISMATCH',
+          message: `business_config: ${change.key} es porcentual (bps), no acepta cents`,
+        });
       }
       const [row] = await writeDb
         .update(businessConfig)
