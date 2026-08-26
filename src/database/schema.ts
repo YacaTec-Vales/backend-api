@@ -28,6 +28,7 @@ import {
   jsonb,
   inet,
   date,
+  time,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
@@ -240,6 +241,16 @@ export const branches = appSchema.table('branch', {
    * compatibilidad transitoria.
    */
   earlyPaymentDays: integer('early_payment_days'),
+  /**
+   * Hora del dia del corte (HH:MM:SS 24h). Nullable en la forma
+   * legacy @deprecated; la forma canonica vive en `app.branch_cutoff`.
+   */
+  cutoffTime: time('cutoff_time'),
+  /**
+   * Hora del dia del pago (HH:MM:SS 24h). Nullable en la forma
+   * legacy @deprecated; la forma canonica vive en `app.branch_cutoff`.
+   */
+  paymentTime: time('payment_time'),
   isActive: boolean('is_active').notNull().default(true),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true })
@@ -280,6 +291,15 @@ export const branchCutoffs = appSchema.table('branch_cutoff', {
   cutoffDay: integer('cutoff_day').notNull(),
   paymentDay: integer('payment_day').notNull(),
   earlyPaymentDays: integer('early_payment_days').notNull().default(3),
+  /**
+   * Hora del dia del corte (HH:MM:SS 24h). El backend autocomputa
+   * `early_payment_days` como `(payment_day - cutoff_day + 31) % 31`.
+   */
+  cutoffTime: time('cutoff_time').notNull(),
+  /**
+   * Hora del dia del pago (HH:MM:SS 24h).
+   */
+  paymentTime: time('payment_time').notNull(),
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()

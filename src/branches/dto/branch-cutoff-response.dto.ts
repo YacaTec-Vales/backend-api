@@ -7,6 +7,13 @@
  * del endpoint `/branches` para que el Gerente General o el Gerente
  * de Sucursal pueda editarlos.
  *
+ * Las columnas configurables son:
+ *  - `cutoffDay` / `paymentDay` (1..31): dia del mes del corte/pago.
+ *  - `cutoffTime` / `paymentTime` ("HH:MM"): hora del dia del corte/pago.
+ *  - NO se envia mes ni year; el ciclo los calcula el sistema.
+ *  - `earlyPaymentDays` NO es input: el backend lo autocomputa como
+ *    `(paymentDay - cutoffDay + 31) % 31` (soporta wrap de mes).
+ *
  * @module branches/dto
  * @author Equipo de desarrollo Mis Vales
  * @since 2.0.1
@@ -17,11 +24,17 @@ import {
   IsBoolean,
   IsIn,
   IsInt,
-  IsOptional,
   IsUUID,
+  Matches,
   Max,
   Min,
 } from 'class-validator';
+
+/**
+ * Regex HH:MM (24h). Acepta tambien HH:MM:SS porque el formato TIME
+ * de PG es flexible; el backend normaliza a HH:MM:SS.
+ */
+const HHMM_REGEX = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
 
 @ApiSchema({ name: 'BranchCutoffInput' })
 export class BranchCutoffInputDto {
@@ -57,18 +70,23 @@ export class BranchCutoffInputDto {
 
   @ApiProperty({
     description:
-      'Cantidad de dias previos a paymentDay en los que un abono cuenta como pago anticipado.',
-    example: 3,
-    minimum: 0,
-    maximum: 31,
-    default: 3,
-    required: false,
+      'Hora del dia (HH:MM 24h) en que se ejecuta el corte. ' +
+      'El sistema NO acepta mes ni year; el ciclo los calcula internamente.',
+    example: '14:30',
   })
-  @IsOptional()
-  @IsInt({ message: 'earlyPaymentDays debe ser un entero' })
-  @Min(0, { message: 'earlyPaymentDays minimo es 0' })
-  @Max(31, { message: 'earlyPaymentDays maximo es 31' })
-  earlyPaymentDays?: number;
+  @Matches(HHMM_REGEX, {
+    message: 'cutoffTime debe tener formato HH:MM (24h)',
+  })
+  cutoffTime!: string;
+
+  @ApiProperty({
+    description: 'Hora del dia (HH:MM 24h) en que vence el pago.',
+    example: '18:00',
+  })
+  @Matches(HHMM_REGEX, {
+    message: 'paymentTime debe tener formato HH:MM (24h)',
+  })
+  paymentTime!: string;
 }
 
 @ApiSchema({ name: 'BranchCutoff' })
@@ -89,8 +107,26 @@ export class BranchCutoffResponseDto {
   @ApiProperty({ description: 'Dia del mes (1..31) del pago.' })
   paymentDay!: number;
 
-  @ApiProperty({ description: 'Dias de pago anticipado.' })
+  @ApiProperty({
+    description:
+      'Dias de la ventana de pago anticipado. Autocomputado por el ' +
+      'backend como (paymentDay - cutoffDay + 31) % 31; soporta ' +
+      'wrap de mes (ej. cutoff=28, payment=5 -> 8).',
+    example: 5,
+  })
   earlyPaymentDays!: number;
+
+  @ApiProperty({
+    description: 'Hora del dia (HH:MM:SS 24h) del corte.',
+    example: '14:30:00',
+  })
+  cutoffTime!: string;
+
+  @ApiProperty({
+    description: 'Hora del dia (HH:MM:SS 24h) del pago.',
+    example: '18:00:00',
+  })
+  paymentTime!: string;
 
   @ApiProperty({ description: 'true si la fila esta activa.' })
   @IsBoolean()

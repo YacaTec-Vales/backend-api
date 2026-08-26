@@ -69,9 +69,25 @@ export class BranchResponseDto {
 
   @ApiProperty({
     nullable: true,
-    description: 'Dias de ventana de pago anticipado.',
+    description:
+      'Dias de la ventana de pago anticipado. Autocomputado por el ' +
+      'backend como (paymentDay - cutoffDay + 31) % 31.',
   })
   earlyPaymentDays: number | null;
+
+  @ApiProperty({
+    nullable: true,
+    description: 'Hora del dia (HH:MM:SS 24h) del corte.',
+    example: '14:30:00',
+  })
+  cutoffTime: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    description: 'Hora del dia (HH:MM:SS 24h) del pago.',
+    example: '18:00:00',
+  })
+  paymentTime: string | null;
 
   @ApiProperty()
   isActive: boolean;
