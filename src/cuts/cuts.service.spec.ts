@@ -45,68 +45,52 @@ const BASE_CUTOFF = {
 
 /**
  * Configuracion canonica para tests (defaults sembrados en BD).
+ * Las claves son las reales de `app.configuration` (forma jsonb libre
+ * segun `seeds/050_configuration.sql`).
  */
 const BASE_CONFIG: BusinessConfigItemDto[] = [
   {
-    key: 'insurance_cents',
+    key: 'interes_por_quincena_bps',
     description: '',
-    valueCents: 10000,
-    valueBps: null,
-    version: 1,
+    value: { applies_per: 'quincena', percentage_bps: 500 },
     updatedAt: '2026-08-01T00:00:00Z',
     updatedBy: null,
   },
   {
-    key: 'interest_per_period_bps',
+    key: 'multa_no_pago_cents',
     description: '',
-    valueCents: null,
-    valueBps: 500,
-    version: 1,
+    value: { value: 30000 },
     updatedAt: '2026-08-01T00:00:00Z',
     updatedBy: null,
   },
   {
-    key: 'late_penalty_cents',
+    key: 'base_calculo_puntos',
     description: '',
-    valueCents: 30000,
-    valueBps: null,
-    version: 1,
+    value: { unit: 'per_amount', amount_cents: 120000 },
     updatedAt: '2026-08-01T00:00:00Z',
     updatedBy: null,
   },
   {
-    key: 'points_divisor_cents',
+    key: 'multiplicador_puntos_por_corte',
     description: '',
-    valueCents: 120000,
-    valueBps: null,
-    version: 1,
+    value: { factor: 1 },
     updatedAt: '2026-08-01T00:00:00Z',
     updatedBy: null,
   },
   {
-    key: 'points_multiplier_bps',
+    key: 'penalizacion_puntos_fuera_tiempo',
     description: '',
-    valueCents: null,
-    valueBps: 3,
-    version: 1,
+    value: { penalty_bps: 2000 },
     updatedAt: '2026-08-01T00:00:00Z',
     updatedBy: null,
   },
   {
-    key: 'points_value_cents',
+    key: 'seguro_regla',
     description: '',
-    valueCents: 200,
-    valueBps: null,
-    version: 1,
-    updatedAt: '2026-08-01T00:00:00Z',
-    updatedBy: null,
-  },
-  {
-    key: 'points_late_penalty_bps',
-    description: '',
-    valueCents: null,
-    valueBps: 2000,
-    version: 1,
+    value: {
+      type: 'range',
+      ranges: [{ insurance_cents: 10000, max_capital_cents: 1500000 }],
+    },
     updatedAt: '2026-08-01T00:00:00Z',
     updatedBy: null,
   },
@@ -482,9 +466,12 @@ describe('CutService', () => {
         BRANCH_ID,
         '2026-09-02',
       );
-      // amount=1200000, divisor=120000, basePoints=10.
-      // multiplied = floor(10 * 3 / 10000) = 0.
-      expect(result.totalPointsAwarded).toBe(0);
+      // amount=1200000, divisor=120000 (base_calculo_puntos.amount_cents).
+      // basePoints = floor(1200000/120000) = 10.
+      // multiplicador_puntos_por_corte.factor=1 -> bps-equivalente 10000.
+      // multiplied = floor(10 * 10000 / 10000) = 10.
+      // Pago anticipado (cutDate=2026-09-02 <= earlyEnd=2026-09-02) -> 10 puntos.
+      expect(result.totalPointsAwarded).toBe(10);
     });
   });
 
@@ -564,7 +551,9 @@ describe('CutService', () => {
         }),
       ];
       const customConfig = BASE_CONFIG.map((c) =>
-        c.key === 'interest_per_period_bps' ? { ...c, valueBps: 1000 } : c,
+        c.key === 'interes_por_quincena_bps'
+          ? { ...c, value: { applies_per: 'quincena', percentage_bps: 1000 } }
+          : c,
       );
       const { service } = buildService({
         cutRepo: buildCutRepo({
@@ -594,7 +583,15 @@ describe('CutService', () => {
         }),
       ];
       const customConfig = BASE_CONFIG.map((c) =>
-        c.key === 'insurance_cents' ? { ...c, valueCents: 20000 } : c,
+        c.key === 'seguro_regla'
+          ? {
+              ...c,
+              value: {
+                type: 'range',
+                ranges: [{ insurance_cents: 20000, max_capital_cents: null }],
+              },
+            }
+          : c,
       );
       const { service } = buildService({
         cutRepo: buildCutRepo({

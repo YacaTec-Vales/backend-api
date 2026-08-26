@@ -2,7 +2,7 @@
  * @fileoverview Modulo `business-config`.
  *
  * Registra el controller, el service y el repositorio de
- * `app.business_config`.
+ * `app.configuration`.
  *
  * Dependencias:
  *  - `AuthModule`: provee guards, decoradores, tipos.
@@ -18,12 +18,12 @@ import { AuthModule } from '../auth/auth.module';
 import { DatabaseModule } from '../database/database.module';
 import { BusinessConfigController } from './business-config.controller';
 import { BusinessConfigService } from './business-config.service';
-import { BusinessConfigRepository } from '../database/repositories/business-config.repository';
+import { ConfigurationRepository } from '../database/repositories/business-config.repository';
 
 @Module({
   imports: [AuthModule, DatabaseModule],
   controllers: [BusinessConfigController],
-  providers: [BusinessConfigService, BusinessConfigRepository],
+  providers: [BusinessConfigService, ConfigurationRepository],
   exports: [BusinessConfigService],
 })
 export class BusinessConfigModule {}

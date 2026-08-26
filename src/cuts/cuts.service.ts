@@ -28,8 +28,8 @@
  * §6.1.3):
  *  - opening_commission_cents = amount_cents * openingCommissionBps / 10000
  *  - interest_total_cents     = (amount_cents * interestBps / 10000) * totalPeriods
- *  - insurance_cents          = snapshot del vale o business_config.insurance_cents
- *  - penalty_cents            = business_config.late_penalty_cents (solo si pago esta vencido)
+ *  - insurance_cents          = snapshot del vale o fallback seguro_regla
+ *  - penalty_cents            = configuration.multa_no_pago_cents (solo si pago esta vencido)
  *  - total_debt_cents         = amount + opening + interest_total + insurance
  *  - fortnightly_payment      = total_debt / totalPeriods
  *  - distributor_gain         = (amount * categoryCommissionBps / 10000) / totalPeriods
@@ -194,30 +194,67 @@ export class CutService {
     }
 
     // 4. Configuracion del negocio.
+    //
+    // app.configuration es jsonb libre por clave. Las reglas se leen
+    // desde la forma sembrada en seeds/050_configuration.sql:
+    //  - interes_por_quincena_bps    -> value.percentage_bps  (bps)
+    //  - multa_no_pago_cents         -> value.value           (cents)
+    //  - base_calculo_puntos         -> value.amount_cents    (cents, divisor)
+    //  - multiplicador_puntos_por_corte -> value.factor       (x N, lo
+    //                                        llevamos a bps: factor * 10000)
+    //  - penalizacion_puntos_fuera_tiempo -> value.penalty_bps (bps)
+    //  - seguro_regla                -> value.ranges[].insurance_cents
+    //                                  (fallback si el vale no trae snapshot)
     const config = await this.businessConfig.list();
     const configMap = new Map(config.map((c) => [c.key, c]));
 
-    const getCents = (k: string): number => {
-      const item = configMap.get(k);
-      if (!item || item.valueCents === null) {
-        throw new Error(`business_config: ${k} no tiene valueCents`);
+    const extractNumber = (key: string, prop: string): number => {
+      const item = configMap.get(key);
+      if (!item || item.value === null || item.value === undefined) {
+        throw new Error(
+          `configuration: clave ${key} no encontrada o sin value`,
+        );
       }
-      return item.valueCents;
-    };
-    const getBps = (k: string): number => {
-      const item = configMap.get(k);
-      if (!item || item.valueBps === null) {
-        throw new Error(`business_config: ${k} no tiene valueBps`);
+      if (typeof item.value !== 'object' || Array.isArray(item.value)) {
+        throw new Error(`configuration: ${key} no es objeto jsonb`);
       }
-      return item.valueBps;
+      const num = (item.value as Record<string, unknown>)[prop];
+      if (typeof num !== 'number') {
+        throw new Error(
+          `configuration: ${key}.${prop} no es number (recibido ${typeof num})`,
+        );
+      }
+      return num;
     };
 
-    const insuranceCents = getCents('insurance_cents');
-    const interestPerPeriodBps = getBps('interest_per_period_bps');
-    const latePenaltyCents = getCents('late_penalty_cents');
-    const pointsDivisorCents = getCents('points_divisor_cents');
-    const pointsMultiplierBps = getBps('points_multiplier_bps');
-    const pointsLatePenaltyBps = getBps('points_late_penalty_bps');
+    const interestPerPeriodBps = extractNumber(
+      'interes_por_quincena_bps',
+      'percentage_bps',
+    );
+    const latePenaltyCents = extractNumber('multa_no_pago_cents', 'value');
+    const pointsDivisorCents = extractNumber(
+      'base_calculo_puntos',
+      'amount_cents',
+    );
+    // multiplicador_puntos_por_corte viene como "factor" (1 => x1). Lo
+    // llevamos a bps-equivalente para no tocar la matematica del corte:
+    // multiplied = floor(basePoints * bps / 10000).
+    const pointsMultiplierBps =
+      extractNumber('multiplicador_puntos_por_corte', 'factor') * 10000;
+    const pointsLatePenaltyBps = extractNumber(
+      'penalizacion_puntos_fuera_tiempo',
+      'penalty_bps',
+    );
+
+    // Seguro: si el vale no trae snapshot, caemos al primer rango de
+    // seguro_regla. (La regla completa con rangos por monto vive en
+    // voucher-level; aca solo necesitamos un fallback global.)
+    const seguroRegla = configMap.get('seguro_regla')?.value as
+      { ranges?: Array<{ insurance_cents?: number }> } | undefined;
+    const insuranceCents =
+      seguroRegla?.ranges?.[0]?.insurance_cents !== undefined
+        ? Number(seguroRegla.ranges[0].insurance_cents)
+        : 0;
 
     // 5. Detectar si el pago esta vencido o anticipado.
     const todayIso = cutDate; // El corte ocurre en la fecha de corte.
