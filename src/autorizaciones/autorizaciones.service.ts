@@ -16,6 +16,12 @@
  *  1. DISTRIBUIDOR solicita → crea authorization PENDIENTE.
  *  2. COORDINADOR asigna nueva distribuidora y aprueba → ejecuta.
  *
+ * Scope por rol en `listPending(actor)` (regla 2.0 §6.4.3):
+ *  - GERENTE_GENERAL: todas las pendientes.
+ *  - GERENTE_SUCURSAL: las de su sucursal.
+ *  - COORDINADOR: las que afectan a distribuidoras bajo su cargo.
+ *  - DISTRIBUIDOR: las que el mismo solicito o que lo afectan.
+ *
  * @module autorizaciones
  * @author Equipo de desarrollo Mis Vales
  * @since 2.5.0
@@ -105,22 +111,61 @@ export class AutorizacionesService {
   ) {}
 
   /**
-   * Lista autorizaciones pendientes visibles para el actor.
+   * Lista autorizaciones pendientes visibles para el actor segun
+   * el scope por rol del spec.
    *
-   * Scope por rol:
+   * Scope (regla 2.0 §6.4.3):
    *  - GERENTE_GENERAL: todas las pendientes.
-   *  - GERENTE_SUCURSAL: las de su sucursal (pendiente de scope fino).
-   *  - COORDINADOR: las que afectan a distribuidoras bajo su cargo.
-   *  - DISTRIBUIDOR: las que lo involucran como solicitante o destino.
+   *  - GERENTE_SUCURSAL: las que afectan distribuidoras de su
+   *    sucursal (`affected_entity->>'fromDistributorId'`,
+   *    `'toDistributorId'` o `'distributorId'` ∈ distribuidoras
+   *    de la sucursal).
+   *  - COORDINADOR: las que afectan distribuidoras bajo su cargo
+   *    (mismo predicado, filtrado por `coordinator_id`).
+   *  - DISTRIBUIDOR: las que el mismo solicito (`requester_id =
+   *    actor.id`) o que lo afectan (su distribuidora aparece en
+   *    `affected_entity`).
    *
-   * @returns Lista de autorizaciones en formato publico.
+   * Conexion: `DRIZZLE_READ`.
+   *
+   * @param actor - Usuario autenticado (rol + id + branchId).
+   * @returns Lista de autorizaciones visibles.
    */
-  async listPending(): Promise<AuthorizationResponseDto[]> {
-    // Por ahora, devolvemos todas las pendientes. El scope fino
-    // se implementara cuando se definan las reglas de visibilidad
-    // por tipo y rol.
-    const rows = await this.authRepo.listAllPending();
+  async listPending(actor: RequestUser): Promise<AuthorizationResponseDto[]> {
+    const distributorIds = await this.resolveVisibleDistributorIds(actor);
+    const rows = await this.authRepo.listPendingForActor(actor, distributorIds);
     return Promise.all(rows.map((r) => this.toResponseDtoAsync(r)));
+  }
+
+  /**
+   * Resuelve el conjunto de distribuidoras visibles para el actor
+   * segun su rol, para alimentar el filtro de `listPendingForActor`.
+   *
+   *  - GERENTE_GENERAL: [] (no filtra, ve todo).
+   *  - GERENTE_SUCURSAL: distribuidoras de su `branch_id`.
+   *  - COORDINADOR: distribuidoras donde `coordinator_id = actor.id`.
+   *  - DISTRIBUIDOR: su propia distribuidora (1 fila como maximo).
+   *  - Cualquier otro rol: [] (solo ve lo que solicito).
+   */
+  private async resolveVisibleDistributorIds(
+    actor: RequestUser,
+  ): Promise<string[]> {
+    switch (actor.role) {
+      case 'GERENTE_GENERAL':
+        return [];
+      case 'GERENTE_SUCURSAL': {
+        if (!actor.branchId) return [];
+        return this.distributorRepo.findIdsByBranch(actor.branchId);
+      }
+      case 'COORDINADOR':
+        return this.distributorRepo.findIdsByCoordinator(actor.id);
+      case 'DISTRIBUIDOR': {
+        const d = await this.distributorRepo.findByUserId(actor.id);
+        return d ? [d.id] : [];
+      }
+      default:
+        return [];
+    }
   }
 
   /**

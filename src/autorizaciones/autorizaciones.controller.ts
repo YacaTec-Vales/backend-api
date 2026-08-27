@@ -113,8 +113,8 @@ export class AutorizacionesController {
     description: 'AUTH.PERMISSION_DENIED (sin autorizacion.read).',
     type: ErrorResponseDto,
   })
-  list(): Promise<AuthorizationResponseDto[]> {
-    return this.service.listPending();
+  list(@CurrentUser() actor: RequestUser): Promise<AuthorizationResponseDto[]> {
+    return this.service.listPending(actor);
   }
 
   /**
