@@ -325,7 +325,11 @@ export class CutRepository {
           AND v.status = 'ACTIVO'
           AND v.liquidated_at IS NULL
           AND v.deleted_at IS NULL
-          AND v.created_at::date BETWEEN $2::date AND $3::date
+          -- Spec (reglas-2.0 §6.4.1.0): "por cada vale activo de la Distribuidora
+   -- incluido en el corte". Antes: BETWEEN, lo que dejaba fuera a todos
+   -- los vales emitidos en quincenas previas. Ahora: cualquier vale
+   -- activo con created_at <= fin de ventana del corte es candidato.
+   AND v.created_at::date <= $3::date
         ORDER BY v.distributor_id, v.created_at`,
       [branchId, windowStart, windowEnd],
     );
