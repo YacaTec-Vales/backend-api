@@ -28,7 +28,6 @@ import {
   jsonb,
   inet,
   date,
-  time,
   type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
@@ -243,10 +242,10 @@ export const branches = appSchema.table('branch', {
   earlyPaymentDays: integer('early_payment_days'),
   /**
    * Hora del dia del corte (HH:MM:SS 24h). Nullable en la forma
-    * legacy @deprecated; la forma canonica vive en `app.branch_cutoff`.
-    * La columna `cutoff_time` no existe en la BD todavia (migracion
-    * pendiente); el repo referencia campos null hasta entonces.
-    */
+   * legacy @deprecated; la forma canonica vive en `app.branch_cutoff`.
+   * La columna `cutoff_time` no existe en la BD todavia (migracion
+   * pendiente); el repo referencia campos null hasta entonces.
+   */
   // cutoffTime: time('cutoff_time'),  // TODO: reactivar cuando se agregue la columna
   /**
    * Hora del dia del pago (HH:MM:SS 24h). Nullable en la forma

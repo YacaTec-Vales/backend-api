@@ -28,17 +28,14 @@ import {
 export const MIN_DAYS_BETWEEN_CUTOFF_AND_PAYMENT = 5;
 
 @ValidatorConstraint({ name: 'IsAtLeastFiveDaysAfterCutoff', async: false })
-class IsAtLeastFiveDaysAfterCutoffConstraint
-  implements ValidatorConstraintInterface
-{
+class IsAtLeastFiveDaysAfterCutoffConstraint implements ValidatorConstraintInterface {
   validate(paymentDay: unknown, args: ValidationArguments): boolean {
     if (typeof paymentDay !== 'number' || !Number.isInteger(paymentDay)) {
       return true; // deja que @IsInt/@Min/@Max fallen antes
     }
     const obj = args.object as Record<string, unknown>;
     const cutoffDay = obj[args.property.replace(/^payment/, 'cutoff')] as
-      | number
-      | undefined;
+      number | undefined;
     if (typeof cutoffDay !== 'number' || !Number.isInteger(cutoffDay)) {
       return true; // sin cutoffDay, no validamos contra el
     }

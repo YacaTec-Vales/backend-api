@@ -46,7 +46,6 @@ import type {
   BranchResponseDto,
   PaginatedBranchesResponseDto,
 } from './dto/branch-response.dto';
-import type { DrizzleWrite } from '../database/drizzle.provider';
 
 /**
  * Servicio principal del modulo branches. Inyectado en
@@ -753,8 +752,7 @@ export class BranchesService {
     if (actor.role !== 'ADMINISTRADOR') {
       throw new ForbiddenException({
         code: 'BRANCH.TRANSFER_FORBIDDEN',
-        message:
-          'solo el administrador puede transferir la cualidad de matriz',
+        message: 'solo el administrador puede transferir la cualidad de matriz',
       });
     }
 
@@ -803,7 +801,7 @@ export class BranchesService {
 
     const result = await this.auditRepo.runWithContext(auditCtx, async (tx) => {
       const r = await this.branchesRepo.transferMatriz(
-        tx as unknown as DrizzleWrite,
+        tx,
         actual?.id ?? null,
         branchNewId,
       );

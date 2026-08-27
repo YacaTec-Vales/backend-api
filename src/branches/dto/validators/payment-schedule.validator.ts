@@ -43,9 +43,7 @@ export interface PaymentScheduleValidatorOptions extends ValidationOptions {
 }
 
 @ValidatorConstraint({ name: 'IsCompletePaymentSchedule', async: false })
-class IsCompletePaymentScheduleConstraint
-  implements ValidatorConstraintInterface
-{
+class IsCompletePaymentScheduleConstraint implements ValidatorConstraintInterface {
   validate(_value: unknown, args: ValidationArguments): boolean {
     const obj = args.object as Record<string, unknown>;
     const require = (args.constraints?.[0] as PaymentScheduleValidatorOptions)
@@ -66,8 +64,7 @@ class IsCompletePaymentScheduleConstraint
       }
     }
 
-    const hasCutoffDay =
-      obj.cutoffDay !== undefined && obj.cutoffDay !== null;
+    const hasCutoffDay = obj.cutoffDay !== undefined && obj.cutoffDay !== null;
     const hasPaymentDay =
       obj.paymentDay !== undefined && obj.paymentDay !== null;
 
@@ -87,7 +84,7 @@ class IsCompletePaymentScheduleConstraint
     return !require;
   }
 
-  defaultMessage(_args: ValidationArguments): string {
+  defaultMessage(): string {
     return (
       'Debes configurar un esquema de corte/pago completo: envía cutoffs ' +
       'con las 2 quincenas, o ambos cutoffDay y paymentDay juntos (no uno ' +
@@ -111,14 +108,13 @@ class IsCompletePaymentScheduleConstraint
 export function IsCompletePaymentSchedule(
   options: PaymentScheduleValidatorOptions = { require: false },
 ): ClassDecorator {
-  return (target: object) => {
-    const cls = target as Function;
+  return (target) => {
     const constraintOptions: PaymentScheduleValidatorOptions = {
       ...options,
       require: options.require ?? false,
     };
     registerDecorator({
-      target: cls,
+      target,
       propertyName: '',
       options: constraintOptions,
       constraints: [constraintOptions],

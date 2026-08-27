@@ -9,10 +9,7 @@
  *
  * @see AdminModule
  */
-import {
-  Controller,
-  Get,
-} from '@nestjs/common';
+import { Controller, Get } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOkResponse,
