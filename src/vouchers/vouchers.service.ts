@@ -65,6 +65,7 @@ export const VOUCHER_ERROR_CODES = {
   AMOUNT_TOO_LOW: 'VOUCHER.AMOUNT_BELOW_MIN',
   INSUFFICIENT_CREDIT: 'VOUCHER.INSUFFICIENT_CREDIT',
   PREVALE_EXCEEDS_50: 'VOUCHER.PREVALE_EXCEEDS_50_PERCENT',
+  NOT_PREVALE_ELIGIBLE: 'VOUCHER.NOT_PREVALE_ELIGIBLE',
   CLIENT_HAS_ACTIVE: 'VOUCHER.CLIENT_HAS_ACTIVE',
   VOUCHER_NOT_FOUND: 'VOUCHER.NOT_FOUND',
   VOUCHER_NOT_OWNED: 'VOUCHER.NOT_OWNED',
@@ -183,9 +184,41 @@ export class VouchersService {
       });
     }
 
-    // 5. Regla 50% si PREVALE (R15).
-    const isPrevale = client.firstVoucherWithCurrentDistributorId === null;
-    const voucherType = isPrevale ? 'PREVALE' : 'DIGITAL';
+    // 5. Resolver tipo de vale (R15 + override opcional del frontend).
+    // Default: auto-deduccion — primer vale del cliente con esta
+    // distribuidora = PREVALE; cualquier vale posterior = DIGITAL.
+    // Override: el frontend puede forzar DIGITAL (caso R22
+    // transferencia) o PREVALE (no-op si el cliente ya esta limpio).
+    // Si el frontend pide PREVALE pero el cliente ya tiene vales
+    // previos con esta distribuidora, se rechaza (no se permite
+    // degradar un cliente ya catalogado como DIGITAL).
+    const hasPrevVoucher = client.firstVoucherWithCurrentDistributorId !== null;
+    let isPrevale: boolean;
+    let voucherType: 'PREVALE' | 'DIGITAL';
+    if (dto.voucherType === undefined) {
+      isPrevale = !hasPrevVoucher;
+      voucherType = isPrevale ? 'PREVALE' : 'DIGITAL';
+    } else if (dto.voucherType === 'PREVALE') {
+      if (hasPrevVoucher) {
+        throw new BadRequestException({
+          code: VOUCHER_ERROR_CODES.NOT_PREVALE_ELIGIBLE,
+          message:
+            'No se puede forzar PREVALE: el cliente ya tiene vales previos con esta distribuidora.',
+          details: {
+            clientId: client.id,
+            distributorId: distributor.id,
+            firstVoucherWithCurrentDistributorId:
+              client.firstVoucherWithCurrentDistributorId,
+          },
+        });
+      }
+      isPrevale = true;
+      voucherType = 'PREVALE';
+    } else {
+      // dto.voucherType === 'DIGITAL'
+      isPrevale = false;
+      voucherType = 'DIGITAL';
+    }
     if (isPrevale) {
       const halfCredit = Math.floor(
         (distributor.creditAvailableCents ?? 0) / 2,
