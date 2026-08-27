@@ -55,6 +55,8 @@ export interface BranchAdminRow {
   cutoffDay: number | null;
   paymentDay: number | null;
   earlyPaymentDays: number | null;
+  cutoffTime: string | null;
+  paymentTime: string | null;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -203,6 +205,8 @@ export class BranchesRepository {
         cutoffDay: branches.cutoffDay,
         paymentDay: branches.paymentDay,
         earlyPaymentDays: branches.earlyPaymentDays,
+        cutoffTime: branches.cutoffTime,
+        paymentTime: branches.paymentTime,
         isActive: branches.isActive,
         createdAt: branches.createdAt,
         updatedAt: branches.updatedAt,
@@ -247,6 +251,8 @@ export class BranchesRepository {
         cutoffDay: r.cutoffDay,
         paymentDay: r.paymentDay,
         earlyPaymentDays: r.earlyPaymentDays,
+        cutoffTime: r.cutoffTime,
+        paymentTime: r.paymentTime,
         isActive: r.isActive,
         createdAt: r.createdAt,
         updatedAt: r.updatedAt,
@@ -262,6 +268,9 @@ export class BranchesRepository {
    * Inserta una nueva sucursal. Pensado para ejecutarse dentro de
    * `AuditLogRepository.runWithContext` para que el trigger
    * registre la operacion.
+   *
+   * `earlyPaymentDays` se autocomputa en el servicio
+   * (`BranchesService.computeEarlyPaymentDays`) antes de llegar aqui.
    *
    * Conexion: `DRIZZLE_WRITE`.
    *
@@ -279,6 +288,8 @@ export class BranchesRepository {
       cutoffDay?: number | null;
       paymentDay?: number | null;
       earlyPaymentDays?: number | null;
+      cutoffTime?: string | null;
+      paymentTime?: string | null;
     },
     tx?: DrizzleWrite,
   ): Promise<BranchEntity> {
@@ -295,6 +306,8 @@ export class BranchesRepository {
         cutoffDay: data.cutoffDay ?? null,
         paymentDay: data.paymentDay ?? null,
         earlyPaymentDays: data.earlyPaymentDays ?? null,
+        cutoffTime: data.cutoffTime ?? null,
+        paymentTime: data.paymentTime ?? null,
         isActive: true,
       })
       .returning();
@@ -304,6 +317,9 @@ export class BranchesRepository {
   /**
    * Aplica un patch parcial. Cualquier modificacion se persiste con
    * `updatedAt = now()`.
+   *
+   * `earlyPaymentDays` se autocomputa en el servicio antes de llegar
+   * aqui.
    *
    * Conexion: `DRIZZLE_WRITE`.
    *
@@ -322,6 +338,8 @@ export class BranchesRepository {
       cutoffDay?: number | null;
       paymentDay?: number | null;
       earlyPaymentDays?: number | null;
+      cutoffTime?: string | null;
+      paymentTime?: string | null;
       isActive?: boolean;
     },
     tx?: DrizzleWrite,
@@ -340,6 +358,8 @@ export class BranchesRepository {
     if (patch.paymentDay !== undefined) set.paymentDay = patch.paymentDay;
     if (patch.earlyPaymentDays !== undefined)
       set.earlyPaymentDays = patch.earlyPaymentDays;
+    if (patch.cutoffTime !== undefined) set.cutoffTime = patch.cutoffTime;
+    if (patch.paymentTime !== undefined) set.paymentTime = patch.paymentTime;
 
     const db = tx ?? this.writeDb;
     const [row] = await db

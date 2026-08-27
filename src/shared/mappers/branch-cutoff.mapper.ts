@@ -23,6 +23,8 @@ export interface BranchCutoffRowShape {
   cutoffDay: number;
   paymentDay: number;
   earlyPaymentDays: number;
+  cutoffTime: string;
+  paymentTime: string;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -46,6 +48,8 @@ export function toBranchCutoffResponseDto(
     cutoffDay: row.cutoffDay,
     paymentDay: row.paymentDay,
     earlyPaymentDays: row.earlyPaymentDays,
+    cutoffTime: row.cutoffTime,
+    paymentTime: row.paymentTime,
     isActive: row.isActive,
     createdAt,
     updatedAt,

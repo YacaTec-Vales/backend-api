@@ -71,7 +71,19 @@ jobs:
           echo "AWS env configured (region=${AWS_DEFAULT_REGION})"
           echo "Spaces endpoint: ${AWS_ENDPOINT_URL_S3}"
 
-      - name: Package artifact
+      - name: Write version.json (build sha + timestamp)
+        env:
+          SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || github.sha }}
+          SHORT_SHA: ${{ env.SHORT_SHA }}
+        run: |
+          mkdir -p version_meta
+          TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          printf '{"sha":"%s","short":"%s","built_at":"%s","repo":"%s"}\n' \
+            "$SHA" "$SHORT_SHA" "$TS" "${{ github.repository }}" \
+            > version_meta/version.json
+          cat version_meta/version.json
+
+      - name: Package artifact (incluye version_meta/)
         id: package
         env:
           REPO: ${{ github.repository }}
@@ -84,14 +96,14 @@ jobs:
 
           if [ "$REPO" = "YacaTec-Vales/backend-api" ]; then
             tar -czf /tmp/release.tar.gz \
-              dist package.json package-lock.json node_modules
+              dist package.json package-lock.json node_modules version_meta
           else
             DIST_PATH="${{ secrets.STAGING_DIST }}"
             if [ -z "$DIST_PATH" ]; then
               echo "::error::STAGING_DIST secret not set for $REPO"
               exit 1
             fi
-            tar -czf /tmp/release.tar.gz -C "$DIST_PATH" .
+            tar -czf /tmp/release.tar.gz -C "$DIST_PATH" . -C "$GITHUB_WORKSPACE/version_meta" version_meta
           fi
 
           ls -lh /tmp/release.tar.gz
@@ -108,33 +120,6 @@ jobs:
             --acl private
           echo "Uploaded: s3://misvales-storage/staging-builds/${REPO_NAME}-${SHORT}.tar.gz"
 
-      - name: Cleanup old tarballs in DO Spaces (keep only current SHA)
-        env:
-          REPO: ${{ github.repository }}
-          SHORT: ${{ env.SHORT_SHA }}
-        run: |
-          REPO_NAME=$(basename "$REPO")
-          KEEP="staging-builds/${REPO_NAME}-${SHORT}.tar.gz"
-          echo "Keeping: $KEEP"
-          DELETED=$(aws s3api list-objects-v2 \
-            --bucket misvales-storage \
-            --prefix "staging-builds/${REPO_NAME}-" \
-            --endpoint-url https://sfo3.digitaloceanspaces.com \
-            --query "Contents[?Key!=\`${KEEP}\`].[Key]" --output text 2>/dev/null | tr '\t' '\n' | grep -v '^$' | wc -l)
-          if [ "$DELETED" -gt 0 ]; then
-            aws s3api list-objects-v2 \
-              --bucket misvales-storage \
-              --prefix "staging-builds/${REPO_NAME}-" \
-              --endpoint-url https://sfo3.digitaloceanspaces.com \
-              --query "Contents[?Key!=\`${KEEP}\`].Key" --output text 2>/dev/null \
-              | tr '\t' '\n' | grep -v '^$' | while read -r KEY; do
-                [ -n "$KEY" ] && aws s3 rm "s3://misvales-storage/$KEY" --endpoint-url https://sfo3.digitaloceanspaces.com
-              done
-            echo "Cleanup OK: deleted $DELETED old tarball(s)"
-          else
-            echo "Cleanup OK: no old tarballs"
-          fi
-
       - name: Generate presigned URL (1h)
         id: presign
         env:
@@ -149,7 +134,7 @@ jobs:
           echo "ARTIFACT_URL=$URL" >> "$GITHUB_OUTPUT"
           echo "Presigned URL generated (1h TTL)"
 
-      - name: Deploy to droplet via SSH
+      - name: Deploy to app-02 (verifica version localmente)
         uses: appleboy/ssh-action@v1
         env:
           RECAPTCHA_ENABLED: ${{ secrets.RECAPTCHA_ENABLED }}
@@ -169,12 +154,13 @@ jobs:
             DEST="${{ secrets.STAGING_DEST }}"
             SERVICE="${{ secrets.STAGING_SERVICE }}"
             BACKEND_PORT="${{ secrets.STAGING_BACKEND_PORT }}"
+            SHORT="${{ env.SHORT_SHA }}"
 
-            echo "=== Deploying ${{ github.repository }} ==="
-            echo "    dest=$DEST service=$SERVICE backend_port=$BACKEND_PORT"
+            echo "=== Deploying ${{ github.repository }} -> app-02 ==="
+            echo "    dest=$DEST service=$SERVICE backend_port=$BACKEND_PORT short_sha=$SHORT"
             echo "    url=${ARTIFACT_URL:0:80}..."
 
-            # 1. Download artifact (presigned URL, no auth required)
+            # 1. Download artifact
             cd /tmp
             rm -f release.tar.gz
             curl -fsS -o release.tar.gz "$ARTIFACT_URL"
@@ -191,107 +177,9 @@ jobs:
             tar -xzf release.tar.gz -C "$DEST"
             rm -f release.tar.gz
 
-            # 3.5 Upsert de variables reCAPTCHA en el EnvironmentFile de la unidad.
-            #     Se descubre la ruta con systemctl cat (el .env vive fuera de DEST,
-            #     que se borra en cada release).
+            # 3b. Upsert reCAPTCHA en EnvironmentFile
             ENV_FILE="$(systemctl cat "$SERVICE" 2>/dev/null | grep -oP '^EnvironmentFile=-?\K\S+' | head -1 || true)"
-            if [ -z "$ENV_FILE" ]; then
-              echo "    aviso: unidad sin EnvironmentFile; recaptcha no aplicado"
-            else
-              case "$ENV_FILE" in
-                /*) ;;
-                *) ENV_FILE="/etc/systemd/system/$ENV_FILE" ;;
-              esac
-              touch "$ENV_FILE"
-              for kv in \
-                "RECAPTCHA_ENABLED=${RECAPTCHA_ENABLED:-false}" \
-                "RECAPTCHA_SECRET_KEY=${RECAPTCHA_SECRET_KEY:-}" \
-                "RECAPTCHA_MIN_SCORE=${RECAPTCHA_MIN_SCORE:-0.5}"; do
-                key="${kv%%=*}"
-                if grep -q "^${key}=" "$ENV_FILE" 2>/dev/null; then
-                  sed -i "s|^${key}=.*|${kv}|" "$ENV_FILE"
-                else
-                  printf '%s\n' "$kv" >> "$ENV_FILE"
-                fi
-              done
-              echo "    recaptcha env aplicado en $ENV_FILE (ENABLED=${RECAPTCHA_ENABLED:-false})"
-            fi
-
-            # 4. Smoke test o restart
-            if [ -n "$SERVICE" ]; then
-              systemctl restart "$SERVICE"
-              HEALTH=""
-              for i in 1 2 3 4 5 6 7 8 9 10; do
-                sleep 2
-                HEALTH=$(curl -fsS -m 3 "http://127.0.0.1:${BACKEND_PORT}/api/v1/health/live" 2>/dev/null || echo "")
-                if echo "$HEALTH" | grep -q '"status":"ok"'; then
-                  echo "    health/live OK on try $i: $HEALTH"
-                  break
-                fi
-                echo "    health/live try $i not ready: ${HEALTH:-<no response>}"
-              done
-              if echo "$HEALTH" | grep -q '"status":"ok"'; then
-                echo "=== Deploy OK (backend live) ==="
-              else
-                echo "::error::Backend health check failed after 20s"
-                journalctl -u "$SERVICE" --no-pager -n 20 2>&1 || true
-                exit 1
-              fi
-            else
-              nginx -s reload
-              echo "=== Deploy OK (nginx reloaded) ==="
-            fi
-
-      - name: Deploy to app-03 via SSH
-        uses: appleboy/ssh-action@v1
-        env:
-          RECAPTCHA_ENABLED: ${{ secrets.RECAPTCHA_ENABLED }}
-          RECAPTCHA_SECRET_KEY: ${{ secrets.RECAPTCHA_SECRET_KEY }}
-          RECAPTCHA_MIN_SCORE: ${{ secrets.RECAPTCHA_MIN_SCORE }}
-        with:
-          host: ${{ secrets.STAGING_HOST_APP03 }}
-          username: ${{ secrets.STAGING_USER }}
-          port: ${{ secrets.STAGING_PORT_APP03 }}
-          key: ${{ secrets.STAGING_SSH_KEY }}
-          command_timeout: 10m
-          envs: RECAPTCHA_ENABLED,RECAPTCHA_SECRET_KEY,RECAPTCHA_MIN_SCORE
-          script: |
-            set -euo pipefail
-
-            ARTIFACT_URL="${{ steps.presign.outputs.ARTIFACT_URL }}"
-            DEST="${{ secrets.STAGING_DEST_APP03 }}"
-            SERVICE="${{ secrets.STAGING_SERVICE_APP03 }}"
-            BACKEND_PORT="${{ secrets.STAGING_BACKEND_PORT_APP03 }}"
-
-            echo "=== Deploying ${{ github.repository }} -> app-03 ==="
-            echo "    dest=$DEST service=$SERVICE backend_port=$BACKEND_PORT"
-            echo "    url=${ARTIFACT_URL:0:80}..."
-
-            # 1. Download artifact (presigned URL, no auth required)
-            cd /tmp
-            rm -f release.tar.gz
-            curl -fsS -o release.tar.gz "$ARTIFACT_URL"
-            echo "    downloaded: $(ls -lh release.tar.gz | awk '{print $5}')"
-
-            # 2. Backup del backend actual antes de reemplazar (permite rollback manual)
-            if [ -n "$DEST" ] && [ -d "$DEST" ]; then
-              rm -rf "${DEST}.bak" 2>/dev/null || true
-              cp -a "$DEST" "${DEST}.bak"
-              echo "    backup: ${DEST}.bak"
-              find "$DEST" -mindepth 1 -delete
-            else
-              mkdir -p "$DEST"
-            fi
-
-            # 3. Extract
-            tar -xzf release.tar.gz -C "$DEST"
-            rm -f release.tar.gz
-
-            # 3.5 Upsert de variables reCAPTCHA en el EnvironmentFile de la unidad.
-            ENV_FILE="$(systemctl cat "$SERVICE" 2>/dev/null | grep -oP '^EnvironmentFile=-?\K\S+' | head -1 || true)"
-            if [ -z "$ENV_FILE" ]; then
-              echo "    aviso: unidad sin EnvironmentFile; recaptcha no aplicado"
-            else
+            if [ -n "$ENV_FILE" ]; then
               case "$ENV_FILE" in
                 /*) ;;
                 *) ENV_FILE="/etc/systemd/system/$ENV_FILE" ;;
@@ -312,29 +200,198 @@ jobs:
             fi
 
             # 4. Restart + health check
-            if [ -n "$SERVICE" ]; then
-              systemctl restart "$SERVICE"
-              HEALTH=""
-              for i in 1 2 3 4 5 6 7 8 9 10; do
-                sleep 2
-                HEALTH=$(curl -fsS -m 3 "http://127.0.0.1:${BACKEND_PORT}/api/v1/health/live" 2>/dev/null || echo "")
-                if echo "$HEALTH" | grep -q '"status":"ok"'; then
-                  echo "    health/live OK on try $i: $HEALTH"
-                  break
-                fi
-                echo "    health/live try $i not ready: ${HEALTH:-<no response>}"
-              done
+            systemctl restart "$SERVICE"
+            HEALTH=""
+            for i in 1 2 3 4 5 6 7 8 9 10; do
+              sleep 2
+              HEALTH=$(curl -fsS -m 3 "http://127.0.0.1:${BACKEND_PORT}/api/v1/health/live" 2>/dev/null || echo "")
               if echo "$HEALTH" | grep -q '"status":"ok"'; then
-                echo "=== Deploy OK (app-03 live) ==="
-              else
-                echo "::error::Backend health check failed after 20s"
-                journalctl -u "$SERVICE" --no-pager -n 20 2>&1 || true
-                exit 1
+                echo "    health/live OK on try $i: $HEALTH"
+                break
               fi
+              echo "    health/live try $i not ready: ${HEALTH:-:---no-response---}"
+            done
+            if echo "$HEALTH" | grep -q '"status":"ok"'; then
+              echo "    app-02 backend live OK"
             else
-              nginx -s reload
-              echo "=== Deploy OK (nginx reloaded) ==="
+              echo "::error::Backend health check failed after 20s"
+              journalctl -u "$SERVICE" --no-pager -n 20 2>&1 || true
+              exit 1
             fi
+
+            # 5. Verify version on droplet
+            VERSION_FILE="$DEST/version_meta/version.json"
+            if [ ! -f "$VERSION_FILE" ]; then
+              echo "::error::version_meta/version.json no existe en $VERSION_FILE"
+              exit 1
+            fi
+            DEPLOYED_SHORT=$(python3 -c "import json,sys; print(json.load(open('$VERSION_FILE'))['short'])" 2>/dev/null || grep -oP '"short":"\K[^"]+' "$VERSION_FILE" | head -1)
+            if [ "$DEPLOYED_SHORT" != "$SHORT" ]; then
+              echo "::error::Version mismatch: deployed=$DEPLOYED_SHORT expected=$SHORT"
+              exit 1
+            fi
+            echo "    app-02 version verified: $DEPLOYED_SHORT"
+            echo "=== Deploy app-02 OK ==="
+
+      - name: Deploy to app-03 (verifica version localmente)
+        uses: appleboy/ssh-action@v1
+        env:
+          RECAPTCHA_ENABLED: ${{ secrets.RECAPTCHA_ENABLED }}
+          RECAPTCHA_SECRET_KEY: ${{ secrets.RECAPTCHA_SECRET_KEY }}
+          RECAPTCHA_MIN_SCORE: ${{ secrets.RECAPTCHA_MIN_SCORE }}
+        with:
+          host: ${{ secrets.STAGING_HOST_APP03 }}
+          username: ${{ secrets.STAGING_USER }}
+          port: ${{ secrets.STAGING_PORT_APP03 }}
+          key: ${{ secrets.STAGING_SSH_KEY }}
+          command_timeout: 10m
+          envs: RECAPTCHA_ENABLED,RECAPTCHA_SECRET_KEY,RECAPTCHA_MIN_SCORE
+          script: |
+            set -euo pipefail
+
+            ARTIFACT_URL="${{ steps.presign.outputs.ARTIFACT_URL }}"
+            DEST="${{ secrets.STAGING_DEST_APP03 }}"
+            SERVICE="${{ secrets.STAGING_SERVICE_APP03 }}"
+            BACKEND_PORT="${{ secrets.STAGING_BACKEND_PORT_APP03 }}"
+            SHORT="${{ env.SHORT_SHA }}"
+
+            echo "=== Deploying ${{ github.repository }} -> app-03 ==="
+            echo "    dest=$DEST service=$SERVICE backend_port=$BACKEND_PORT short_sha=$SHORT"
+            echo "    url=${ARTIFACT_URL:0:80}..."
+
+            # 1. Download artifact
+            cd /tmp
+            rm -f release.tar.gz
+            curl -fsS -o release.tar.gz "$ARTIFACT_URL"
+            echo "    downloaded: $(ls -lh release.tar.gz | awk '{print $5}')"
+
+            # 2. Cleanup destination (sin bak, sin rollback: cada deploy reemplaza)
+            if [ -n "$DEST" ] && [ -d "$DEST" ]; then
+              find "$DEST" -mindepth 1 -delete
+            else
+              mkdir -p "$DEST"
+            fi
+
+            # 3. Extract
+            tar -xzf release.tar.gz -C "$DEST"
+            rm -f release.tar.gz
+
+            # 3b. Upsert reCAPTCHA en EnvironmentFile
+            ENV_FILE="$(systemctl cat "$SERVICE" 2>/dev/null | grep -oP '^EnvironmentFile=-?\K\S+' | head -1 || true)"
+            if [ -n "$ENV_FILE" ]; then
+              case "$ENV_FILE" in
+                /*) ;;
+                *) ENV_FILE="/etc/systemd/system/$ENV_FILE" ;;
+              esac
+              touch "$ENV_FILE"
+              for kv in \
+                "RECAPTCHA_ENABLED=${RECAPTCHA_ENABLED:-false}" \
+                "RECAPTCHA_SECRET_KEY=${RECAPTCHA_SECRET_KEY:-}" \
+                "RECAPTCHA_MIN_SCORE=${RECAPTCHA_MIN_SCORE:-0.5}"; do
+                key="${kv%%=*}"
+                if grep -q "^${key}=" "$ENV_FILE" 2>/dev/null; then
+                  sed -i "s|^${key}=.*|${kv}|" "$ENV_FILE"
+                else
+                  printf '%s\n' "$kv" >> "$ENV_FILE"
+                fi
+              done
+              echo "    recaptcha env aplicado en $ENV_FILE (ENABLED=${RECAPTCHA_ENABLED:-false})"
+            fi
+
+            # 4. Restart + health check
+            systemctl restart "$SERVICE"
+            HEALTH=""
+            for i in 1 2 3 4 5 6 7 8 9 10; do
+              sleep 2
+              HEALTH=$(curl -fsS -m 3 "http://127.0.0.1:${BACKEND_PORT}/api/v1/health/live" 2>/dev/null || echo "")
+              if echo "$HEALTH" | grep -q '"status":"ok"'; then
+                echo "    health/live OK on try $i: $HEALTH"
+                break
+              fi
+              echo "    health/live try $i not ready: ${HEALTH:-:---no-response---}"
+            done
+            if echo "$HEALTH" | grep -q '"status":"ok"'; then
+              echo "    app-03 backend live OK"
+            else
+              echo "::error::Backend health check failed after 20s"
+              journalctl -u "$SERVICE" --no-pager -n 20 2>&1 || true
+              exit 1
+            fi
+
+            # 5. Verify version on droplet
+            VERSION_FILE="$DEST/version_meta/version.json"
+            if [ ! -f "$VERSION_FILE" ]; then
+              echo "::error::version_meta/version.json no existe en $VERSION_FILE"
+              exit 1
+            fi
+            DEPLOYED_SHORT=$(python3 -c "import json,sys; print(json.load(open('$VERSION_FILE'))['short'])" 2>/dev/null || grep -oP '"short":"\K[^"]+' "$VERSION_FILE" | head -1)
+            if [ "$DEPLOYED_SHORT" != "$SHORT" ]; then
+              echo "::error::Version mismatch: deployed=$DEPLOYED_SHORT expected=$SHORT"
+              exit 1
+            fi
+            echo "    app-03 version verified: $DEPLOYED_SHORT"
+            echo "=== Deploy app-03 OK ==="
+
+      - name: Purge CF cache (hostnames afectados)
+        if: success()
+        env:
+          CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          REPO="${{ github.repository }}"
+          case "$REPO" in
+            "YacaTec-Vales/backend-api")
+              HOSTS='["api.taquizaschavez.com.mx","taquizaschavez.com.mx","www.taquizaschavez.com.mx"]' ;;
+            "YacaTec-Vales/frontend-desktop-Tecu")
+              HOSTS='["taquizaschavez.com.mx","www.taquizaschavez.com.mx"]' ;;
+            "YacaTec-Vales/frontend-tablet-calipx")
+              HOSTS='["calipx.taquizaschavez.com.mx"]' ;;
+            "YacaTec-Vales/frontend-mobile-poch")
+              HOSTS='["poch.taquizaschavez.com.mx"]' ;;
+            *)
+              echo "::error::Repositorio sin mapeo de purge: $REPO"
+              exit 1
+              ;;
+          esac
+
+          RESP=$(curl -sS -X GET \
+            "https://api.cloudflare.com/client/v4/zones?name=taquizaschavez.com.mx" \
+            -H "Authorization: Bearer ${CF_API_TOKEN}" \
+            -H "Content-Type: application/json")
+          OK=$(echo "$RESP" | jq -r '.success')
+          if [ "$OK" != "true" ]; then
+            echo "::error::No se pudo listar la zona: $RESP"
+            exit 1
+          fi
+          ZID=$(echo "$RESP" | jq -r '.result[0].id')
+          if [ -z "$ZID" ] || [ "$ZID" = "null" ]; then
+            echo "::error::Zona taquizaschavez.com.mx no encontrada"
+            exit 1
+          fi
+          echo "Zone id: $ZID"
+
+          RESP=$(curl -sS -X POST \
+            "https://api.cloudflare.com/client/v4/zones/${ZID}/purge_cache" \
+            -H "Authorization: Bearer ${CF_API_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "{\"hosts\":${HOSTS}}")
+          echo "$RESP" | jq .
+          if [ "$(echo "$RESP" | jq -r '.success')" = "true" ]; then
+            echo "CF cache purged for hosts: $HOSTS"
+          else
+            echo "::error::Purge fallo"
+            exit 1
+          fi
+
+      - name: Delete tarball from Spaces (cero retencion)
+        if: success()
+        env:
+          REPO: ${{ github.repository }}
+          SHORT: ${{ env.SHORT_SHA }}
+        run: |
+          REPO_NAME=$(basename "$REPO")
+          aws s3 rm "s3://misvales-storage/staging-builds/${REPO_NAME}-${SHORT}.tar.gz" \
+            --endpoint-url https://sfo3.digitaloceanspaces.com || true
+          echo "Tarball borrado de Spaces (cero retencion)"
 
       - name: Summary
         if: always()
@@ -345,4 +402,5 @@ jobs:
           echo "- **Merge commit**: \`${{ github.event.pull_request.merge_commit_sha }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Short SHA**: \`${{ env.SHORT_SHA }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Result**: ${{ job.status }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- **Destino**: \`${{ secrets.STAGING_DEST }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Destino app-02**: \`${{ secrets.STAGING_DEST }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Destino app-03**: \`${{ secrets.STAGING_DEST_APP03 }}\`" >> "$GITHUB_STEP_SUMMARY"

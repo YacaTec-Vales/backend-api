@@ -20,11 +20,12 @@ import { DatabaseModule } from '../database/database.module';
 import { BranchesController } from './branches.controller';
 import { BranchesService } from './branches.service';
 import { BranchesRepository } from './branches.repository';
+import { BranchCutoffRepository } from '../database/repositories/branch-cutoff.repository';
 
 @Module({
   imports: [AuthModule, DatabaseModule],
   controllers: [BranchesController],
-  providers: [BranchesRepository, BranchesService],
+  providers: [BranchesRepository, BranchesService, BranchCutoffRepository],
   exports: [BranchesService, BranchesRepository],
 })
 export class BranchesModule {}

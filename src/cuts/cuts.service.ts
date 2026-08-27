@@ -265,7 +265,10 @@ export class CutService {
         ? Number(seguroRegla.ranges[0].insurance_cents)
         : 0;
 
-    // 5. Detectar si el pago esta vencido o anticipado.
+    // 5. Detectar comportamiento del pago (spec reglas-2.0 §8.3.1).
+    //   anticipado:  cutWindowStart <= hoy <= earlyEnd
+    //   puntual:     earlyEnd < hoy <= paymentDeadlineDate   (no anticipado, no vencido)
+    //   fuera de tiempo: hoy > paymentDeadlineDate
     const todayIso = cutDate; // El corte ocurre en la fecha de corte.
     const earlyEnd = this.addDaysIso(
       paymentDeadlineDate,
@@ -327,7 +330,8 @@ export class CutService {
         totalCents: number;
       }> = [];
 
-      for (const v of list) {
+      for (let vi = 0; vi < list.length; vi++) {
+        const v = list[vi];
         const amount = Number(v.amountCents);
         const periods = v.totalPeriods;
 
@@ -359,6 +363,13 @@ export class CutService {
         // --- Paso 4: Pago Quincenal (Cuota Base del Cliente) ---
         // Pago Quincenal = Deuda Total / Numero de Quincenas
         const fortnightlyPayment = Math.floor(totalDebt / periods);
+        // Remanente por truncamiento (centavos). Lo absorbe el primer
+        // vale del grupo del Distribuidor para mantener el invariante
+        // sum(fortnightlyPayment * periods) == sum(totalDebt).
+        // (No se persiste; queda implicito en el detail row.)
+        const roundingCents = totalDebt - fortnightlyPayment * periods;
+        const fortnightlyPaymentApplied =
+          vi === 0 ? fortnightlyPayment + roundingCents : fortnightlyPayment;
 
         // --- Paso 5: Ganancia de la Distribuidora por Quincena ---
         // Ganancia Quincenal = (Cantidad Vale * Categoria %) / Numero de Quincenas
@@ -402,7 +413,7 @@ export class CutService {
           interestCents: interestTotal,
           insuranceCents: insurance,
           totalDebtCents: totalDebt,
-          fortnightlyPaymentCents: fortnightlyPayment,
+          fortnightlyPaymentCents: fortnightlyPaymentApplied,
           distributorGainCents: distributorGain,
           punctualPaymentCents: punctualPayment,
           penaltiesCents: penalty,
@@ -411,16 +422,22 @@ export class CutService {
       }
 
       // Puntos del Distribuidor.
+      // Spec (reglas-2.0 §8.3.1):
+      //   anticipado: base * multiplicador
+      //   puntual:   base (sin bonificacion)
+      //   fuera de tiempo: base * (1 - penalizacion)
       const basePoints = Math.floor(distributorAmount / pointsDivisorCents);
       const multiplied = Math.floor((basePoints * pointsMultiplierBps) / 10000);
-      let pointsAwarded = qualifiesAsEarly ? multiplied : 0;
-      if (pointsAwarded > 0 && !qualifiesAsEarly) {
-        // Pago fuera de tiempo (despues del deadline pero igual hacemos el corte):
-        // descuento segun regla.
+      let pointsAwarded: number;
+      if (qualifiesAsEarly) {
+        pointsAwarded = multiplied;
+      } else if (isLate) {
         const reduction = Math.floor(
-          (pointsAwarded * pointsLatePenaltyBps) / 10000,
+          (basePoints * pointsLatePenaltyBps) / 10000,
         );
-        pointsAwarded = Math.max(0, pointsAwarded - reduction);
+        pointsAwarded = Math.max(0, basePoints - reduction);
+      } else {
+        pointsAwarded = basePoints;
       }
 
       // 8. Crear relacion (1 por Distribuidor).

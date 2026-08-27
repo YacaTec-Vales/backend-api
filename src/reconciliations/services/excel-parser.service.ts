@@ -36,45 +36,73 @@ export class ExcelParserService {
       });
     }
 
-    // El requerimiento establece exclusivamente el rango A1:H4
-    // Rango de datos A2:H4 considerando que A1:H1 son los encabezados
+    // Rango de datos A2:H{N}. Antes: A2:H4 hardcodeado, lo que truncaba
+    // archivos con mas de 3 movimientos. Ahora: cualquier fila con datos
+    // validos hasta la ultima fila con contenido de la hoja. El limite
+    // 10000 es un safeguard por si '!ref' viene vacio.
+    const lastRow = this.resolveLastDataRow(sheet);
     const rows = xlsx.utils.sheet_to_json<Record<string, unknown>>(sheet, {
       header: 'A',
-      range: 'A2:H4',
+      range: `A2:H${lastRow}`,
       raw: true,
     });
 
-    const parsedMovements: BankMovementRow[] = rows.map((row) => {
-      // Ignoramos errores ortográficos en Concepto y extraemos limpiamente usando las letras de columnas
-      const itemRaw = row['A'];
-      const conceptRaw = row['B'];
-      const referenceRaw = row['C'];
-      const paymentRaw = row['D'];
-      const folioRaw = row['E'];
-      const dateRaw = row['F'];
-      const timeRaw = row['G'];
-      const typeRaw = row['H'];
+    const parsedMovements: BankMovementRow[] = rows
+      .map((row) => {
+        // Ignoramos errores ortográficos en Concepto y extraemos limpiamente usando las letras de columnas
+        const itemRaw = row['A'];
+        const conceptRaw = row['B'];
+        const referenceRaw = row['C'];
+        const paymentRaw = row['D'];
+        const folioRaw = row['E'];
+        const dateRaw = row['F'];
+        const timeRaw = row['G'];
+        const typeRaw = row['H'];
 
-      const parseString = (v: unknown): string => {
-        if (typeof v === 'string') return v.trim();
-        if (typeof v === 'number') return String(v);
-        return '';
-      };
+        const parseString = (v: unknown): string => {
+          if (typeof v === 'string') return v.trim();
+          if (typeof v === 'number') return String(v);
+          return '';
+        };
 
-      return {
-        item: typeof itemRaw === 'number' ? itemRaw : null,
-        concept: parseString(conceptRaw),
-        reference: parseString(referenceRaw),
-        paymentAmount: this.normalizePayment(paymentRaw),
-        paymentFolio: parseString(folioRaw),
-        paymentDate: this.normalizeDate(dateRaw),
-        paymentTime: this.normalizeTime(timeRaw),
-        paymentType: this.normalizePaymentType(parseString(typeRaw)),
-        rawRow: row,
-      };
-    });
+        return {
+          item: typeof itemRaw === 'number' ? itemRaw : null,
+          concept: parseString(conceptRaw),
+          reference: parseString(referenceRaw),
+          paymentAmount: this.normalizePayment(paymentRaw),
+          paymentFolio: parseString(folioRaw),
+          paymentDate: this.normalizeDate(dateRaw),
+          paymentTime: this.normalizeTime(timeRaw),
+          paymentType: this.normalizePaymentType(parseString(typeRaw)),
+          rawRow: row,
+        };
+      })
+      .filter(
+        (mv) =>
+          mv.reference !== '' ||
+          mv.paymentFolio !== '' ||
+          mv.paymentAmount > 0 ||
+          mv.paymentDate !== '',
+      );
 
     return parsedMovements;
+  }
+
+  /**
+   * Determina la ultima fila con contenido real de la hoja para
+   * acotar el rango de lectura. Usa '!ref' (e.g. 'A1:H47') que xlsx
+   * rellena al cargar el archivo; si falta, cae a 10000 como safeguard.
+   */
+  private resolveLastDataRow(sheet: xlsx.WorkSheet): number {
+    const ref = sheet['!ref'];
+    if (typeof ref === 'string') {
+      const match = ref.match(/[A-Z]+(\d+)$/);
+      if (match && match[1]) {
+        const row = Number(match[1]);
+        if (Number.isFinite(row) && row >= 2) return row;
+      }
+    }
+    return 10000;
   }
 
   /**

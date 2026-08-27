@@ -95,13 +95,14 @@ export class BranchCutoffRepository {
    * popular la primera configuracion de cortes al dar de alta una
    * Sucursal.
    *
-   * Conexion: `DRIZZLE_WRITE`.
+   * Conexion: `DRIZZLE_WRITE` (o `tx` si se pasa).
    */
-  async insert(data: NewBranchCutoffEntity): Promise<BranchCutoffEntity> {
-    const [row] = await this.writeDb
-      .insert(branchCutoffs)
-      .values(data)
-      .returning();
+  async insert(
+    data: NewBranchCutoffEntity,
+    tx?: DrizzleWrite,
+  ): Promise<BranchCutoffEntity> {
+    const db = tx ?? this.writeDb;
+    const [row] = await db.insert(branchCutoffs).values(data).returning();
     return row;
   }
 
@@ -109,13 +110,21 @@ export class BranchCutoffRepository {
    * Inserta muchas filas en una sola TX. Pensado para
    * `BranchesService.update` cuando se reemplazan los 2 cortes.
    *
+   * Si se pasa `tx`, las inserciones se ejecutan dentro de esa
+   * transaccion (util cuando el caller ya abrio una TX con
+   * `auditRepo.runWithContext` para que la FK contra `app.branch`
+   * vea la fila recien creada).
+   *
    * @param rows - Hasta 2 filas nuevas (quincenas 1 y 2).
+   * @param tx - Cliente Drizzle opcional dentro de una TX.
    */
   async insertMany(
     rows: NewBranchCutoffEntity[],
+    tx?: DrizzleWrite,
   ): Promise<BranchCutoffEntity[]> {
     if (rows.length === 0) return [];
-    return this.writeDb.insert(branchCutoffs).values(rows).returning();
+    const db = tx ?? this.writeDb;
+    return db.insert(branchCutoffs).values(rows).returning();
   }
 
   /**
@@ -123,9 +132,11 @@ export class BranchCutoffRepository {
    * el historial (no hard delete). Usado en soft-delete de la Sucursal.
    *
    * @param branchId - UUID de la Sucursal.
+   * @param tx - Cliente Drizzle opcional dentro de una TX.
    */
-  async deactivateByBranch(branchId: string): Promise<void> {
-    await this.writeDb
+  async deactivateByBranch(branchId: string, tx?: DrizzleWrite): Promise<void> {
+    const db = tx ?? this.writeDb;
+    await db
       .update(branchCutoffs)
       .set({ isActive: false, updatedAt: new Date() })
       .where(
