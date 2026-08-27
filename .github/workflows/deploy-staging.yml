@@ -117,7 +117,13 @@ jobs:
               echo "::error::STAGING_DIST no resuelve y no hay fallback para $REPO"
               exit 1
             fi
-            tar -czf /tmp/release.tar.gz -C "$DIST_PATH" . -C "$GITHUB_WORKSPACE/version_meta" version_meta
+            # Copiar version_meta dentro de DIST_PATH para que el
+            # tarbundle resultante tenga version_meta/version.json
+            # al raiz junto con los archivos del bundle Angular.
+            # (El antiguo `-C "$GITHUB_WORKSPACE/version_meta" version_meta`
+            # fallaba porque el path es relativo al -C anterior.)
+            cp -r "$GITHUB_WORKSPACE/version_meta" "$DIST_PATH/version_meta"
+            tar -czf /tmp/release.tar.gz -C "$DIST_PATH" .
           fi
 
           ls -lh /tmp/release.tar.gz
