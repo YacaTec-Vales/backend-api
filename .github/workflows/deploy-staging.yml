@@ -74,8 +74,13 @@ jobs:
       - name: Write version.json (build sha + timestamp)
         env:
           SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || github.sha }}
-          SHORT_SHA: ${{ env.SHORT_SHA }}
         run: |
+          # IMPORTANTE: calcular SHORT_SHA AQUI. Antes se referenciaba
+          # ${{ env.SHORT_SHA }} que aun no existia (Package artifact
+          # lo setea en GITHUB_ENV mas tarde), escribiendo short: ""
+          # en version.json y rompiendo la verificacion del deploy SSH.
+          SHORT_SHA="${SHA:0:7}"
+          echo "SHORT_SHA=$SHORT_SHA" >> "$GITHUB_ENV"
           mkdir -p version_meta
           TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           printf '{"sha":"%s","short":"%s","built_at":"%s","repo":"%s"}\n' \
@@ -87,20 +92,29 @@ jobs:
         id: package
         env:
           REPO: ${{ github.repository }}
-          SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || github.sha }}
+          SHORT_SHA: ${{ env.SHORT_SHA }}
         run: |
-          SHORT_SHA="${SHA:0:7}"
-          echo "SHORT_SHA=$SHORT_SHA" >> "$GITHUB_ENV"
-
           cd "$GITHUB_WORKSPACE"
 
           if [ "$REPO" = "YacaTec-Vales/backend-api" ]; then
             tar -czf /tmp/release.tar.gz \
               dist package.json package-lock.json node_modules version_meta
           else
+            # Fallback hardcoded dist/<project>/browser si STAGING_DIST
+            # no resuelve (algunos environments tenian el secret pero
+            # bash interpolation daba vacio). Path viene de angular.json
+            # outputPath + subcarpeta browser/.
             DIST_PATH="${{ secrets.STAGING_DIST }}"
+            case "$REPO" in
+              "YacaTec-Vales/frontend-mobile-poch")
+                DIST_PATH="${DIST_PATH:-dist/frontend-mobile-poch/browser}" ;;
+              "YacaTec-Vales/frontend-tablet-calipx")
+                DIST_PATH="${DIST_PATH:-dist/frontend-tablet-calpix/browser}" ;;
+              "YacaTec-Vales/frontend-desktop-Tecu")
+                DIST_PATH="${DIST_PATH:-dist/frontend-desktop-tecu/browser}" ;;
+            esac
             if [ -z "$DIST_PATH" ]; then
-              echo "::error::STAGING_DIST secret not set for $REPO"
+              echo "::error::STAGING_DIST no resuelve y no hay fallback para $REPO"
               exit 1
             fi
             tar -czf /tmp/release.tar.gz -C "$DIST_PATH" . -C "$GITHUB_WORKSPACE/version_meta" version_meta
