@@ -16,7 +16,7 @@
  * @since 2.2.0
  */
 
-import { Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { eq, inArray, isNull } from 'drizzle-orm';
 import {
   DRIZZLE_WRITE,
@@ -99,6 +99,19 @@ export class ConfigurationRepository {
     const writeDb = tx ?? this.writeDb;
     const updated: ConfigurationEntity[] = [];
     for (const change of changes) {
+      // Validacion de existencia: si la clave no existe en BD, fallamos
+      // con 400 (no 404, ya que el caller ya paso un update valido).
+      // NOTA: la validacion de shape (cents vs bps) la hace el service
+      // (caller), porque el schema actual solo expone la columna jsonb
+      // \`value\` (sin columnas separadas valueCents/valueBps). Si en
+      // el futuro se agregan esas columnas, mover este check aca.
+      const current = await this.findByKey(change.key);
+      if (!current) {
+        throw new BadRequestException({
+          code: 'BUSINESS_CONFIG.UNKNOWN_KEY',
+          message: `business_config: clave desconocida ${change.key}`,
+        });
+      }
       const [row] = await writeDb
         .update(configuration)
         .set({

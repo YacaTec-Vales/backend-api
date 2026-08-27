@@ -18,7 +18,11 @@
  * @since 1.0.0
  */
 
-import { Inject, Injectable } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import { and, desc, eq, isNull } from 'drizzle-orm';
 import {
   DRIZZLE_WRITE,
@@ -269,9 +273,11 @@ export class VoucherRepository {
       )
       .limit(1);
     if (!existing) {
-      throw new Error(
-        `voucher_folio_sequence row missing immediately after upsert`,
-      );
+      throw new InternalServerErrorException({
+        code: 'VOUCHER.FOLIO_SEQ_INCONSISTENT',
+        message:
+          'inconsistencia en la secuencia de folios del voucher; la fila no existe tras el upsert',
+      });
     }
     const nextSeq = existing.lastSeq + 1;
     await this.writeDb

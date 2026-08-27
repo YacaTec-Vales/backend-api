@@ -17,7 +17,12 @@
  * @since 2.4.0
  */
 
-import { Inject, Injectable } from '@nestjs/common';
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   DRIZZLE_WRITE,
   DRIZZLE_READ,
@@ -219,13 +224,17 @@ export class CreditRaiseRepository {
         [input.id],
       );
       if (lock.rows.length === 0) {
-        throw new Error('CREDIT_RAISE.NOT_FOUND');
+        throw new NotFoundException({
+          code: 'CREDIT_RAISE.NOT_FOUND',
+          message: 'la solicitud de aumento de credito no existe',
+        });
       }
       const current = lock.rows[0];
       if (current['status'] !== 'PENDING') {
-        throw new Error(
-          `CREDIT_RAISE.ALREADY_DECIDED:${String(current['status'])}`,
-        );
+        throw new ConflictException({
+          code: 'CREDIT_RAISE.ALREADY_DECIDED',
+          message: `la solicitud ya fue decidida (${String(current['status'])})`,
+        });
       }
       const distributorId = String(current['distributor_id']);
       const fromCreditLimitCents = Number(current['from_credit_limit_cents']);
@@ -325,12 +334,16 @@ export class CreditRaiseRepository {
         [input.id],
       );
       if (lock.rows.length === 0) {
-        throw new Error('CREDIT_RAISE.NOT_FOUND');
+        throw new NotFoundException({
+          code: 'CREDIT_RAISE.NOT_FOUND',
+          message: 'la solicitud de aumento de credito no existe',
+        });
       }
       if (lock.rows[0]['status'] !== 'PENDING') {
-        throw new Error(
-          `CREDIT_RAISE.ALREADY_DECIDED:${String(lock.rows[0]['status'])}`,
-        );
+        throw new ConflictException({
+          code: 'CREDIT_RAISE.ALREADY_DECIDED',
+          message: `la solicitud ya fue decidida (${String(lock.rows[0]['status'])})`,
+        });
       }
       const updated = await this.writePool.query(
         `UPDATE app.credit_raise_request

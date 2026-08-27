@@ -53,6 +53,7 @@
 import {
   BadRequestException,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
@@ -211,18 +212,26 @@ export class CutService {
     const extractNumber = (key: string, prop: string): number => {
       const item = configMap.get(key);
       if (!item || item.value === null || item.value === undefined) {
-        throw new Error(
-          `configuration: clave ${key} no encontrada o sin value`,
-        );
+        throw new InternalServerErrorException({
+          code: 'BUSINESS_CONFIG.MISSING_VALUE',
+          message: `business_config: clave ${key} no encontrada o sin value`,
+          details: { key, expectedShape: prop },
+        });
       }
       if (typeof item.value !== 'object' || Array.isArray(item.value)) {
-        throw new Error(`configuration: ${key} no es objeto jsonb`);
+        throw new InternalServerErrorException({
+          code: 'BUSINESS_CONFIG.INVALID_SHAPE',
+          message: `business_config: ${key} no es objeto jsonb`,
+          details: { key, actualType: typeof item.value },
+        });
       }
       const num = (item.value as Record<string, unknown>)[prop];
       if (typeof num !== 'number') {
-        throw new Error(
-          `configuration: ${key}.${prop} no es number (recibido ${typeof num})`,
-        );
+        throw new InternalServerErrorException({
+          code: 'BUSINESS_CONFIG.INVALID_SHAPE',
+          message: `business_config: ${key}.${prop} no es number (recibido ${typeof num})`,
+          details: { key, prop, actualType: typeof num },
+        });
       }
       return num;
     };
