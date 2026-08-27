@@ -35,6 +35,7 @@ import {
 import { Transform, Type } from 'class-transformer';
 import { BranchCutoffInputDto } from './branch-cutoff-response.dto';
 import { IsAtLeastFiveDaysAfterCutoff } from './validators/payment-day-after-cutoff.validator';
+import { IsCompletePaymentSchedule } from './validators/payment-schedule.validator';
 
 /**
  * Solo trim. Aplica a nombres y direcciones.
@@ -65,6 +66,7 @@ const folioPrefixToUpper = ({ value }: { value: unknown }): unknown => {
  *    `paymentDay`, `cutoffTime`, `paymentTime`) sobre su propia
  *    sucursal (`BranchesService.assertActorCanUpdate`).
  */
+@IsCompletePaymentSchedule({ require: false })
 export class UpdateBranchDto {
   @ApiPropertyOptional({
     example: 'Sucursal Norte',

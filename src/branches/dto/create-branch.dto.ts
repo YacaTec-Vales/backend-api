@@ -37,6 +37,7 @@ import {
 import { Transform, Type } from 'class-transformer';
 import { BranchCutoffInputDto } from './branch-cutoff-response.dto';
 import { IsAtLeastFiveDaysAfterCutoff } from './validators/payment-day-after-cutoff.validator';
+import { IsCompletePaymentSchedule } from './validators/payment-schedule.validator';
 
 /**
  * Convierte el folioPrefix a MAYUSCULAS antes de validar. Asi el
@@ -72,6 +73,7 @@ const HHMM_REGEX = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
  *  - El manager no puede estar asignado a otra sucursal
  *    (`BRANCH.MANAGER_ALREADY_ASSIGNED`).
  */
+@IsCompletePaymentSchedule({ require: true })
 export class CreateBranchDto {
   @ApiProperty({ example: 'Sucursal Norte', minLength: 3, maxLength: 100 })
   @IsString()

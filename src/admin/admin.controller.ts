@@ -13,8 +13,13 @@ import {
   Controller,
   Get,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { AdminService } from './admin.service';
+import {
+  ApiBearerAuth,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
+import { AdminService, type BootstrapStatusDto } from './admin.service';
 
 /**
  * Tags OpenAPI para Scalar.
@@ -36,22 +41,26 @@ export class AdminController {
    * Indica si el sistema esta inicializado (MATRIZ + GG creados).
    * Usado por el dashboard del administrador para decidir si
    * mostrar el wizard de bootstrap.
+   *
+   * Ademas devuelve nombre, UUID y folioPrefix de la MATRIZ, y
+   * nombre, email y UUID del Gerente General activo. Asi el
+   * dashboard puede mostrar identificadores reales sin disparar
+   * llamadas adicionales a /branches/:id o /users/:id.
    */
   @Get('bootstrap/status')
   @ApiOperation({
     summary: 'Estado del bootstrap inicial',
     description:
-      'Devuelve hasMatriz/hasGeneralManager/bootstrapComplete. ' +
-      'El admin usa esto para decidir si muestra el wizard de ' +
-      'bootstrap (cuando faltan matriz o GG).',
+      'Devuelve hasMatriz/hasGeneralManager/bootstrapComplete y los ' +
+      'datos basicos de cada uno (nombre, UUID, folioPrefix para ' +
+      'MATRIZ; nombre, email, UUID para GG). El admin usa esto para ' +
+      'decidir si muestra el wizard de bootstrap y para mostrar la ' +
+      'tarjeta de estado del sistema.',
   })
-  async getBootstrapStatus(): Promise<{
-    hasMatriz: boolean;
-    matriz: string | null;
-    hasGeneralManager: boolean;
-    generalManager: string | null;
-    bootstrapComplete: boolean;
-  }> {
+  @ApiOkResponse({
+    description: 'Estado del bootstrap con datos basicos.',
+  })
+  async getBootstrapStatus(): Promise<BootstrapStatusDto> {
     return this.adminService.getBootstrapStatus();
   }
 }
