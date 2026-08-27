@@ -89,6 +89,7 @@ export class BranchesService {
       page: query.page ?? 1,
       limit: query.limit ?? 20,
       branchType: query.branchType,
+      esMatriz: query.esMatriz,
       isActive: query.isActive,
       search: query.search,
       sortBy: query.sortBy ?? 'createdAt',

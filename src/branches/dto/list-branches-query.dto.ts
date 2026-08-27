@@ -8,7 +8,7 @@
  */
 
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
   IsIn,
@@ -18,6 +18,23 @@ import {
   Max,
   Min,
 } from 'class-validator';
+
+/**
+ * Convierte un string/number a boolean de forma robusta.
+ *
+ * `class-transformer`'s `@Type(() => Boolean)` falla en query params:
+ * `Boolean('false')` -> `true` (truthy). Aqui manejamos los 4 casos:
+ * 'true', '1', 1, true -> true. Cualquier otra cosa -> false.
+ */
+const toBoolean = ({ value }: { value: unknown }): unknown => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string') {
+    const v = value.trim().toLowerCase();
+    return v === 'true' || v === '1';
+  }
+  return false;
+};
 
 /**
  * DTO de filtros para listado de sucursales.
@@ -34,13 +51,13 @@ export class ListBranchesQueryDto {
       'puede pasar `true`; los demas roles son scope-forbidden.',
   })
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(toBoolean)
   @IsBoolean()
   esMatriz?: boolean;
 
   @ApiPropertyOptional()
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(toBoolean)
   @IsBoolean()
   isActive?: boolean;
 

@@ -35,6 +35,7 @@ export interface BranchListFilters {
   page: number;
   limit: number;
   branchType?: 'MATRIZ' | 'SUCURSAL';
+  esMatriz?: boolean;
   isActive?: boolean;
   search?: string;
   sortBy: 'name' | 'createdAt' | 'branchType';
@@ -521,6 +522,9 @@ export class BranchesRepository {
     }
     if (filters.isActive !== undefined) {
       conditions.push(eq(branches.isActive, filters.isActive));
+    }
+    if (filters.esMatriz !== undefined) {
+      conditions.push(eq(branches.esMatriz, filters.esMatriz));
     }
     if (filters.search && filters.search.trim().length > 0) {
       const term = `%${filters.search.trim().toLowerCase()}%`;
