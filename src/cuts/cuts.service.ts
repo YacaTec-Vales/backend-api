@@ -209,24 +209,28 @@ export class CutService {
     const config = await this.businessConfig.list();
     const configMap = new Map(config.map((c) => [c.key, c]));
 
-    const getCents = (k: string): number => {
-      const item = configMap.get(k);
-      if (!item || item.valueCents === null) {
+    const extractNumber = (key: string, prop: string): number => {
+      const item = configMap.get(key);
+      if (!item || item.value === null || item.value === undefined) {
         throw new InternalServerErrorException({
           code: 'BUSINESS_CONFIG.MISSING_VALUE',
-          message: `business_config: la clave ${k} no tiene valueCents`,
-          details: { key: k, expectedShape: 'cents' },
+          message: `business_config: clave ${key} no encontrada o sin value`,
+          details: { key, expectedShape: prop },
         });
       }
-      return item.valueCents;
-    };
-    const getBps = (k: string): number => {
-      const item = configMap.get(k);
-      if (!item || item.valueBps === null) {
+      if (typeof item.value !== 'object' || Array.isArray(item.value)) {
         throw new InternalServerErrorException({
-          code: 'BUSINESS_CONFIG.MISSING_VALUE',
-          message: `business_config: la clave ${k} no tiene valueBps`,
-          details: { key: k, expectedShape: 'bps' },
+          code: 'BUSINESS_CONFIG.INVALID_SHAPE',
+          message: `business_config: ${key} no es objeto jsonb`,
+          details: { key, actualType: typeof item.value },
+        });
+      }
+      const num = (item.value as Record<string, unknown>)[prop];
+      if (typeof num !== 'number') {
+        throw new InternalServerErrorException({
+          code: 'BUSINESS_CONFIG.INVALID_SHAPE',
+          message: `business_config: ${key}.${prop} no es number (recibido ${typeof num})`,
+          details: { key, prop, actualType: typeof num },
         });
       }
       return num;

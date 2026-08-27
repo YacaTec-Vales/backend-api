@@ -17,7 +17,7 @@
  */
 
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
-import { eq, inArray, sql } from 'drizzle-orm';
+import { eq, inArray, isNull } from 'drizzle-orm';
 import {
   DRIZZLE_WRITE,
   DRIZZLE_READ,
