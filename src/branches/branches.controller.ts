@@ -37,6 +37,7 @@ import {
   ApiForbiddenResponse,
   ApiNoContentResponse,
   ApiNotFoundResponse,
+  ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnprocessableEntityResponse,
@@ -259,5 +260,53 @@ export class BranchesController {
   ): Promise<void> {
     const ctx = contextFromRequest(req);
     return this.branchesService.softDelete(actor, id, ctx);
+  }
+
+  /**
+   * @api {post} /branches/:id/transfer-matriz Transferir cualidad de matriz
+   * @apiName TransferMatriz
+   * @apiGroup Branches
+   * @apiPermission branch.transfer.matriz
+   *
+   * Convierte la sucursal `:id` en la nueva MATRIZ del sistema.
+   * La antigua matriz (si existe) deja de serlo y se le quita el gerente.
+   *
+   * Solo el rol ADMINISTRADOR puede ejecutar esta operacion. Pensada
+   * para escenarios de expansion regional donde la casa matriz
+   * cambia de direccion fisica o juridica.
+   */
+  @Post(':id/transfer-matriz')
+  @RequirePermissions('branch.transfer.matriz')
+  @ApiOperation({
+    summary: 'Transferir la cualidad de matriz a otra sucursal',
+    description:
+      'Convierte la sucursal indicada en la nueva MATRIZ. La ' +
+      'anterior matriz (si existe) pasa a SUCURSAL y se le quita ' +
+      'el gerente. La nueva matriz tambien pierde su gerente (si ' +
+      'lo tenia) porque el GG pertenece unicamente a la matriz.',
+  })
+  @ApiOkResponse({
+    description: 'Sucursal actualizada como nueva matriz.',
+    type: BranchResponseDto,
+  })
+  @ApiNotFoundResponse({
+    description: 'BRANCH.NOT_FOUND.',
+    type: ErrorResponseDto,
+  })
+  @ApiConflictResponse({
+    description: 'BRANCH.ALREADY_MATRIZ / BRANCH.TYPE_LOCKED.',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description: 'AUTH.PERMISSION_DENIED / BRANCH.TRANSFER_FORBIDDEN.',
+    type: ErrorResponseDto,
+  })
+  transferMatriz(
+    @CurrentUser() actor: RequestUser,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Req() req: Request,
+  ): Promise<BranchResponseDto> {
+    const ctx = contextFromRequest(req);
+    return this.branchesService.transferMatriz(actor, ctx, id);
   }
 }

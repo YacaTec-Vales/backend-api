@@ -111,6 +111,8 @@ export const AUDIT_ACTIONS = [
   'CREDIT_RAISE.REQUESTED',
   'CREDIT_RAISE.APPROVED',
   'CREDIT_RAISE.REJECTED',
+  // Sucursales (matriz transfer)
+  'BRANCH.TRANSFER_MATRIZ',
 ] as const;
 
 /**

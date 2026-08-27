@@ -52,6 +52,7 @@ export interface BranchAdminRow {
   esMatriz: boolean;
   address: string | null;
   managerUserId: string | null;
+  folioPrefix: string | null;
   cutoffDay: number | null;
   paymentDay: number | null;
   earlyPaymentDays: number | null;
@@ -132,6 +133,63 @@ export class BranchesRepository {
   }
 
   /**
+   * Transfiere la cualidad de MATRIZ entre dos sucursales en una sola
+   * transaccion. La antigua matriz deja de serlo y se le quita su
+   * gerente (porque el GG pertenece solo a la nueva matriz).
+   *
+   * Pasos:
+   *  1. UPDATE branch_old SET es_matriz=false, manager_user_id=NULL
+   *     WHERE id = branchOldId.
+   *  2. UPDATE branch_new SET es_matriz=true, manager_user_id=NULL
+   *     WHERE id = branchNewId (la nueva matriz NO puede tener GS).
+   *  3. Retorna ambas filas para que el caller pueda emitir audit.
+   *
+   * Conexion: `DRIZZLE_WRITE` (recibe TX del caller para atomicidad).
+   *
+   * @param tx - Transaccion de escritura.
+   * @param branchOldId - UUID de la matriz actual (puede no existir).
+   * @param branchNewId - UUID de la sucursal que sera la nueva matriz.
+   */
+  async transferMatriz(
+    tx: DrizzleWrite,
+    branchOldId: string | null,
+    branchNewId: string,
+  ): Promise<{ old: BranchEntity | null; next: BranchEntity }> {
+    if (branchOldId && branchOldId !== branchNewId) {
+      await tx
+        .update(branches)
+        .set({
+          esMatriz: false,
+          managerUserId: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(branches.id, branchOldId));
+    }
+    const [next] = await tx
+      .update(branches)
+      .set({
+        esMatriz: true,
+        managerUserId: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(branches.id, branchNewId))
+      .returning();
+    if (!next) {
+      throw new Error('branch.transferMatriz: nueva matriz no encontrada');
+    }
+    let old: BranchEntity | null = null;
+    if (branchOldId) {
+      const [oldRow] = await tx
+        .select()
+        .from(branches)
+        .where(eq(branches.id, branchOldId))
+        .limit(1);
+      old = oldRow ?? null;
+    }
+    return { old, next };
+  }
+
+  /**
    * Busca la sucursal cuyo `manager_user_id` apunta al usuario
    * indicado. Util para validar la regla "un GS solo puede ser
    * gerente de una sucursal a la vez".
@@ -202,6 +260,7 @@ export class BranchesRepository {
         esMatriz: branches.esMatriz,
         address: branches.address,
         managerUserId: branches.managerUserId,
+        folioPrefix: branches.folioPrefix,
         cutoffDay: branches.cutoffDay,
         paymentDay: branches.paymentDay,
         earlyPaymentDays: branches.earlyPaymentDays,
@@ -248,6 +307,7 @@ export class BranchesRepository {
         esMatriz: r.esMatriz,
         address: r.address,
         managerUserId: r.managerUserId,
+        folioPrefix: r.folioPrefix ?? null,
         cutoffDay: r.cutoffDay,
         paymentDay: r.paymentDay,
         earlyPaymentDays: r.earlyPaymentDays,
