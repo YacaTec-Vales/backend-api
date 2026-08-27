@@ -840,6 +840,69 @@ export class UserRepository {
     return row?.c ?? 0;
   }
 
+  /**
+   * Busca el primer usuario activo (no soft-deleted) con el rol
+   * indicado. Pensado para casos donde el caller necesita UNA
+   * fila representativa (ej. bootstrap del sistema: el primer
+   * GERENTE_GENERAL activo). Si hay multiples, devuelve el mas
+   * antiguo (`created_at ASC`).
+   *
+   * Devuelve la misma proyeccion administrativa que
+   * `findByIdWithLastSession` (incluye `lastSession`), para que el
+   * caller pueda usar el mismo shape sin castear.
+   *
+   * Conexion: `DRIZZLE_READ`.
+   *
+   * @param roleCode - Rol a buscar (`UserType` enum).
+   * @returns Fila administrativa o `null` si no hay ningun activo.
+   */
+  async findActiveByRole(roleCode: UserType): Promise<UserAdminRow | null> {
+    const [row] = await this.readDb
+      .select({
+        id: users.id,
+        roleCode: users.roleCode,
+        branchId: users.branchId,
+        firstName: users.firstName,
+        lastNamePaternal: users.lastNamePaternal,
+        lastNameMaternal: users.lastNameMaternal,
+        email: users.email,
+        phone: users.phone,
+        username: users.username,
+        userStatus: users.userStatus,
+        isActive: users.isActive,
+        mustChangePassword: users.mustChangePassword,
+        mfaEnabled: users.mfaEnabled,
+        lastLoginAt: users.lastLoginAt,
+        createdAt: users.createdAt,
+        updatedAt: users.updatedAt,
+      })
+      .from(users)
+      .where(
+        and(
+          eq(users.roleCode, roleCode),
+          isNull(users.deletedAt),
+          eq(users.isActive, true),
+        ),
+      )
+      .orderBy(asc(users.createdAt))
+      .limit(1);
+    if (!row) return null;
+    // lastSession via listWithLastSessionInfo para un solo item
+    const { items } = await this.listWithLastSessionInfo(
+      {
+        page: 1,
+        limit: 1,
+        sortBy: 'createdAt',
+        sortOrder: 'desc',
+      },
+      { mode: 'all' },
+    );
+    return {
+      ...row,
+      lastSession: items[0]?.lastSession ?? null,
+    };
+  }
+
   // =========================================================================
   // HELPERS PRIVADOS
   // =========================================================================

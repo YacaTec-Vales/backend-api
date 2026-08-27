@@ -99,36 +99,17 @@ export class ConfigurationRepository {
     const writeDb = tx ?? this.writeDb;
     const updated: ConfigurationEntity[] = [];
     for (const change of changes) {
-      // Valida forma: una clave "cents" no acepta `valueBps` y
-      // viceversa. El caller (service) ya hace esto, pero el repo
-      // lo confirma para evitar escrituras corruptas.
+      // Validacion de existencia: si la clave no existe en BD, fallamos
+      // con 400 (no 404, ya que el caller ya paso un update valido).
+      // NOTA: la validacion de shape (cents vs bps) la hace el service
+      // (caller), porque el schema actual solo expone la columna jsonb
+      // \`value\` (sin columnas separadas valueCents/valueBps). Si en
+      // el futuro se agregan esas columnas, mover este check aca.
       const current = await this.findByKey(change.key);
       if (!current) {
         throw new BadRequestException({
           code: 'BUSINESS_CONFIG.UNKNOWN_KEY',
           message: `business_config: clave desconocida ${change.key}`,
-        });
-      }
-      const isCents =
-        current.valueCents !== null && current.valueCents !== undefined;
-      if (
-        isCents &&
-        change.valueBps !== undefined &&
-        change.valueBps !== null
-      ) {
-        throw new BadRequestException({
-          code: 'BUSINESS_CONFIG.SHAPE_MISMATCH',
-          message: `business_config: ${change.key} es monetario (cents), no acepta bps`,
-        });
-      }
-      if (
-        !isCents &&
-        change.valueCents !== undefined &&
-        change.valueCents !== null
-      ) {
-        throw new BadRequestException({
-          code: 'BUSINESS_CONFIG.SHAPE_MISMATCH',
-          message: `business_config: ${change.key} es porcentual (bps), no acepta cents`,
         });
       }
       const [row] = await writeDb
