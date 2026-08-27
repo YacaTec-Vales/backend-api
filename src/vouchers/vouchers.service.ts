@@ -45,7 +45,7 @@ import {
   type DrizzleRead,
   type DrizzleWrite,
 } from '../database/drizzle.provider';
-import { branches } from '../database/schema';
+import { branches, categories } from '../database/schema';
 import type { CreateVoucherDto } from './dto/create-voucher.dto';
 import type { VoucherResponseDto } from './dto/voucher-response.dto';
 import { toVoucherResponseDto } from '../shared/mappers';
@@ -234,6 +234,27 @@ export class VouchersService {
     );
     const folio = `D-${folioPrefix}-${today}-${String(nextSeq).padStart(5, '0')}`;
 
+    // 7b. Snapshot de la categoria actual de la distribuidora.
+    // El vale guarda su propia copia del % de ganancia para que el
+    // calculo del corte (`relation_detail.distributor_gain_cents`) sea
+    // estable aunque la distribuidora cambie de categoria despues.
+    // El corte usa `voucher.categoryCommissionBps`, no el valor
+    // vigente de `app.category`, por diseno (spec §6.4.1.0).
+    let categoryCommissionBps: number | null = null;
+    if (distributor.categoryId) {
+      const [cat] = await this.readDb
+        .select({ commissionBps: categories.commissionBps })
+        .from(categories)
+        .where(
+          and(
+            eq(categories.id, distributor.categoryId),
+            isNull(categories.deletedAt),
+          ),
+        )
+        .limit(1);
+      categoryCommissionBps = cat?.commissionBps ?? null;
+    }
+
     // 8. Calcular totales.
     // Spec (reglas-2.0 §8.1):
     //   totalToPay = capital + apertura + seguro + (interesPorQna * qnas)
@@ -295,8 +316,8 @@ export class VouchersService {
             deletedAt: null,
             createdAt: new Date(),
             updatedAt: new Date(),
-            categoryId: null,
-            categoryCommissionBps: null,
+            categoryId: distributor.categoryId ?? null,
+            categoryCommissionBps,
             openingCommissionBps: product.commissionBps,
             interestPerPeriodBps: product.interestPerPeriodBps,
             insuranceRuleSnapshot: {},
