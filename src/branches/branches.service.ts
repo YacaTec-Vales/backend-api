@@ -29,6 +29,7 @@ import {
 } from '@nestjs/common';
 import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 import { UserRepository } from '../database/repositories/user.repository';
+import { BranchCutoffRepository } from '../database/repositories/branch-cutoff.repository';
 import {
   BranchesRepository,
   type BranchAdminRow,
@@ -59,6 +60,7 @@ export class BranchesService {
   constructor(
     private readonly branchesRepo: BranchesRepository,
     private readonly userRepo: UserRepository,
+    private readonly branchCutoffRepo: BranchCutoffRepository,
     private readonly auditRepo: AuditLogRepository,
   ) {}
 
@@ -165,6 +167,11 @@ export class BranchesService {
    *  - Si `managerUserId` viene, debe existir, tener rol
    *    `GERENTE_SUCURSAL` y no estar asignado a otra sucursal.
    *
+   * Si el DTO incluye `cutoffs[]` (forma canonica), se persisten las
+   * 2 quincenas en `app.branch_cutoff` con `earlyPaymentDays`
+   * autocomputado. Si NO, se persiste la forma plana legacy en
+   * `app.branch` (tambien con `earlyPaymentDays` autocomputado).
+   *
    * @param actor - Usuario autenticado (debe ser `GERENTE_GENERAL`).
    * @param dto - Datos de la nueva sucursal.
    * @param ctx - Contexto de peticion (IP, UA, device).
@@ -198,6 +205,12 @@ export class BranchesService {
       dto.folioPrefix,
     );
 
+    // Autocomputar earlyPaymentDays para la forma plana legacy.
+    const legacyEarlyPaymentDays =
+      dto.cutoffDay != null && dto.paymentDay != null
+        ? BranchesService.computeEarlyPaymentDays(dto.paymentDay, dto.cutoffDay)
+        : null;
+
     const auditCtx: AuditWriteContext = {
       actorUserId: actor.id,
       action: 'USER.CREATE', // reusamos USER.CREATE; el trigger registra la tabla branch.
@@ -210,11 +223,12 @@ export class BranchesService {
         branchType: dto.branchType,
         esMatriz: dto.esMatriz ?? false,
         folioPrefix,
+        hasCutoffs: dto.cutoffs != null,
       },
     };
 
-    const entity = await this.auditRepo.runWithContext(auditCtx, async (tx) =>
-      this.branchesRepo.insert(
+    const entity = await this.auditRepo.runWithContext(auditCtx, async (tx) => {
+      const created = await this.branchesRepo.insert(
         {
           name: dto.name,
           branchType: dto.branchType,
@@ -224,11 +238,36 @@ export class BranchesService {
           folioPrefix,
           cutoffDay: dto.cutoffDay ?? null,
           paymentDay: dto.paymentDay ?? null,
-          earlyPaymentDays: dto.earlyPaymentDays ?? null,
+          earlyPaymentDays: legacyEarlyPaymentDays,
+          cutoffTime: dto.cutoffTime ?? null,
+          paymentTime: dto.paymentTime ?? null,
         },
         tx,
-      ),
-    );
+      );
+
+      // Forma canonica: persistir los 2 cortes quincenales dentro de
+      // la MISMA TX para que la FK contra `app.branch` vea la fila
+      // recien creada. Si no vienen `cutoffs`, no creamos filas en
+      // `app.branch_cutoff` (sigue funcionando con campos legacy planos).
+      if (dto.cutoffs && dto.cutoffs.length > 0) {
+        const rows = dto.cutoffs.map((c) => ({
+          branchId: created.id,
+          position: c.position,
+          cutoffDay: c.cutoffDay,
+          paymentDay: c.paymentDay,
+          earlyPaymentDays: BranchesService.computeEarlyPaymentDays(
+            c.paymentDay,
+            c.cutoffDay,
+          ),
+          cutoffTime: normalizeTime(c.cutoffTime),
+          paymentTime: normalizeTime(c.paymentTime),
+          isActive: true,
+        }));
+        await this.branchCutoffRepo.insertMany(rows, tx);
+      }
+
+      return created;
+    });
 
     const manager = await this.fetchManager(entity.managerUserId);
     return this.toBranchResponse(this.toAdminRow(entity, manager));
@@ -288,6 +327,21 @@ export class BranchesService {
       }
     }
 
+    // Resolver valores efectivos para autocomputar `earlyPaymentDays`
+    // en la forma plana legacy (necesitamos los nuevos valores o los
+    // existentes).
+    const effectiveCutoffDay =
+      dto.cutoffDay !== undefined ? dto.cutoffDay : existing.cutoffDay;
+    const effectivePaymentDay =
+      dto.paymentDay !== undefined ? dto.paymentDay : existing.paymentDay;
+    const legacyEarlyPaymentDays =
+      effectiveCutoffDay != null && effectivePaymentDay != null
+        ? BranchesService.computeEarlyPaymentDays(
+            effectivePaymentDay,
+            effectiveCutoffDay,
+          )
+        : undefined;
+
     const auditCtx: AuditWriteContext = {
       actorUserId: actor.id,
       action: 'USER.UPDATE',
@@ -303,22 +357,49 @@ export class BranchesService {
       },
     };
 
-    const updated = await this.auditRepo.runWithContext(auditCtx, async (tx) =>
-      this.branchesRepo.update(
-        branchId,
-        {
-          name: dto.name,
-          branchType: dto.branchType,
-          esMatriz: dto.esMatriz,
-          address: dto.address,
-          managerUserId: managerPatch,
-          isActive: dto.isActive,
-          cutoffDay: dto.cutoffDay,
-          paymentDay: dto.paymentDay,
-          earlyPaymentDays: dto.earlyPaymentDays,
-        },
-        tx,
-      ),
+    const updated = await this.auditRepo.runWithContext(
+      auditCtx,
+      async (tx) => {
+        const upd = await this.branchesRepo.update(
+          branchId,
+          {
+            name: dto.name,
+            branchType: dto.branchType,
+            esMatriz: dto.esMatriz,
+            address: dto.address,
+            managerUserId: managerPatch,
+            isActive: dto.isActive,
+            cutoffDay: dto.cutoffDay,
+            paymentDay: dto.paymentDay,
+            earlyPaymentDays: legacyEarlyPaymentDays,
+            cutoffTime: dto.cutoffTime,
+            paymentTime: dto.paymentTime,
+          },
+          tx,
+        );
+
+        // Si vienen cutoffs[], reemplazar TODOS los cortes activos
+        // dentro de la misma TX (deactivate + insertMany atomicos).
+        if (dto.cutoffs && dto.cutoffs.length > 0) {
+          await this.branchCutoffRepo.deactivateByBranch(branchId, tx);
+          const rows = dto.cutoffs.map((c) => ({
+            branchId,
+            position: c.position,
+            cutoffDay: c.cutoffDay,
+            paymentDay: c.paymentDay,
+            earlyPaymentDays: BranchesService.computeEarlyPaymentDays(
+              c.paymentDay,
+              c.cutoffDay,
+            ),
+            cutoffTime: normalizeTime(c.cutoffTime),
+            paymentTime: normalizeTime(c.paymentTime),
+            isActive: true,
+          }));
+          await this.branchCutoffRepo.insertMany(rows, tx);
+        }
+
+        return upd;
+      },
     );
     if (!updated) {
       throw new NotFoundException({
@@ -417,10 +498,13 @@ export class BranchesService {
    * Valida que el actor pueda crear/editar/eliminar sucursales.
    */
   private assertActorCanWrite(actor: RequestUser): void {
-    if (actor.role === 'GERENTE_GENERAL') return;
+    if (actor.role === 'GERENTE_GENERAL' || actor.role === 'ADMINISTRADOR') {
+      return;
+    }
     throw new ForbiddenException({
       code: 'BRANCH.WRITE_FORBIDDEN',
-      message: 'solo el gerente general puede modificar sucursales',
+      message:
+        'solo el gerente general o el administrador pueden modificar sucursales',
     });
   }
 
@@ -431,7 +515,8 @@ export class BranchesService {
   private static readonly GS_ALLOWED_FIELDS = new Set([
     'cutoffDay',
     'paymentDay',
-    'earlyPaymentDays',
+    'cutoffTime',
+    'paymentTime',
   ]);
 
   /**
@@ -449,7 +534,9 @@ export class BranchesService {
     branchId: string,
     dto: UpdateBranchDto,
   ): void {
-    if (actor.role === 'GERENTE_GENERAL') return;
+    if (actor.role === 'GERENTE_GENERAL' || actor.role === 'ADMINISTRADOR') {
+      return;
+    }
 
     if (actor.role === 'GERENTE_SUCURSAL') {
       if (actor.branchId !== branchId) {
@@ -469,7 +556,7 @@ export class BranchesService {
         throw new ForbiddenException({
           code: 'BRANCH.WRITE_FORBIDDEN',
           message:
-            'como gerente de sucursal solo puedes editar cutoffDay, paymentDay y earlyPaymentDays',
+            'como gerente de sucursal solo puedes editar cutoffDay, paymentDay, cutoffTime y paymentTime',
         });
       }
       return;
@@ -613,6 +700,8 @@ export class BranchesService {
       cutoffDay: entity!.cutoffDay,
       paymentDay: entity!.paymentDay,
       earlyPaymentDays: entity!.earlyPaymentDays,
+      cutoffTime: entity!.cutoffTime,
+      paymentTime: entity!.paymentTime,
       isActive: entity!.isActive,
       createdAt: entity!.createdAt,
       updatedAt: entity!.updatedAt,
@@ -631,4 +720,35 @@ export class BranchesService {
   private toBranchResponse(row: BranchAdminRow): BranchResponseDto {
     return toBranchResponseDto(row);
   }
+
+  /**
+   * Autocomputa la ventana de pago anticipado como la diferencia
+   * (modular, con wrap de mes) entre `paymentDay` y `cutoffDay`.
+   *
+   * Definicion:
+   *  - Caso normal (`paymentDay > cutoffDay`):
+   *      `paymentDay - cutoffDay`  (ej. cutoff=15 payment=20 -> 5).
+   *  - Wrap de mes (`paymentDay <= cutoffDay`):
+   *      `(paymentDay + 31 - cutoffDay) % 31`
+   *      (ej. cutoff=28 payment=5 -> 8; cutoff=15 payment=15 -> 0).
+   *
+   * Resultado siempre en [0, 30].
+   */
+  static computeEarlyPaymentDays(
+    paymentDay: number,
+    cutoffDay: number,
+  ): number {
+    return (paymentDay - cutoffDay + 31) % 31;
+  }
+}
+
+/**
+ * Normaliza un string "HH:MM" o "HH:MM:SS" a "HH:MM:SS" para
+ * escribirlo directamente en una columna PG `TIME`. Si el input ya
+ * trae segundos, se respeta.
+ */
+function normalizeTime(value: string): string {
+  const parts = value.split(':');
+  if (parts.length === 2) return `${value}:00`;
+  return value;
 }

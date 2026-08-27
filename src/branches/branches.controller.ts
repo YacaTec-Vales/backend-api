@@ -58,6 +58,7 @@ import { JwtAuthGuard, type RequestUser } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
 import { VpnOriginGuard } from '../shared/guards/vpn-origin.guard';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
+import { RequireAnyPermission } from '../shared/decorators/any-permission.decorator';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';
 import { RequireVpnOrigin } from '../shared/decorators/require-vpn-origin.decorator';
 import { contextFromRequest } from '../shared/utils/request-context.util';
@@ -144,7 +145,7 @@ export class BranchesController {
    */
   @Post()
   @RequireVpnOrigin('Tecu')
-  @RequirePermissions('branch.create', 'branch.create.matriz')
+  @RequireAnyPermission('branch.create', 'branch.create.matriz')
   @ApiOperation({
     summary: 'Crear sucursal',
     description:
@@ -185,7 +186,7 @@ export class BranchesController {
    */
   @Patch(':id')
   @RequireVpnOrigin('Tecu')
-  @RequirePermissions('branch.update', 'branch.create.matriz')
+  @RequireAnyPermission('branch.update', 'branch.create.matriz')
   @ApiOperation({
     summary: 'Actualizar sucursal (patch parcial)',
     description:

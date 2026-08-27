@@ -235,12 +235,22 @@ export class VouchersService {
     const folio = `D-${folioPrefix}-${today}-${String(nextSeq).padStart(5, '0')}`;
 
     // 8. Calcular totales.
+    // Spec (reglas-2.0 §8.1):
+    //   totalToPay = capital + apertura + seguro + (interesPorQna * qnas)
+    // Coincide con el calculo del corte (cuts.service.ts runCut).
     const openingCommissionCents: number = product.commissionBps
       ? Math.floor((amountCents * product.commissionBps) / 10000)
       : 0;
     const insuranceCents: number = product.insuranceCents ?? 0;
+    const interestPerPeriodCents: number = product.interestPerPeriodBps
+      ? Math.floor((amountCents * product.interestPerPeriodBps) / 10000)
+      : 0;
+    const interestTotalCents = interestPerPeriodCents * product.totalPeriods;
     const totalToPayCents =
-      amountCents + openingCommissionCents + insuranceCents;
+      amountCents +
+      openingCommissionCents +
+      insuranceCents +
+      interestTotalCents;
     const paymentPerPeriodCents = Math.ceil(
       totalToPayCents / product.totalPeriods,
     );

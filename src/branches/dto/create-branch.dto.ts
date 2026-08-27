@@ -4,6 +4,16 @@
  * Crea una sucursal nueva. Solo `GERENTE_GENERAL` puede llamar este
  * endpoint (gateado por `branches.create`).
  *
+ * Fechas de corte/pago (regla 2.0):
+ *  - El sistema solo acepta dia del mes (1..31) y hora del dia (HH:MM 24h).
+ *  - NO se acepta mes ni year; el ciclo los calcula el sistema.
+ *  - `earlyPaymentDays` se autocomputa como
+ *    `(paymentDay - cutoffDay + 31) % 31` (soporta wrap de mes).
+ *  - Forma recomendada: `cutoffs[]` (2 quincenas en `app.branch_cutoff`).
+ *  - Forma legacy: campos planos `cutoffDay` / `paymentDay` /
+ *    `cutoffTime` / `paymentTime` (siguen vivos en `app.branch` por
+ *    compatibilidad transitoria).
+ *
  * @see BranchesController.create
  */
 
@@ -34,6 +44,11 @@ const trimOnly = ({ value }: { value: unknown }): unknown => {
   if (typeof value !== 'string') return value;
   return value.trim();
 };
+
+/**
+ * Regex HH:MM (24h). Acepta tambien HH:MM:SS.
+ */
+const HHMM_REGEX = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
 
 /**
  * DTO para alta de sucursal.
@@ -104,15 +119,18 @@ export class CreateBranchDto {
   folioPrefix?: string;
 
   // -----------------------------------------------------------------
-  // Fechas de corte/pago per-branch (regla 2.0 — audio 2026-08-04)
+  // Fechas de corte/pago per-branch (forma plana legacy @deprecated)
   // -----------------------------------------------------------------
+  // Si se envian, se persisten en `app.branch` por compatibilidad.
+  // Si ademas se envia `cutoffs[]`, la forma canonica gana.
 
   @ApiPropertyOptional({
     example: 15,
     minimum: 1,
     maximum: 31,
     description:
-      'Dia del mes en que se cierra el ciclo y se emiten las relaciones de esta sucursal.',
+      'Dia del mes (1..31) en que se cierra el ciclo. NO se envia ' +
+      'mes ni year; el sistema los calcula.',
   })
   @IsOptional()
   @IsInt({ message: 'cutoffDay debe ser un entero' })
@@ -125,7 +143,8 @@ export class CreateBranchDto {
     minimum: 1,
     maximum: 31,
     description:
-      'Dia del mes en que vence el pago de la relacion emitida en el corte de esta sucursal.',
+      'Dia del mes (1..31) en que vence el pago. NO se envia mes ' +
+      'ni year; el sistema los calcula.',
   })
   @IsOptional()
   @IsInt({ message: 'paymentDay debe ser un entero' })
@@ -134,33 +153,53 @@ export class CreateBranchDto {
   paymentDay?: number;
 
   @ApiPropertyOptional({
-    example: 3,
-    minimum: 0,
-    maximum: 31,
-    description:
-      'Dias previos a la fecha limite en que un abono cuenta como pago anticipado y genera puntos.',
+    example: '14:30',
+    description: 'Hora del dia (HH:MM 24h) del corte.',
   })
   @IsOptional()
-  @IsInt({ message: 'earlyPaymentDays debe ser un entero' })
-  @Min(0, { message: 'earlyPaymentDays minimo es 0' })
-  @Max(31, { message: 'earlyPaymentDays maximo es 31' })
-  earlyPaymentDays?: number;
+  @Matches(HHMM_REGEX, {
+    message: 'cutoffTime debe tener formato HH:MM (24h)',
+  })
+  cutoffTime?: string;
+
+  @ApiPropertyOptional({
+    example: '18:00',
+    description: 'Hora del dia (HH:MM 24h) del pago.',
+  })
+  @IsOptional()
+  @Matches(HHMM_REGEX, {
+    message: 'paymentTime debe tener formato HH:MM (24h)',
+  })
+  paymentTime?: string;
 
   // -----------------------------------------------------------------
   // Fechas canonicas via app.branch_cutoff (regla 2.0 - audio 2026-08-04)
   // -----------------------------------------------------------------
-  // Si se omite, BranchesService.create usa los defaults del repositorio.
-  // Si se envia, debe traer ambas quincenas (position 1 y 2).
+  // Recomendado. Trae las 2 quincenas. Si se envia, persiste en
+  // `app.branch_cutoff` (cierra el flujo real de fechas per-branch).
 
   @ApiPropertyOptional({
     description:
       'Fechas canonicas de corte y pago (recomendado). 2 quincenas. ' +
-      'Si se envia, sobrescribe los campos planos cutoffDay/paymentDay.',
+      'Persiste en `app.branch_cutoff`. `earlyPaymentDays` se ' +
+      'autocomputa; NO se envia mes/year (los calcula el sistema).',
     type: () => BranchCutoffInputDto,
     isArray: true,
     example: [
-      { position: 1, cutoffDay: 15, paymentDay: 20, earlyPaymentDays: 3 },
-      { position: 2, cutoffDay: 28, paymentDay: 5, earlyPaymentDays: 3 },
+      {
+        position: 1,
+        cutoffDay: 15,
+        paymentDay: 20,
+        cutoffTime: '14:30',
+        paymentTime: '18:00',
+      },
+      {
+        position: 2,
+        cutoffDay: 28,
+        paymentDay: 5,
+        cutoffTime: '14:30',
+        paymentTime: '18:00',
+      },
     ],
   })
   @IsOptional()

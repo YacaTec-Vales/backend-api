@@ -834,7 +834,7 @@ export class UserRepository {
           eq(users.roleCode, roleCode),
           isNull(users.deletedAt),
           eq(users.isActive, true),
-          sql`${users.userStatus} = ANY(${statuses})`,
+          inArray(users.userStatus, statuses),
         ),
       );
     return row?.c ?? 0;
