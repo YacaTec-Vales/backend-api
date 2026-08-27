@@ -137,6 +137,50 @@ export class DistributorRepository {
   }
 
   /**
+   * Devuelve solo los IDs de distribuidoras activas de una sucursal.
+   * Usado por el filtro de scope de Autorizaciones (`GERENTE_SUCURSAL`).
+   *
+   * Conexion: `DRIZZLE_READ`.
+   *
+   * @param branchId - UUID de la sucursal.
+   * @returns Arreglo de UUIDs.
+   */
+  async findIdsByBranch(branchId: string): Promise<string[]> {
+    const rows = await this.readDb
+      .select({ id: distributors.id })
+      .from(distributors)
+      .where(
+        and(
+          eq(distributors.branchId, branchId),
+          isNull(distributors.deletedAt),
+        ),
+      );
+    return rows.map((r) => r.id);
+  }
+
+  /**
+   * Devuelve solo los IDs de distribuidoras activas a cargo de un coordinador.
+   * Usado por el filtro de scope de Autorizaciones (`COORDINADOR`).
+   *
+   * Conexion: `DRIZZLE_READ`.
+   *
+   * @param coordinatorUserId - UUID del usuario con rol COORDINADOR.
+   * @returns Arreglo de UUIDs.
+   */
+  async findIdsByCoordinator(coordinatorUserId: string): Promise<string[]> {
+    const rows = await this.readDb
+      .select({ id: distributors.id })
+      .from(distributors)
+      .where(
+        and(
+          eq(distributors.coordinatorId, coordinatorUserId),
+          isNull(distributors.deletedAt),
+        ),
+      );
+    return rows.map((r) => r.id);
+  }
+
+  /**
    * Lista distribuidoras de un coordinador con paginacion y filtros opcionales.
    *
    * Filtros aplicados:
