@@ -2,9 +2,9 @@
  * @fileoverview DTO de entrada para `PATCH /business-config`.
  *
  * El Gerente General actualiza uno o varios parametros en una sola
- * operacion atomica. Cada item es opcional; los no provistos no
- * se tocan. La regla 2.0 §6.1.3 obliga a mantener el shape
- * (cada item sigue siendo `valueCents XOR valueBps`).
+ * operacion atomica. Cada item acepta un `value` jsonb libre; la
+ * forma interna del jsonb depende de la clave (ver
+ * `seeds/050_configuration.sql`).
  *
  * @module business-config/dto
  * @author Equipo de desarrollo Mis Vales
@@ -17,58 +17,60 @@ import {
   ArrayMinSize,
   IsArray,
   IsIn,
-  IsInt,
   IsOptional,
   IsString,
-  Max,
   MaxLength,
-  Min,
   ValidateNested,
 } from 'class-validator';
 
-const ALLOWED_KEYS = [
-  'insurance_cents',
-  'interest_per_period_bps',
-  'late_penalty_cents',
-  'points_divisor_cents',
-  'points_multiplier_bps',
-  'points_value_cents',
-  'points_late_penalty_bps',
+/**
+ * Llaves canonicas del catalogo `app.configuration` (sembradas en
+ * `seeds/050_configuration.sql`). Mantener este set cerrado evita
+ * typos en keys y protege contra escrituras accidentales.
+ */
+export const ALLOWED_CONFIG_KEYS = [
+  'base_calculo_puntos',
+  'comision_apertura_bps',
+  'cuenta_destino_banorte',
+  'cuenta_destino_bbva',
+  'fecha_corte_general',
+  'fecha_limite_pago_dias',
+  'forgivenes_morosidad_permitidos',
+  'interes_por_quincena_bps',
+  'limite_credito_inicial_default_cents',
+  'metodos_pago_banco_validos',
+  'multa_no_pago_cents',
+  'multiplicador_puntos_por_corte',
+  'nombre_prestamista',
+  'penalizacion_puntos_fuera_tiempo',
+  'plazo_queja_dias',
+  'porcentaje_recuperacion_credito_por_abono_bps',
+  'regla_50_por_ciento',
+  'seguro_regla',
+  'valor_punto_cents',
+  'ventana_pago_anticipado_dias',
 ] as const;
 
 @ApiSchema({ name: 'PatchBusinessConfigItem' })
 export class PatchBusinessConfigItemDto {
   @ApiProperty({
     description:
-      'Clave del parametro. Ver BusinessConfigItemDto para la lista canonica.',
-    example: 'insurance_cents',
+      'Clave del parametro (debe estar en el set canonico de app.configuration).',
+    example: 'interes_por_quincena_bps',
   })
   @IsString()
-  @IsIn(ALLOWED_KEYS)
+  @IsIn(ALLOWED_CONFIG_KEYS)
   key!: string;
 
   @ApiProperty({
     description:
-      'Nuevo valor monetario en centavos (solo si la clave es cents).',
-    required: false,
-    nullable: true,
+      'Nuevo valor jsonb. La forma depende de la clave (ver ' +
+      'seeds/050_configuration.sql).',
+    type: 'object',
+    additionalProperties: true,
+    example: { percentage_bps: 600 },
   })
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  @Max(1_000_000_000_000)
-  valueCents?: number | null;
-
-  @ApiProperty({
-    description: 'Nuevo valor en bps (solo si la clave es bps).',
-    required: false,
-    nullable: true,
-  })
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  @Max(10_000)
-  valueBps?: number | null;
+  value!: unknown;
 
   @ApiProperty({
     description: 'Razon del cambio (queda en audit log).',
@@ -85,8 +87,8 @@ export class PatchBusinessConfigItemDto {
 export class PatchBusinessConfigDto {
   @ApiProperty({
     description:
-      'Lista de parametros a actualizar. Cada item sigue ' +
-      '`valueCents XOR valueBps` segun la clave.',
+      'Lista de parametros a actualizar. Cada item escribe el ' +
+      'campo jsonb `value` correspondiente a su clave.',
     type: () => PatchBusinessConfigItemDto,
     isArray: true,
   })

@@ -106,7 +106,7 @@ export class BusinessConfigController {
     type: ErrorResponseDto,
   })
   @ApiBadRequestResponse({
-    description: 'BUSINESS_CONFIG.* (clave desconocida, shape invalido, etc).',
+    description: 'BUSINESS_CONFIG.* (clave desconocida, sin value, etc).',
     type: ErrorResponseDto,
   })
   patch(

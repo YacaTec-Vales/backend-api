@@ -1125,36 +1125,48 @@ export type RelationPaymentEntity = typeof relationPayments.$inferSelect;
 export type NewRelationPaymentEntity = typeof relationPayments.$inferInsert;
 
 /**
- * Tabla `app.business_config`. Configuracion global del calculo
- * de la relacion (regla 2.0 §6.1.3, fuente PDF
- * `Analisis-calculo-relacion.pdf`). Cada fila es un parametro con
- * `value_cents` XOR `value_bps`. Versionada optimistamente para
- * que el backend pueda invalidar caches.
+ * Tabla `app.configuration`. Catalogo llave-valor configurable del
+ * sistema (regla 2.0 §6.1.3, fuente PDF `Analisis-calculo-relacion.pdf`).
+ *
+ * TODO lo parametrizable vive aqui: interes, multa, puntos, cuentas
+ * destino, fechas de corte, etc. La forma del campo `value` (jsonb)
+ * varia por clave (ver `seeds/050_configuration.sql`):
+ *  - `multa_no_pago_cents`:                `{ "value": number }`
+ *  - `valor_punto_cents`:                  `{ "value": number }`
+ *  - `interes_por_quincena_bps`:           `{ "percentage_bps": number }`
+ *  - `comision_apertura_bps`:              `{ "percentage_bps": number }`
+ *  - `base_calculo_puntos`:                `{ "amount_cents": number }`
+ *  - `multiplicador_puntos_por_corte`:     `{ "factor": number }`
+ *  - `penalizacion_puntos_fuera_tiempo`:   `{ "penalty_bps": number }`
+ *  - `seguro_regla`:                       `{ "type": "range", "ranges": [...] }`
+ *  - `cuenta_destino_banorte|bbva`:        `{ "banco", "clabe", "convenio" }`
+ *  - `fecha_corte_general`:                `{ "day_of_month": number }`
+ *  - `metodos_pago_banco_validos`:         `["...", "..."]`
+ *
+ * `updated_at` y `updated_by` dan trazabilidad; `deleted_at` permite
+ * soft delete (las claves borradas NO aparecen en `findAll`).
+ *
+ * Migracion fisica: NO incluida. La tabla ya existe en BD desde el
+ * seed base (`seeds/050_configuration.sql`). Esta definicion Drizzle
+ * es un mapeo TypeScript del schema BD existente.
  *
  * @module database/schema
  * @author Equipo de desarrollo Mis Vales
  * @since 2.2.0
  */
-export const businessConfig = appSchema.table('business_config', {
-  id: uuid('id')
-    .primaryKey()
-    .default(sql`gen_random_uuid()`),
-  configKey: text('config_key').notNull().unique(),
-  description: text('description').notNull(),
-  valueCents: bigint('value_cents', { mode: 'number' }),
-  valueBps: integer('value_bps'),
-  version: integer('version').notNull().default(1),
-  updatedBy: uuid('updated_by'),
-  createdAt: timestamp('created_at', { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+export const configuration = appSchema.table('configuration', {
+  key: text('key').primaryKey(),
+  value: jsonb('value').notNull(),
+  description: text('description'),
   updatedAt: timestamp('updated_at', { withTimezone: true })
     .notNull()
     .defaultNow(),
+  updatedBy: uuid('updated_by'),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }),
 });
 
-export type BusinessConfigEntity = typeof businessConfig.$inferSelect;
-export type NewBusinessConfigEntity = typeof businessConfig.$inferInsert;
+export type ConfigurationEntity = typeof configuration.$inferSelect;
+export type NewConfigurationEntity = typeof configuration.$inferInsert;
 
 /**
  * Tabla `app.credit_raise_request`. Solicitudes de aumento de

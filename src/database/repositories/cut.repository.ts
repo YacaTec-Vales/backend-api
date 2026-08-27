@@ -57,7 +57,7 @@ export interface CutVoucherRow {
   /**
    * Snapshot del interes por periodo al momento de emitir el vale.
    * Nullable para vales muy viejos (anteriores al sprint 5); en
-   * ese caso el servicio cae al global de `business_config`.
+   * ese caso el servicio cae al global de `app.configuration`.
    */
   interestPerPeriodBps: number | null;
   /**
