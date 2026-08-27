@@ -92,7 +92,11 @@ export function configureApplication(
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
-      transformOptions: { enableImplicitConversion: true },
+      // NO usamos `enableImplicitConversion` porque rompe query
+      // params booleanos: `Boolean("false")` -> `true` (truthy).
+      // En su lugar, cada DTO declara explicitamente `@Transform`
+      // (ver `list-branches-query.dto.ts`, `toBoolean`).
+      transformOptions: { enableImplicitConversion: false },
     }),
   );
 

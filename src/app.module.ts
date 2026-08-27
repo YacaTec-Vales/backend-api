@@ -74,6 +74,7 @@ import { RecaptchaModule } from './shared/recaptcha/recaptcha.module';
 import { RecaptchaGuard } from './shared/recaptcha/recaptcha.guard';
 import { LogModule } from './shared/logging/log.module';
 import { AuditContextModule } from './shared/context/audit-context.module';
+import { AdminModule } from './admin/admin.module';
 
 /**
  * Modulo raiz. Importa config, modulos funcionales y registra
@@ -147,6 +148,7 @@ import { AuditContextModule } from './shared/context/audit-context.module';
     CategoriesModule,
     LogModule,
     AuditContextModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [

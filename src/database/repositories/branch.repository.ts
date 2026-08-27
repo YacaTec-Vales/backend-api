@@ -110,4 +110,20 @@ export class BranchRepository {
       .returning();
     return row ?? null;
   }
+
+  /**
+   * Busca la unica sucursal con `esMatriz = true` (no borrada).
+   * El backend enforce unicidad con indice parcial.
+   *
+   * Usado por `AdminService.getBootstrapStatus` para decidir si
+   * el sistema ya esta inicializado.
+   */
+  async findMatriz(): Promise<BranchEntity | null> {
+    const [row] = await this.readDb
+      .select()
+      .from(branches)
+      .where(and(eq(branches.esMatriz, true), isNull(branches.deletedAt)))
+      .limit(1);
+    return row ?? null;
+  }
 }

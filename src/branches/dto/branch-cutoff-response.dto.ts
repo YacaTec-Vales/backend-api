@@ -29,6 +29,7 @@ import {
   Max,
   Min,
 } from 'class-validator';
+import { IsAtLeastFiveDaysAfterCutoff } from './validators/payment-day-after-cutoff.validator';
 
 /**
  * Regex HH:MM (24h). Acepta tambien HH:MM:SS porque el formato TIME
@@ -66,6 +67,7 @@ export class BranchCutoffInputDto {
   @IsInt({ message: 'paymentDay debe ser un entero' })
   @Min(1, { message: 'paymentDay minimo es 1' })
   @Max(31, { message: 'paymentDay maximo es 31' })
+  @IsAtLeastFiveDaysAfterCutoff()
   paymentDay!: number;
 
   @ApiProperty({

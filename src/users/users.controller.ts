@@ -72,6 +72,7 @@ import { PermissionsGuard } from '../shared/guards/permissions.guard';
 import { VpnOriginGuard } from '../shared/guards/vpn-origin.guard';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';
+import { RequireAnyPermission } from '../shared/decorators/any-permission.decorator';
 import { RequireVpnOrigin } from '../shared/decorators/require-vpn-origin.decorator';
 import { contextFromRequest } from '../shared/utils/request-context.util';
 
@@ -156,7 +157,10 @@ export class UsersController {
    */
   @Post()
   @RequireVpnOrigin('Tecu')
-  @RequirePermissions('user.create', 'user.create.general_manager')
+  // OR: GERENTE_GENERAL usa `user.create`; ADMINISTRADOR usa
+  // `user.create.general_manager`. Con AND (RequirePermissions) nadie
+  // tenia ambos => endpoint inaccesible. Igual que branches.create.
+  @RequireAnyPermission('user.create', 'user.create.general_manager')
   @ApiOperation({
     summary: 'Crear usuario',
     description:

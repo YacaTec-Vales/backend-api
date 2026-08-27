@@ -29,6 +29,7 @@ export interface BranchRowShape {
   esMatriz: boolean;
   address: string | null;
   managerUserId: string | null;
+  folioPrefix: string | null;
   cutoffDay: number | null;
   paymentDay: number | null;
   earlyPaymentDays: number | null;
@@ -71,6 +72,7 @@ export function toBranchResponseDto(row: BranchRowShape): BranchResponseDto {
     address: row.address,
     managerUserId: row.managerUserId,
     manager,
+    folioPrefix: row.folioPrefix ?? null,
     cutoffDay: row.cutoffDay,
     paymentDay: row.paymentDay,
     earlyPaymentDays: row.earlyPaymentDays,
