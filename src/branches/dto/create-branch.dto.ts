@@ -36,6 +36,16 @@ import {
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { BranchCutoffInputDto } from './branch-cutoff-response.dto';
+import { IsAtLeastFiveDaysAfterCutoff } from './validators/payment-day-after-cutoff.validator';
+
+/**
+ * Convierte el folioPrefix a MAYUSCULAS antes de validar. Asi el
+ * frontend puede enviar 'nor' y el backend lo acepta como 'NOR'.
+ */
+const folioPrefixToUpper = ({ value }: { value: unknown }): unknown => {
+  if (typeof value !== 'string') return value;
+  return value.trim().toUpperCase();
+};
 
 /**
  * Solo trim. Aplica a nombres y direcciones.
@@ -113,6 +123,7 @@ export class CreateBranchDto {
       'omite, se genera automaticamente a partir del nombre.',
   })
   @IsOptional()
+  @Transform(folioPrefixToUpper)
   @Matches(/^[A-Z]{3}$/, {
     message: 'folioPrefix debe ser de exactamente 3 letras en mayusculas',
   })
@@ -150,6 +161,7 @@ export class CreateBranchDto {
   @IsInt({ message: 'paymentDay debe ser un entero' })
   @Min(1, { message: 'paymentDay minimo es 1' })
   @Max(31, { message: 'paymentDay maximo es 31' })
+  @IsAtLeastFiveDaysAfterCutoff()
   paymentDay?: number;
 
   @ApiPropertyOptional({

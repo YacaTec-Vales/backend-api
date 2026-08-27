@@ -34,6 +34,7 @@ import {
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { BranchCutoffInputDto } from './branch-cutoff-response.dto';
+import { IsAtLeastFiveDaysAfterCutoff } from './validators/payment-day-after-cutoff.validator';
 
 /**
  * Solo trim. Aplica a nombres y direcciones.
@@ -44,6 +45,15 @@ const trimOnly = ({ value }: { value: unknown }): unknown => {
 };
 
 const HHMM_REGEX = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
+
+/**
+ * Convierte el folioPrefix a MAYUSCULAS antes de validar. Asi el
+ * frontend puede enviar 'nor' y el backend lo acepta como 'NOR'.
+ */
+const folioPrefixToUpper = ({ value }: { value: unknown }): unknown => {
+  if (typeof value !== 'string') return value;
+  return value.trim().toUpperCase();
+};
 
 /**
  * DTO para patch parcial de sucursal. Todos los campos son
@@ -107,6 +117,19 @@ export class UpdateBranchDto {
   @IsBoolean()
   isActive?: boolean;
 
+  @ApiPropertyOptional({
+    example: 'NOR',
+    description:
+      'Prefijo de 3 letras mayusculas unico usado en folios de ' +
+      'vouchers (formato D-{PREFIX}-{YYYYMMDD}-{00001}).',
+  })
+  @IsOptional()
+  @Transform(folioPrefixToUpper)
+  @Matches(/^[A-Z]{3}$/, {
+    message: 'folioPrefix debe ser de exactamente 3 letras en mayusculas',
+  })
+  folioPrefix?: string;
+
   // -----------------------------------------------------------------
   // Fechas de corte/pago per-branch (forma plana legacy @deprecated).
   // -----------------------------------------------------------------
@@ -135,6 +158,7 @@ export class UpdateBranchDto {
   @IsInt({ message: 'paymentDay debe ser un entero' })
   @Min(1, { message: 'paymentDay minimo es 1' })
   @Max(31, { message: 'paymentDay maximo es 31' })
+  @IsAtLeastFiveDaysAfterCutoff()
   paymentDay?: number;
 
   @ApiPropertyOptional({
