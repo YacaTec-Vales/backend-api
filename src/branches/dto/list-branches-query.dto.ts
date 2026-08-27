@@ -28,6 +28,16 @@ export class ListBranchesQueryDto {
   @IsIn(['MATRIZ', 'SUCURSAL'])
   branchType?: 'MATRIZ' | 'SUCURSAL';
 
+  @ApiPropertyOptional({
+    description:
+      'Filtrar por la sucursal MATRIZ unica. Solo el ADMINISTRADOR ' +
+      'puede pasar `true`; los demas roles son scope-forbidden.',
+  })
+  @IsOptional()
+  @Type(() => Boolean)
+  @IsBoolean()
+  esMatriz?: boolean;
+
   @ApiPropertyOptional()
   @IsOptional()
   @Type(() => Boolean)

@@ -700,8 +700,9 @@ export class BranchesService {
       cutoffDay: entity!.cutoffDay,
       paymentDay: entity!.paymentDay,
       earlyPaymentDays: entity!.earlyPaymentDays,
-      cutoffTime: entity!.cutoffTime,
-      paymentTime: entity!.paymentTime,
+      // cutoffTime/paymentTime: columnas no existen en BD todavia.
+      cutoffTime: null,
+      paymentTime: null,
       isActive: entity!.isActive,
       createdAt: entity!.createdAt,
       updatedAt: entity!.updatedAt,

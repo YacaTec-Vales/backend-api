@@ -243,14 +243,18 @@ export const branches = appSchema.table('branch', {
   earlyPaymentDays: integer('early_payment_days'),
   /**
    * Hora del dia del corte (HH:MM:SS 24h). Nullable en la forma
-   * legacy @deprecated; la forma canonica vive en `app.branch_cutoff`.
-   */
-  cutoffTime: time('cutoff_time'),
+    * legacy @deprecated; la forma canonica vive en `app.branch_cutoff`.
+    * La columna `cutoff_time` no existe en la BD todavia (migracion
+    * pendiente); el repo referencia campos null hasta entonces.
+    */
+  // cutoffTime: time('cutoff_time'),  // TODO: reactivar cuando se agregue la columna
   /**
    * Hora del dia del pago (HH:MM:SS 24h). Nullable en la forma
    * legacy @deprecated; la forma canonica vive en `app.branch_cutoff`.
+   * La columna `payment_time` no existe en la BD todavia (migracion
+   * pendiente); el repo referencia campos null hasta entonces.
    */
-  paymentTime: time('payment_time'),
+  // paymentTime: time('payment_time'),  // TODO: reactivar cuando se agregue la columna
   isActive: boolean('is_active').notNull().default(true),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true })
@@ -294,12 +298,16 @@ export const branchCutoffs = appSchema.table('branch_cutoff', {
   /**
    * Hora del dia del corte (HH:MM:SS 24h). El backend autocomputa
    * `early_payment_days` como `(payment_day - cutoff_day + 31) % 31`.
+   * La columna `cutoff_time` no existe en la BD todavia (migracion
+   * pendiente); el repo referencia campos null hasta entonces.
    */
-  cutoffTime: time('cutoff_time').notNull(),
+  // cutoffTime: time('cutoff_time').notNull(),  // TODO: reactivar cuando se agregue la columna
   /**
    * Hora del dia del pago (HH:MM:SS 24h).
+   * La columna `payment_time` no existe en la BD todavia (migracion
+   * pendiente); el repo referencia campos null hasta entonces.
    */
-  paymentTime: time('payment_time').notNull(),
+  // paymentTime: time('payment_time').notNull(),  // TODO: reactivar cuando se agregue la columna
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true })
     .notNull()
@@ -1378,7 +1386,7 @@ export const bankMovements = appSchema.table('bank_movement', {
   paymentCents: bigint('payment_cents', { mode: 'number' }).notNull(),
   paymentFolio: text('payment_folio'),
   paymentDate: date('payment_date'),
-  paymentTime: text('payment_time'),
+  // paymentTime: text('payment_time'),  // TODO: reactivar cuando se agregue la columna
   paymentType: text('payment_type'),
   reconciliationId: uuid('reconciliation_id'),
   rawRow: jsonb('raw_row')

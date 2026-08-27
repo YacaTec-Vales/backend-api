@@ -205,8 +205,8 @@ export class BranchesRepository {
         cutoffDay: branches.cutoffDay,
         paymentDay: branches.paymentDay,
         earlyPaymentDays: branches.earlyPaymentDays,
-        cutoffTime: branches.cutoffTime,
-        paymentTime: branches.paymentTime,
+        // cutoffTime/paymentTime: columnas no existen en BD todavia.
+        // Se rellenan como null en `BranchAdminRow`.
         isActive: branches.isActive,
         createdAt: branches.createdAt,
         updatedAt: branches.updatedAt,
@@ -251,8 +251,9 @@ export class BranchesRepository {
         cutoffDay: r.cutoffDay,
         paymentDay: r.paymentDay,
         earlyPaymentDays: r.earlyPaymentDays,
-        cutoffTime: r.cutoffTime,
-        paymentTime: r.paymentTime,
+        // cutoffTime/paymentTime: null hasta migracion de columnas.
+        cutoffTime: null,
+        paymentTime: null,
         isActive: r.isActive,
         createdAt: r.createdAt,
         updatedAt: r.updatedAt,
@@ -306,8 +307,9 @@ export class BranchesRepository {
         cutoffDay: data.cutoffDay ?? null,
         paymentDay: data.paymentDay ?? null,
         earlyPaymentDays: data.earlyPaymentDays ?? null,
-        cutoffTime: data.cutoffTime ?? null,
-        paymentTime: data.paymentTime ?? null,
+        // cutoffTime/paymentTime: columnas no existen en BD todavia.
+        // cutoffTime: data.cutoffTime ?? null,
+        // paymentTime: data.paymentTime ?? null,
         isActive: true,
       })
       .returning();
@@ -358,8 +360,9 @@ export class BranchesRepository {
     if (patch.paymentDay !== undefined) set.paymentDay = patch.paymentDay;
     if (patch.earlyPaymentDays !== undefined)
       set.earlyPaymentDays = patch.earlyPaymentDays;
-    if (patch.cutoffTime !== undefined) set.cutoffTime = patch.cutoffTime;
-    if (patch.paymentTime !== undefined) set.paymentTime = patch.paymentTime;
+    // cutoffTime/paymentTime: columnas no existen en BD todavia.
+    // if (patch.cutoffTime !== undefined) set.cutoffTime = patch.cutoffTime;
+    // if (patch.paymentTime !== undefined) set.paymentTime = patch.paymentTime;
 
     const db = tx ?? this.writeDb;
     const [row] = await db
