@@ -44,6 +44,10 @@ export interface BranchListFilters {
 /**
  * Fila devuelta por `listBranches` y `findById`. Es la proyeccion
  * que consume `BranchesService` para construir el DTO de respuesta.
+ *
+ * Las fechas/horas de corte y pago NO viven en `app.branch`: viven
+ * en `app.branch_cutoff` (tabla canonica). El caller debe hacer un
+ * JOIN o fetch separado para obtenerlas.
  */
 export interface BranchAdminRow {
   id: string;
@@ -52,11 +56,6 @@ export interface BranchAdminRow {
   esMatriz: boolean;
   address: string | null;
   managerUserId: string | null;
-  cutoffDay: number | null;
-  paymentDay: number | null;
-  earlyPaymentDays: number | null;
-  cutoffTime: string | null;
-  paymentTime: string | null;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -202,11 +201,6 @@ export class BranchesRepository {
         esMatriz: branches.esMatriz,
         address: branches.address,
         managerUserId: branches.managerUserId,
-        cutoffDay: branches.cutoffDay,
-        paymentDay: branches.paymentDay,
-        earlyPaymentDays: branches.earlyPaymentDays,
-        cutoffTime: branches.cutoffTime,
-        paymentTime: branches.paymentTime,
         isActive: branches.isActive,
         createdAt: branches.createdAt,
         updatedAt: branches.updatedAt,
@@ -248,11 +242,6 @@ export class BranchesRepository {
         esMatriz: r.esMatriz,
         address: r.address,
         managerUserId: r.managerUserId,
-        cutoffDay: r.cutoffDay,
-        paymentDay: r.paymentDay,
-        earlyPaymentDays: r.earlyPaymentDays,
-        cutoffTime: r.cutoffTime,
-        paymentTime: r.paymentTime,
         isActive: r.isActive,
         createdAt: r.createdAt,
         updatedAt: r.updatedAt,
@@ -285,11 +274,6 @@ export class BranchesRepository {
       address: string | null;
       managerUserId: string | null;
       folioPrefix: string;
-      cutoffDay?: number | null;
-      paymentDay?: number | null;
-      earlyPaymentDays?: number | null;
-      cutoffTime?: string | null;
-      paymentTime?: string | null;
     },
     tx?: DrizzleWrite,
   ): Promise<BranchEntity> {
@@ -303,11 +287,6 @@ export class BranchesRepository {
         address: data.address,
         managerUserId: data.managerUserId,
         folioPrefix: data.folioPrefix,
-        cutoffDay: data.cutoffDay ?? null,
-        paymentDay: data.paymentDay ?? null,
-        earlyPaymentDays: data.earlyPaymentDays ?? null,
-        cutoffTime: data.cutoffTime ?? null,
-        paymentTime: data.paymentTime ?? null,
         isActive: true,
       })
       .returning();
@@ -335,11 +314,6 @@ export class BranchesRepository {
       esMatriz?: boolean;
       address?: string | null;
       managerUserId?: string | null;
-      cutoffDay?: number | null;
-      paymentDay?: number | null;
-      earlyPaymentDays?: number | null;
-      cutoffTime?: string | null;
-      paymentTime?: string | null;
       isActive?: boolean;
     },
     tx?: DrizzleWrite,
@@ -354,12 +328,6 @@ export class BranchesRepository {
     if (patch.managerUserId !== undefined)
       set.managerUserId = patch.managerUserId;
     if (patch.isActive !== undefined) set.isActive = patch.isActive;
-    if (patch.cutoffDay !== undefined) set.cutoffDay = patch.cutoffDay;
-    if (patch.paymentDay !== undefined) set.paymentDay = patch.paymentDay;
-    if (patch.earlyPaymentDays !== undefined)
-      set.earlyPaymentDays = patch.earlyPaymentDays;
-    if (patch.cutoffTime !== undefined) set.cutoffTime = patch.cutoffTime;
-    if (patch.paymentTime !== undefined) set.paymentTime = patch.paymentTime;
 
     const db = tx ?? this.writeDb;
     const [row] = await db

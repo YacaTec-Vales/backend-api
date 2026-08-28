@@ -205,12 +205,6 @@ export class BranchesService {
       dto.folioPrefix,
     );
 
-    // Autocomputar earlyPaymentDays para la forma plana legacy.
-    const legacyEarlyPaymentDays =
-      dto.cutoffDay != null && dto.paymentDay != null
-        ? BranchesService.computeEarlyPaymentDays(dto.paymentDay, dto.cutoffDay)
-        : null;
-
     const auditCtx: AuditWriteContext = {
       actorUserId: actor.id,
       action: 'USER.CREATE', // reusamos USER.CREATE; el trigger registra la tabla branch.
@@ -236,11 +230,6 @@ export class BranchesService {
           address: dto.address ?? null,
           managerUserId,
           folioPrefix,
-          cutoffDay: dto.cutoffDay ?? null,
-          paymentDay: dto.paymentDay ?? null,
-          earlyPaymentDays: legacyEarlyPaymentDays,
-          cutoffTime: dto.cutoffTime ?? null,
-          paymentTime: dto.paymentTime ?? null,
         },
         tx,
       );
@@ -327,21 +316,6 @@ export class BranchesService {
       }
     }
 
-    // Resolver valores efectivos para autocomputar `earlyPaymentDays`
-    // en la forma plana legacy (necesitamos los nuevos valores o los
-    // existentes).
-    const effectiveCutoffDay =
-      dto.cutoffDay !== undefined ? dto.cutoffDay : existing.cutoffDay;
-    const effectivePaymentDay =
-      dto.paymentDay !== undefined ? dto.paymentDay : existing.paymentDay;
-    const legacyEarlyPaymentDays =
-      effectiveCutoffDay != null && effectivePaymentDay != null
-        ? BranchesService.computeEarlyPaymentDays(
-            effectivePaymentDay,
-            effectiveCutoffDay,
-          )
-        : undefined;
-
     const auditCtx: AuditWriteContext = {
       actorUserId: actor.id,
       action: 'USER.UPDATE',
@@ -369,11 +343,6 @@ export class BranchesService {
             address: dto.address,
             managerUserId: managerPatch,
             isActive: dto.isActive,
-            cutoffDay: dto.cutoffDay,
-            paymentDay: dto.paymentDay,
-            earlyPaymentDays: legacyEarlyPaymentDays,
-            cutoffTime: dto.cutoffTime,
-            paymentTime: dto.paymentTime,
           },
           tx,
         );
@@ -697,11 +666,6 @@ export class BranchesService {
       esMatriz: entity!.esMatriz,
       address: entity!.address,
       managerUserId: entity!.managerUserId,
-      cutoffDay: entity!.cutoffDay,
-      paymentDay: entity!.paymentDay,
-      earlyPaymentDays: entity!.earlyPaymentDays,
-      cutoffTime: entity!.cutoffTime,
-      paymentTime: entity!.paymentTime,
       isActive: entity!.isActive,
       createdAt: entity!.createdAt,
       updatedAt: entity!.updatedAt,

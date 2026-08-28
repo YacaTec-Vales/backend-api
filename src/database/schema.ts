@@ -223,34 +223,9 @@ export const branches = appSchema.table('branch', {
    * Agregado por la migracion 10-branch-folio-prefix.sql.
    */
   folioPrefix: text('folio_prefix'),
-  /**
-   * @deprecated Las fechas de corte y pago viven ahora en la tabla
-   * `app.branch_cutoff` (migration 12-branch-fechas-corte.sql). Este
-   * campo se conserva por compatibilidad transitoria y se eliminara
-   * en una limpieza manual posterior.
-   * @see docs/sistema/reglas-2.0.md v2.0.1
-   */
-  cutoffDay: integer('cutoff_day'),
-  /**
-   * @deprecated Ver `app.branch_cutoff` (migration 12). Mantenido por
-   * compatibilidad transitoria.
-   */
-  paymentDay: integer('payment_day'),
-  /**
-   * @deprecated Ver `app.branch_cutoff` (migration 12). Mantenido por
-   * compatibilidad transitoria.
-   */
-  earlyPaymentDays: integer('early_payment_days'),
-  /**
-   * Hora del dia del corte (HH:MM:SS 24h). Nullable en la forma
-   * legacy @deprecated; la forma canonica vive en `app.branch_cutoff`.
-   */
-  cutoffTime: time('cutoff_time'),
-  /**
-   * Hora del dia del pago (HH:MM:SS 24h). Nullable en la forma
-   * legacy @deprecated; la forma canonica vive en `app.branch_cutoff`.
-   */
-  paymentTime: time('payment_time'),
+  // Las fechas/horas de corte y pago viven en `app.branch_cutoff`
+  // (tabla canonica, 2 filas por sucursal = 2 quincenas). Esta tabla
+  // `branch` solo guarda identidad.
   isActive: boolean('is_active').notNull().default(true),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true })
