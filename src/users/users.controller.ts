@@ -157,6 +157,9 @@ export class UsersController {
    */
   @Post()
   @RequireVpnOrigin('Tecu')
+  // OR: GERENTE_GENERAL usa `user.create`; ADMINISTRADOR usa
+  // `user.create.general_manager`. Con AND (RequirePermissions) nadie
+  // tenia ambos => endpoint inaccesible. Igual que branches.create.
   @RequireAnyPermission('user.create', 'user.create.general_manager')
   @ApiOperation({
     summary: 'Crear usuario',

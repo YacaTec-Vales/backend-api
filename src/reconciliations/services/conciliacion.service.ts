@@ -99,7 +99,7 @@ export class ConciliacionService {
               paymentCents,
               paymentFolio: movement.paymentFolio,
               paymentDate: movement.paymentDate, // Formato normalizado a YYYY-MM-DD o texto plano
-              paymentTime: movement.paymentTime, // Formato normalizado a HH:mm
+              // paymentTime: movement.paymentTime, // TODO: reactivar cuando se agregue la columna payment_time
               paymentType: movement.paymentType,
               rawRow: movement.rawRow,
             })

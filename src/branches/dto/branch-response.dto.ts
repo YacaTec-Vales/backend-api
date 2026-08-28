@@ -29,6 +29,24 @@ export class BranchManagerInfoDto {
 }
 
 /**
+ * Datos del gerente general (informacion minima para mostrar
+ * en listados y detalle). Es `null` si no hay GG activo.
+ */
+export class BranchGeneralManagerInfoDto {
+  @ApiProperty({ format: 'uuid' })
+  id: string;
+
+  @ApiProperty()
+  firstName: string;
+
+  @ApiProperty()
+  lastNamePaternal: string;
+
+  @ApiProperty({ format: 'email' })
+  email: string;
+}
+
+/**
  * Respuesta de una sucursal. Se usa para listar, detalle y
  * operaciones de escritura (crear, actualizar).
  */
@@ -53,6 +71,14 @@ export class BranchResponseDto {
 
   @ApiProperty({ type: BranchManagerInfoDto, nullable: true })
   manager: BranchManagerInfoDto | null;
+
+  @ApiProperty({
+    example: 'NOR',
+    nullable: true,
+    description:
+      'Prefijo de 3 letras en mayusculas usado en folios de vouchers.',
+  })
+  folioPrefix: string | null;
 
   // Fechas de corte/pago per-branch (regla 2.0)
   @ApiProperty({

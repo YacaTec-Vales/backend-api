@@ -88,6 +88,7 @@ export class BranchesService {
       page: query.page ?? 1,
       limit: query.limit ?? 20,
       branchType: query.branchType,
+      esMatriz: query.esMatriz,
       isActive: query.isActive,
       search: query.search,
       sortBy: query.sortBy ?? 'createdAt',
@@ -684,6 +685,108 @@ export class BranchesService {
   private toBranchResponse(row: BranchAdminRow): BranchResponseDto {
     return toBranchResponseDto(row);
   }
+
+  /**
+   * Transfiere la cualidad de MATRIZ entre dos sucursales.
+   *
+   * Solo el ADMINISTRADOR puede ejecutar esta operacion. Se ejecuta
+   * dentro de una transaccion con audit context para que el trigger
+   * registre la operacion.
+   *
+   * Reglas:
+   *  - `branchNewId` debe existir y estar activa.
+   *  - `branchNewId` no puede ser ya la matriz.
+   *  - `branchNewId` debe tener tipo SUCURSAL (la conversion de tipo
+   *    se hace implicitamente al setear `esMatriz=true`).
+   *  - Si la nueva matriz tenia gerente, se desasigna (el GG solo
+   *    pertenece a la matriz).
+   *  - Si la antigua matriz tenia gerente, tambien se desasigna.
+   *
+   * @param actor - Usuario que ejecuta la operacion.
+   * @param ctx - Contexto HTTP (ip, userAgent, device).
+   * @param branchNewId - UUID de la nueva matriz.
+   */
+  async transferMatriz(
+    actor: RequestUser,
+    ctx: { ipAddress?: string; userAgent?: string; device?: string | null },
+    branchNewId: string,
+  ): Promise<BranchResponseDto> {
+    if (actor.role !== 'ADMINISTRADOR') {
+      throw new ForbiddenException({
+        code: 'BRANCH.TRANSFER_FORBIDDEN',
+        message: 'solo el administrador puede transferir la cualidad de matriz',
+      });
+    }
+
+    const nueva = await this.branchesRepo.findActiveById(branchNewId);
+    if (!nueva) {
+      throw new NotFoundException({
+        code: 'BRANCH.NOT_FOUND',
+        message: 'sucursal destino no encontrada o inactiva',
+      });
+    }
+    if (nueva.esMatriz) {
+      throw new ConflictException({
+        code: 'BRANCH.ALREADY_MATRIZ',
+        message: 'esa sucursal ya es la matriz activa',
+      });
+    }
+    if (nueva.branchType === 'MATRIZ') {
+      throw new ConflictException({
+        code: 'BRANCH.TYPE_LOCKED',
+        message: 'la sucursal ya tiene tipo MATRIZ; conviertela primero',
+      });
+    }
+
+    const actual = await this.branchesRepo.findMatriz();
+    if (actual && actual.id === branchNewId) {
+      throw new ConflictException({
+        code: 'BRANCH.ALREADY_MATRIZ',
+        message: 'esa sucursal ya es la matriz activa',
+      });
+    }
+
+    const auditCtx: AuditWriteContext = {
+      actorUserId: actor.id,
+      action: 'BRANCH.TRANSFER_MATRIZ',
+      ipAddress: ctx.ipAddress,
+      userAgent: ctx.userAgent,
+      device: ctx.device,
+      metadata: {
+        table: 'branch',
+        fromBranchId: actual?.id ?? null,
+        fromBranchName: actual?.name ?? null,
+        toBranchId: branchNewId,
+        toBranchName: nueva.name,
+      },
+    };
+
+    const result = await this.auditRepo.runWithContext(auditCtx, async (tx) => {
+      const r = await this.branchesRepo.transferMatriz(
+        tx,
+        actual?.id ?? null,
+        branchNewId,
+      );
+      // Usamos `next` (que viene del RETURNING del UPDATE) para no
+      // depender de la replica de lectura, que en este momento aun
+      // no ve la fila actualizada.
+      const manager = await this.fetchManager(r.next.managerUserId);
+      return this.toBranchResponse(this.toAdminRow(r.next, manager));
+    });
+
+    return result;
+  }
+
+  /**
+   * Helper: convierte una BranchEntity a BranchAdminRow usando los
+   * datos cacheados del join (manager) si los hay. Usado por
+   * `transferMatriz` para devolver una respuesta consistente.
+   *
+   * NOTA: este helper ya no es necesario porque `toAdminRow` (el
+   * principal, 2 argumentos) acepta tanto el entity como el manager.
+   * Lo dejamos como no-op por compatibilidad con tests legacy.
+   */
+  // (declaracion removida para resolver el conflicto de overload)
 
   /**
    * Autocomputa la ventana de pago anticipado como la diferencia

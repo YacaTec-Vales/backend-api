@@ -35,6 +35,7 @@ export interface BranchListFilters {
   page: number;
   limit: number;
   branchType?: 'MATRIZ' | 'SUCURSAL';
+  esMatriz?: boolean;
   isActive?: boolean;
   search?: string;
   sortBy: 'name' | 'createdAt' | 'branchType';
@@ -128,6 +129,63 @@ export class BranchesRepository {
       .where(and(eq(branches.esMatriz, true), isNull(branches.deletedAt)))
       .limit(1);
     return row ?? null;
+  }
+
+  /**
+   * Transfiere la cualidad de MATRIZ entre dos sucursales en una sola
+   * transaccion. La antigua matriz deja de serlo y se le quita su
+   * gerente (porque el GG pertenece solo a la nueva matriz).
+   *
+   * Pasos:
+   *  1. UPDATE branch_old SET es_matriz=false, manager_user_id=NULL
+   *     WHERE id = branchOldId.
+   *  2. UPDATE branch_new SET es_matriz=true, manager_user_id=NULL
+   *     WHERE id = branchNewId (la nueva matriz NO puede tener GS).
+   *  3. Retorna ambas filas para que el caller pueda emitir audit.
+   *
+   * Conexion: `DRIZZLE_WRITE` (recibe TX del caller para atomicidad).
+   *
+   * @param tx - Transaccion de escritura.
+   * @param branchOldId - UUID de la matriz actual (puede no existir).
+   * @param branchNewId - UUID de la sucursal que sera la nueva matriz.
+   */
+  async transferMatriz(
+    tx: DrizzleWrite,
+    branchOldId: string | null,
+    branchNewId: string,
+  ): Promise<{ old: BranchEntity | null; next: BranchEntity }> {
+    if (branchOldId && branchOldId !== branchNewId) {
+      await tx
+        .update(branches)
+        .set({
+          esMatriz: false,
+          managerUserId: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(branches.id, branchOldId));
+    }
+    const [next] = await tx
+      .update(branches)
+      .set({
+        esMatriz: true,
+        managerUserId: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(branches.id, branchNewId))
+      .returning();
+    if (!next) {
+      throw new Error('branch.transferMatriz: nueva matriz no encontrada');
+    }
+    let old: BranchEntity | null = null;
+    if (branchOldId) {
+      const [oldRow] = await tx
+        .select()
+        .from(branches)
+        .where(eq(branches.id, branchOldId))
+        .limit(1);
+      old = oldRow ?? null;
+    }
+    return { old, next };
   }
 
   /**
@@ -426,6 +484,9 @@ export class BranchesRepository {
     }
     if (filters.isActive !== undefined) {
       conditions.push(eq(branches.isActive, filters.isActive));
+    }
+    if (filters.esMatriz !== undefined) {
+      conditions.push(eq(branches.esMatriz, filters.esMatriz));
     }
     if (filters.search && filters.search.trim().length > 0) {
       const term = `%${filters.search.trim().toLowerCase()}%`;

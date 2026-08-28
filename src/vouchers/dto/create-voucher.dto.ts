@@ -5,13 +5,26 @@
  * si es PREVALE (primer vale con la distribuidora actual, R15) o
  * DIGITAL, registra la intencion, y genera el folio.
  *
+ * Reglas del override `voucherType`:
+ *  - Omitido: auto-deduccion (R15: primer vale del cliente con esta
+ *    distribuidora = PREVALE; si ya tiene = DIGITAL).
+ *  - `'DIGITAL'` explicito: siempre permitido (caso tipico: cliente
+ *    transferido, R22 — el primer vale con la nueva distribuidora va
+ *    como DIGITAL, no como PREVALE).
+ *  - `'PREVALE'` explicito: permitido solo si el cliente NO tiene
+ *    vales previos con esta distribuidora. Si ya tiene, se rechaza
+ *    con `VOUCHER.NOT_PREVALE_ELIGIBLE` (no se permite degradar).
+ *
+ * La regla del 50% (R15) solo se evalua cuando el tipo efectivo es
+ * PREVALE.
+ *
  * @module vouchers/dto
  * @author Equipo de desarrollo Mis Vales
  * @since 1.0.0
  */
 
-import { ApiProperty } from '@nestjs/swagger';
-import { IsUUID } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsIn, IsOptional, IsUUID } from 'class-validator';
 
 export class CreateVoucherDto {
   @ApiProperty({
@@ -27,4 +40,21 @@ export class CreateVoucherDto {
   })
   @IsUUID('4', { message: 'el producto debe ser un UUID valido' })
   productId!: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Tipo de vale. Si se omite, el backend deduce (R15): ' +
+      'PREVALE si el cliente no tiene vales previos con esta ' +
+      'distribuidora, DIGITAL en caso contrario. Forzar "DIGITAL" ' +
+      'siempre esta permitido (caso R22 transferencia). Forzar ' +
+      '"PREVALE" solo se permite si el cliente no tiene vales previos ' +
+      'con esta distribuidora; en caso contrario se rechaza con ' +
+      'VOUCHER.NOT_PREVALE_ELIGIBLE.',
+    enum: ['PREVALE', 'DIGITAL'],
+  })
+  @IsOptional()
+  @IsIn(['PREVALE', 'DIGITAL'], {
+    message: 'voucherType debe ser PREVALE o DIGITAL',
+  })
+  voucherType?: 'PREVALE' | 'DIGITAL';
 }

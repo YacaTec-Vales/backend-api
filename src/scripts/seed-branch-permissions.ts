@@ -66,6 +66,15 @@ const SEED_PERMISSIONS: PermissionSeed[] = [
       'Dar de baja (soft delete) una sucursal. Solo GERENTE_GENERAL.',
     roles: ['GERENTE_GENERAL'],
   },
+  {
+    code: 'branch.transfer.matriz',
+    module: 'branch',
+    action: 'transfer_matriz',
+    name: 'Transferir cualidad de matriz',
+    description:
+      'Promueve una sucursal a MATRIZ, removiendo la cualidad de la matriz actual. Solo ADMINISTRADOR.',
+    roles: ['ADMINISTRADOR'],
+  },
 ];
 
 /**
