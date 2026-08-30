@@ -55,6 +55,7 @@ import { RejectSolicitationDto } from './dto/reject-solicitation.dto';
 import { SolicitationResponseDto } from '../branches/dto/solicitation-response.dto';
 import { SolicitationResponseMapper } from '../shared/mappers/solicitation.mapper';
 import { SOLICITUD_ERROR_CODES } from './solicitations.errors';
+import { categories } from '../database/schema';
 
 /**
  * Resultado publico de `authorize`. Se devuelve al controller para
@@ -98,7 +99,9 @@ export class SolicitationsAuthorizeService {
    * Pasos:
    *  1. Valida: rol GERENTE_GENERAL o GERENTE_SUCURSAL de la misma
    *     branch; solicitud en `DICTAMINADA`.
-   *  2. Calcula categoria default (Cobre) y correlativo (MAX+1).
+   *  2. Resuelve categoria: valida `dto.categoryId` contra app.category
+   *     (404 si no existe/inactiva); si la tabla esta vacia, autocrea
+   *     "Cobre" (300 bps, sortOrder=1). Tambien calcula correlativo (MAX+1).
    *  3. Genera contrasena temporal + hash Argon2id.
    *  4. TX serializable:
    *     - INSERT app.user (rol DISTRIBUIDOR).
@@ -108,7 +111,7 @@ export class SolicitationsAuthorizeService {
    *
    * @param actor - Gerente autenticado.
    * @param solicitationId - UUID de la solicitud.
-   * @param dto - Limite de credito + comentarios decision.
+   * @param dto - Limite de credito + categoryId + comentarios decision.
    * @returns Resultado publico.
    */
   async authorize(
@@ -160,7 +163,7 @@ export class SolicitationsAuthorizeService {
       (generalData['apellido_materno'] as string | undefined) ?? '';
     const correo = (generalData['correo'] as string | undefined) ?? '';
     const branchId = current.branchId;
-    const categoryId = await this.findDefaultCategoryId();
+    const categoryId = await this.resolveCategoryId(dto.categoryId);
 
     // Generar contrasena temporal (puede lanzar WeakPasswordError).
     const tempPassword = this.passwordService.generateTemporaryPassword();
@@ -426,11 +429,28 @@ export class SolicitationsAuthorizeService {
   }
 
   /**
-   * Lee el UUID de la categoria Cobre desde la BD.
-   * La BD real no tiene columna `code`, asi que filtramos por
-   * `name = 'Cobre'`. Fallback al UUID canonico si no se encuentra.
+   * Resuelve la categoria final del Distribuidor a partir del
+   * `categoryId` provisto por el Gerente en `dto.categoryId`.
+   *
+   * Comportamiento:
+   *  - Si la tabla `app.category` no tiene categorias activas
+   *    (caso bootstrap: GG nunca dio de alta categorias), intenta
+   *    reusar una categoria `Cobre` que este soft-deleted
+   *    (la "revive" con `deleted_at = NULL`); si tampoco existe
+   *    soft-deleted, autocrea una nueva con `commissionBps=300`,
+   *    `sortOrder=1`. Asi el sistema no queda bloqueado por una
+   *    operacion de bootstrap. El UUID de la categoria devuelta
+   *    es el que se asigna al Distribuidor.
+   *  - Si `app.category` tiene al menos una activa, valida que el
+   *    `categoryId` provisto exista y este activa. Si no, lanza
+   *    `404 CATEGORY.NOT_FOUND`.
+   *
+   * @param categoryId - UUID de la categoria a asignar.
+   * @returns UUID de la categoria (existente, reactivada o nueva).
+   * @throws NotFoundException `CATEGORY.NOT_FOUND` si el UUID no
+   *         existe o esta inactivo.
    */
-  private async findDefaultCategoryId(): Promise<string> {
+  private async resolveCategoryId(categoryId: string): Promise<string> {
     const pool = (
       this.writeDb as unknown as {
         $client: {
@@ -441,13 +461,73 @@ export class SolicitationsAuthorizeService {
         };
       }
     ).$client;
-    const result = await pool.query(
-      `SELECT id::text AS id FROM app.category WHERE name = 'Cobre' LIMIT 1`,
+
+    // 1) Contar categorias activas para detectar caso bootstrap.
+    const countResult = await pool.query(
+      `SELECT COUNT(*)::int AS n
+         FROM app.category
+        WHERE deleted_at IS NULL`,
       [],
     );
-    return (
-      (result.rows[0]?.['id'] as string | undefined) ??
-      '131e27e2-aaa3-47b4-9e42-4523790fd124'
+    const activeCount = (countResult.rows[0]?.['n'] as number | undefined) ?? 0;
+
+    // 2) Bootstrap: no hay activas -> revivir "Cobre" soft-deleted
+    //    o crearla nueva. Esto evita chocar con UNIQUE(category.name)
+    //    cuando todas las Cobre previas fueron soft-deleted.
+    if (activeCount === 0) {
+      const revived = await pool.query(
+        `UPDATE app.category
+            SET deleted_at = NULL,
+                is_active  = TRUE,
+                updated_at = NOW()
+          WHERE name = 'Cobre'
+            AND deleted_at IS NOT NULL
+          RETURNING id::text AS id`,
+        [],
+      );
+      const revivedId = revived.rows[0]?.['id'] as string | undefined;
+      if (revivedId) {
+        this.logger.warn(
+          `app.category sin activas; se revivio la categoria ` +
+            `Cobre (id=${revivedId}) durante autorizacion de solicitud.`,
+        );
+        return revivedId;
+      }
+
+      const [created] = await this.writeDb
+        .insert(categories)
+        .values({
+          name: 'Cobre',
+          commissionBps: 300,
+          sortOrder: 1,
+        })
+        .returning();
+      this.logger.warn(
+        `app.category estaba vacia; se creo categoria default ` +
+          `Cobre (id=${created?.id}, commissionBps=300) durante ` +
+          `autorizacion de solicitud.`,
+      );
+      return created?.id ?? null;
+    }
+
+    // 3) Validar el categoryId provisto por el Gerente.
+    const lookup = await pool.query(
+      `SELECT id::text AS id
+         FROM app.category
+        WHERE id = $1::uuid
+          AND deleted_at IS NULL
+          AND is_active = TRUE
+        LIMIT 1`,
+      [categoryId],
     );
+    const foundId = lookup.rows[0]?.['id'] as string | undefined;
+    if (!foundId) {
+      throw new NotFoundException({
+        code: 'CATEGORY.NOT_FOUND',
+        message: `categoria ${categoryId} no existe o esta inactiva`,
+        details: { categoryId },
+      });
+    }
+    return foundId;
   }
 }

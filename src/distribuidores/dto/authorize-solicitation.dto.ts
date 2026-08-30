@@ -7,14 +7,14 @@
  * transaccion serializable:
  *  1. `app.user` con rol DISTRIBUIDOR + contrasena temporal.
  *  2. `app.distributor` con `credit_limit_cents` capturado y
- *     categoria por default (Cobre).
+ *     `category_id` seleccionado por el Gerente.
  *  3. UPDATE de la solicitud a `AUTORIZADA`.
  *  4. `app.email_log` con el correo de bienvenida.
  *
  * Regla 2.0 §6.1.1: el limite de credito es OBLIGATORIO y debe ser
- * positivo. La categoria default al alta es `Cobre` (regla 2.0 §6.1,
- * confirmada por Sebastian el 2026-08-05: el UUID es
- * 131e27e2-aaa3-47b4-9e42-4523790fd124).
+ * positivo. La categoria la elige el Gerente al autorizar; si la
+ * tabla `app.category` esta vacia, el sistema autocrea la default
+ * `Cobre` (commissionBps=300, sortOrder=1) antes de continuar.
  *
  * @module distribuidores/dto
  * @author Equipo de desarrollo Mis Vales
@@ -27,6 +27,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   MaxLength,
   Min,
@@ -50,6 +51,18 @@ export class AuthorizeSolicitationDto {
       'el limite de credito no puede superar 10,000,000,000,000 centavos',
   })
   limite_credito_centavos!: number;
+
+  @ApiProperty({
+    format: 'uuid',
+    description:
+      'UUID de la categoria a asignar al Distribuidor. Obligatorio. ' +
+      'Debe existir y estar activa en app.category. Si la tabla esta ' +
+      'vacia, el sistema crea la categoria default "Cobre" ' +
+      '(commissionBps=300, sortOrder=1) automaticamente antes de continuar.',
+    example: 'db45ee5c-f20f-4540-98cb-7e89ec524cd1',
+  })
+  @IsUUID('4', { message: 'categoryId debe ser un UUID v4 valido' })
+  categoryId!: string;
 
   @ApiPropertyOptional({
     description: 'Comentarios del Gerente para la decision (max 1000 chars).',

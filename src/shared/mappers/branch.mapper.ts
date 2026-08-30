@@ -21,6 +21,10 @@ import type {
 /**
  * Forma del row administrativo de sucursal. Compatible con
  * `BranchAdminRow` del repositorio.
+ *
+ * Las fechas/horas de corte y pago NO viven en esta tabla: viven en
+ * `app.branch_cutoff` (tabla canonica, 2 filas por sucursal). El
+ * caller debe hacer un JOIN o un fetch separado si quiere exponerlas.
  */
 export interface BranchRowShape {
   id: string;
@@ -29,12 +33,6 @@ export interface BranchRowShape {
   esMatriz: boolean;
   address: string | null;
   managerUserId: string | null;
-  folioPrefix: string | null;
-  cutoffDay: number | null;
-  paymentDay: number | null;
-  earlyPaymentDays: number | null;
-  cutoffTime: string | null;
-  paymentTime: string | null;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -47,6 +45,10 @@ export interface BranchRowShape {
  * Proyeccion de un row administrativo a la respuesta publica
  * de sucursal. Compone `manager` solo si la fila tiene
  * `managerUserId` y los datos minimos del gerente.
+ *
+ * Los campos legacy `cutoffDay/paymentDay/earlyPaymentDays/cutoffTime/paymentTime`
+ * se devuelven como `null` por compatibilidad con el front; la fuente
+ * canonica es `app.branch_cutoff` (endpoint `GET /branches/:id/cutoffs`).
  *
  * @param row - Row del repositorio.
  * @returns DTO publico.
@@ -72,12 +74,17 @@ export function toBranchResponseDto(row: BranchRowShape): BranchResponseDto {
     address: row.address,
     managerUserId: row.managerUserId,
     manager,
-    folioPrefix: row.folioPrefix ?? null,
-    cutoffDay: row.cutoffDay,
-    paymentDay: row.paymentDay,
-    earlyPaymentDays: row.earlyPaymentDays,
-    cutoffTime: row.cutoffTime,
-    paymentTime: row.paymentTime,
+    // folioPrefix vive en app.branch (columna activa). Tras el refactor de
+    // PR #119 que quito las referencias legacy de BranchRowShape, todavia
+    // no se vuelve a poblar este campo en el mapper. Se devuelve null
+    // como placeholder consistente con el patron de campos legacy;
+    // poblar desde row.folioPrefix cuando el repo lo exponga de nuevo.
+    folioPrefix: null,
+    cutoffDay: null,
+    paymentDay: null,
+    earlyPaymentDays: null,
+    cutoffTime: null,
+    paymentTime: null,
     isActive: row.isActive,
     createdAt: toIso(row.createdAt) ?? '',
     updatedAt: toIso(row.updatedAt) ?? '',
