@@ -79,7 +79,12 @@ function buildSmartPoolMock() {
       .mockImplementation((sql: string, params: unknown[] = []) => {
         calls.push({ sql, params });
         const s = String(sql).trim();
-        if (/SELECT id::text.*FROM app\.category/i.test(s)) {
+        // resolveCategoryId: count() para detectar bootstrap.
+        // Devolvemos >0 para saltar el bootstrap path y caer al lookup.
+        if (/SELECT COUNT\(\*\):?:?int[\s\S]*?FROM app\.category/i.test(s)) {
+          return Promise.resolve({ rows: [{ n: 1 }] });
+        }
+        if (/SELECT id::text[\s\S]*?FROM app\.category/i.test(s)) {
           return Promise.resolve({
             rows: [{ id: '131e27e2-aaa3-47b4-9e42-4523790fd124' }],
           });
@@ -255,9 +260,11 @@ function buildServiceWithSimplePool() {
 
 describe('SolicitationsAuthorizeService', () => {
   describe('authorize', () => {
+    const CATEGORY_ID = '131e27e2-aaa3-47b4-9e42-4523790fd124';
     const dto = {
       limite_credito_centavos: 500_000,
       comentarios_decision: 'ok',
+      categoryId: CATEGORY_ID,
     };
 
     it('autoriza como GERENTE_GENERAL con TX serializable', async () => {
@@ -352,6 +359,8 @@ describe('SolicitationsAuthorizeService', () => {
     it('hace ROLLBACK si falla el INSERT distributor', async () => {
       const { service, solicitationRepo, pool } = buildServiceWithSimplePool();
       solicitationRepo.findById.mockResolvedValueOnce(BASE_ROW);
+      // resolveCategoryId: COUNT > 0 (evita bootstrap)
+      pool.query.mockResolvedValueOnce({ rows: [{ n: 1 }] });
       // categoria Cobre OK
       pool.query.mockResolvedValueOnce({
         rows: [{ id: '131e27e2-aaa3-47b4-9e42-4523790fd124' }],

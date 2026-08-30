@@ -507,7 +507,7 @@ export class SolicitationsAuthorizeService {
           `Cobre (id=${created?.id}, commissionBps=300) durante ` +
           `autorizacion de solicitud.`,
       );
-      return created?.id as string;
+      return created?.id ?? null;
     }
 
     // 3) Validar el categoryId provisto por el Gerente.

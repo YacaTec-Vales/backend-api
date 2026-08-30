@@ -74,6 +74,12 @@ export function toBranchResponseDto(row: BranchRowShape): BranchResponseDto {
     address: row.address,
     managerUserId: row.managerUserId,
     manager,
+    // folioPrefix vive en app.branch (columna activa). Tras el refactor de
+    // PR #119 que quito las referencias legacy de BranchRowShape, todavia
+    // no se vuelve a poblar este campo en el mapper. Se devuelve null
+    // como placeholder consistente con el patron de campos legacy;
+    // poblar desde row.folioPrefix cuando el repo lo exponga de nuevo.
+    folioPrefix: null,
     cutoffDay: null,
     paymentDay: null,
     earlyPaymentDays: null,

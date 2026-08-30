@@ -477,21 +477,18 @@ describe('BranchesService', () => {
     });
   });
 
-  describe('create con campos planos legacy', () => {
-    it('autocomputa earlyPaymentDays desde cutoffDay/paymentDay', async () => {
+  describe('create con forma canonica cutoffs[]', () => {
+    it('autocomputa earlyPaymentDays en app.branch_cutoff desde cutoffs[]', async () => {
       branchesRepo.findMatriz.mockResolvedValue(null);
       branchesRepo.insert.mockResolvedValue({
-        id: 'b-legacy',
-        name: 'Suc Legacy',
+        id: 'b-cutoffs-form',
+        name: 'Suc Cutoffs Form',
         branchType: 'SUCURSAL',
         esMatriz: false,
         address: null,
         managerUserId: null,
-        cutoffDay: 14,
-        paymentDay: 19,
-        earlyPaymentDays: 5,
-        cutoffTime: '10:00',
-        paymentTime: '17:00',
+        cutoffTime: null,
+        paymentTime: null,
         isActive: true,
         deletedAt: null,
         createdAt: new Date(),
@@ -501,34 +498,49 @@ describe('BranchesService', () => {
       await service.create(
         requestUserFactory({ role: 'GERENTE_GENERAL' }),
         {
-          name: 'Suc Legacy',
+          name: 'Suc Cutoffs Form',
           branchType: 'SUCURSAL',
-          cutoffDay: 14,
-          paymentDay: 19,
-          cutoffTime: '10:00',
-          paymentTime: '17:00',
+          cutoffs: [
+            {
+              position: 1,
+              cutoffDay: 14,
+              paymentDay: 19,
+              cutoffTime: '10:00',
+              paymentTime: '17:00',
+            },
+          ],
         } as never,
         { ipAddress: '', userAgent: '', device: '' },
       );
 
+      // Las fechas NO van a branchesRepo.insert (ya no hay columnas legacy).
+      // Van a branchCutoffRepo.insertMany con earlyPaymentDays autocomputado.
       expect(branchesRepo.insert).toHaveBeenCalledWith(
-        expect.objectContaining({
-          cutoffDay: 14,
-          paymentDay: 19,
-          earlyPaymentDays: 5, // 19 - 14 = 5 (autocomputado)
-          cutoffTime: '10:00',
-          paymentTime: '17:00',
+        expect.not.objectContaining({
+          cutoffDay: expect.anything(),
+          paymentDay: expect.anything(),
         }),
         expect.anything(),
       );
-      expect(branchCutoffRepo.insertMany).not.toHaveBeenCalled();
+      expect(branchCutoffRepo.insertMany).toHaveBeenCalledTimes(1);
+      const rows = (branchCutoffRepo.insertMany as jest.Mock).mock.calls[0][0];
+      expect(rows[0]).toMatchObject({
+        branchId: 'b-cutoffs-form',
+        position: 1,
+        cutoffDay: 14,
+        paymentDay: 19,
+        earlyPaymentDays: 5, // 19 - 14 = 5
+        cutoffTime: '10:00:00',
+        paymentTime: '17:00:00',
+        isActive: true,
+      });
     });
   });
 
   describe('update — permisos GS para fechas per-branch (regla 2.0)', () => {
     const ctx = { ipAddress: '', userAgent: '', device: '' };
 
-    it('GERENTE_SUCURSAL puede editar cutoffDay/paymentDay/cutoffTime/paymentTime de su sucursal', async () => {
+    it('GERENTE_SUCURSAL puede enviar fechas planas; el servicio ya no las persiste como columnas legacy (forma canonica es cutoffs[])', async () => {
       branchesRepo.findById.mockResolvedValue({
         id: 'mi-suc',
         name: 'Mi Suc',
@@ -536,10 +548,8 @@ describe('BranchesService', () => {
         esMatriz: false,
         address: null,
         managerUserId: null,
-        cutoffDay: 15,
-        paymentDay: 20,
-        cutoffTime: '09:00',
-        paymentTime: '18:00',
+        cutoffTime: null,
+        paymentTime: null,
         isActive: true,
         deletedAt: null,
         createdAt: new Date(),
@@ -552,15 +562,17 @@ describe('BranchesService', () => {
         esMatriz: false,
         address: null,
         managerUserId: null,
-        cutoffDay: 10,
-        paymentDay: 18,
-        cutoffTime: '08:00',
-        paymentTime: '17:00',
+        cutoffTime: null,
+        paymentTime: null,
         isActive: true,
         deletedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
       } as never);
+      // La forma plana (cutoffDay/paymentDay planos) pasa la validacion de
+      // GS_ALLOWED_FIELDS, pero el servicio ya NO las envia al repo
+      // (la fuente canonica de fechas es app.branch_cutoff, no las columnas
+      // legacy de app.branch que el PR #119 descontinuo).
       const result = await service.update(
         requestUserFactory({ role: 'GERENTE_SUCURSAL', branchId: 'mi-suc' }),
         'mi-suc',
@@ -574,12 +586,19 @@ describe('BranchesService', () => {
       );
       expect(result).toBeDefined();
       expect(branchesRepo.update).toHaveBeenCalledTimes(1);
-      // earlyPaymentDays autocomputado (18-10 = 8).
+      // Verifica que las fechas planas ya NO viajan a branchesRepo.update.
       expect(branchesRepo.update).toHaveBeenCalledWith(
         'mi-suc',
-        expect.objectContaining({ earlyPaymentDays: 8 }),
+        expect.not.objectContaining({
+          cutoffDay: expect.anything(),
+          paymentDay: expect.anything(),
+          earlyPaymentDays: expect.anything(),
+        }),
         expect.anything(),
       );
+      // Y NO se persisten en branch_cutoff tampoco (porque no se envio
+      // la forma canonica cutoffs[]).
+      expect(branchCutoffRepo.insertMany).not.toHaveBeenCalled();
     });
 
     it('GERENTE_SUCURSAL NO puede editar fechas de otra sucursal', async () => {
