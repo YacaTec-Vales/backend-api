@@ -48,6 +48,8 @@ import { ApiEnvelopeOkResponse } from '../shared/decorators/api-envelope-respons
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
 import { JwtAuthGuard, type RequestUser } from '../shared/guards/auth.guards';
+import { VpnOriginGuard } from '../shared/guards/vpn-origin.guard';
+import { RequireVpnOrigin } from '../shared/decorators/require-vpn-origin.decorator';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';
 
 /**
@@ -132,7 +134,8 @@ export class MfaController {
     this.logger.log(`MFA verify-setup exitoso para usuario ${user.id}`);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, VpnOriginGuard)
+  @RequireVpnOrigin('Tecu')
   @Delete('disable')
   @ApiOperation({
     summary: 'Desactivar MFA propio',
@@ -166,7 +169,8 @@ export class MfaController {
     this.logger.log(`MFA desactivado para usuario ${user.id}`);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, VpnOriginGuard)
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('mfa.admin_disable')
   @Delete('admin-disable/:userId')
   @ApiOperation({

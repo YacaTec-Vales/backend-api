@@ -79,6 +79,7 @@ export class VouchersController {
    * @apiPermission voucher.create
    */
   @Post()
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('voucher.create')
   @ApiOperation({
     summary: 'Emitir un vale',

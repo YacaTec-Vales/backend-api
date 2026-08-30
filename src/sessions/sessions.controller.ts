@@ -40,6 +40,8 @@ import {
 import { SessionsService } from './sessions.service';
 import { JwtAuthGuard, type RequestUser } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
+import { VpnOriginGuard } from '../shared/guards/vpn-origin.guard';
+import { RequireVpnOrigin } from '../shared/decorators/require-vpn-origin.decorator';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
 import { SessionResponseDto } from '../auth/dto/auth-response.dto';
 import { toSessionResponseDto } from '../shared/mappers';
@@ -54,7 +56,7 @@ import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 @ApiTags('Sessions')
 @ApiBearerAuth('bearer')
 @Controller('auth')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, VpnOriginGuard)
 export class SessionsController {
   constructor(private readonly sessionsService: SessionsService) {}
 
@@ -85,6 +87,7 @@ export class SessionsController {
   }
 
   @Delete('sessions/:id')
+  @RequireVpnOrigin('Tecu')
   @ApiOperation({
     summary: 'Cerrar una sesion propia',
     description:
@@ -115,6 +118,7 @@ export class SessionsController {
   }
 
   @Post('sessions/revoke-others')
+  @RequireVpnOrigin('Tecu')
   @ApiOperation({
     summary: 'Cerrar otras sesiones',
     description:

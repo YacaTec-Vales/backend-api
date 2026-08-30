@@ -53,14 +53,16 @@ import {
 import { ErrorResponseDto } from '../shared/dto/error-response.dto';
 import { JwtAuthGuard } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
+import { VpnOriginGuard } from '../shared/guards/vpn-origin.guard';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';
+import { RequireVpnOrigin } from '../shared/decorators/require-vpn-origin.decorator';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
 import type { RequestUser } from '../shared/guards/auth.guards';
 
 @ApiTags('CreditRaise')
 @ApiBearerAuth('bearer')
 @Controller()
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard, VpnOriginGuard)
 export class CreditRaiseController {
   constructor(private readonly service: CreditRaiseService) {}
 
@@ -69,6 +71,7 @@ export class CreditRaiseController {
    */
   @Post('distribuidores/:id/credit-raise-requests')
   @HttpCode(HttpStatus.CREATED)
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('distribuidor.credit.raise.request')
   @ApiOperation({
     summary: 'Solicitar aumento de linea de credito',
@@ -188,6 +191,7 @@ export class CreditRaiseController {
    */
   @Post('credit-raise-requests/:id/approve')
   @HttpCode(HttpStatus.OK)
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('distribuidor.credit.raise.decide')
   @ApiOperation({
     summary: 'Aprobar solicitud de aumento',
@@ -234,6 +238,7 @@ export class CreditRaiseController {
    */
   @Post('credit-raise-requests/:id/reject')
   @HttpCode(HttpStatus.OK)
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('distribuidor.credit.raise.decide')
   @ApiOperation({
     summary: 'Rechazar solicitud de aumento',

@@ -276,6 +276,7 @@ export class BranchesController {
    * cambia de direccion fisica o juridica.
    */
   @Post(':id/transfer-matriz')
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('branch.transfer.matriz')
   @ApiOperation({
     summary: 'Transferir la cualidad de matriz a otra sucursal',
