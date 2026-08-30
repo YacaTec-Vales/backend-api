@@ -15,6 +15,8 @@ import { UpdateCategoryDto } from './dto/update-category.dto';
 import { CategoryResponseDto } from './dto/category-response.dto';
 import { Roles } from '../shared/decorators/roles.decorator';
 import { JwtAuthGuard, RolesGuard } from '../shared/guards/auth.guards';
+import { VpnOriginGuard } from '../shared/guards/vpn-origin.guard';
+import { RequireVpnOrigin } from '../shared/decorators/require-vpn-origin.decorator';
 import type { RequestUser } from '../shared/guards/auth.guards';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
 import { ApiEnvelopeOkResponse } from '../shared/decorators/api-envelope-response.decorator';
@@ -37,12 +39,13 @@ import { SkipResponseEnvelope } from '../shared/decorators/response-envelope.dec
  */
 @ApiTags('Categories')
 @ApiBearerAuth('bearer')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@UseGuards(JwtAuthGuard, RolesGuard, VpnOriginGuard)
 @Controller('categories')
 export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}
 
   @Post()
+  @RequireVpnOrigin('Tecu')
   @Roles('GERENTE_GENERAL')
   @ApiOperation({
     summary: 'Crear categoria',
@@ -181,6 +184,7 @@ export class CategoriesController {
   }
 
   @Delete(':id')
+  @RequireVpnOrigin('Tecu')
   @Roles('GERENTE_GENERAL')
   @ApiOperation({
     summary: 'Eliminar categoria (soft delete)',

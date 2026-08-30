@@ -165,6 +165,7 @@ export class AutorizacionesController {
    */
   @Post(':id/aprobar')
   @HttpCode(HttpStatus.OK)
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('authorization.approve')
   @ApiOperation({
     summary: 'Aprobar autorizacion pendiente',
@@ -218,6 +219,7 @@ export class AutorizacionesController {
    */
   @Post(':id/rechazar')
   @HttpCode(HttpStatus.OK)
+  @RequireVpnOrigin('Tecu')
   @RequirePermissions('authorization.approve')
   @ApiOperation({
     summary: 'Rechazar autorizacion pendiente',

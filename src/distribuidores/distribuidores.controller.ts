@@ -324,7 +324,6 @@ export class DistribuidoresController {
    */
   @Post(':id/credit/increment')
   @HttpCode(HttpStatus.OK)
-  @RequireVpnOrigin('Tecu')
   @RequirePermissions('distribuidor.credit.increment')
   @ApiOperation({
     summary: 'Incrementar linea de credito',
