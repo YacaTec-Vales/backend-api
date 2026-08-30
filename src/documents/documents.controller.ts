@@ -54,21 +54,18 @@ import {
 } from '../shared/decorators/api-envelope-response.decorator';
 import { JwtAuthGuard } from '../shared/guards/auth.guards';
 import { PermissionsGuard } from '../shared/guards/permissions.guard';
-import { VpnOriginGuard } from '../shared/guards/vpn-origin.guard';
 import { RequirePermissions } from '../shared/decorators/permissions.decorator';
-import { RequireVpnOrigin } from '../shared/decorators/require-vpn-origin.decorator';
 import { CurrentUser } from '../shared/decorators/current-user.decorator';
 import type { RequestUser } from '../shared/guards/auth.guards';
 
 @ApiTags('Documents')
 @ApiBearerAuth('bearer')
 @Controller('uploads')
-@UseGuards(JwtAuthGuard, PermissionsGuard, VpnOriginGuard)
+@UseGuards(JwtAuthGuard, PermissionsGuard)
 export class DocumentsController {
   constructor(private readonly documentsService: DocumentsService) {}
 
   @Post()
-  @RequireVpnOrigin('Tecu')
   @RequirePermissions('document.upload')
   @UseInterceptors(FileInterceptor('file'))
   @ApiOperation({
@@ -302,7 +299,6 @@ export class DocumentsController {
   }
 
   @Post('verification/:solicitationId')
-  @RequireVpnOrigin('Tecu')
   @RequirePermissions('document.upload')
   @UseInterceptors(FileInterceptor('file'))
   @ApiOperation({

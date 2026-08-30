@@ -134,8 +134,7 @@ export class MfaController {
     this.logger.log(`MFA verify-setup exitoso para usuario ${user.id}`);
   }
 
-  @UseGuards(JwtAuthGuard, VpnOriginGuard)
-  @RequireVpnOrigin('Tecu')
+  @UseGuards(JwtAuthGuard)
   @Delete('disable')
   @ApiOperation({
     summary: 'Desactivar MFA propio',

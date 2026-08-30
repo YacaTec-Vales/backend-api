@@ -212,7 +212,6 @@ export class SolicitationsController {
    */
   @Post(':id/tomar')
   @HttpCode(HttpStatus.OK)
-  @RequireVpnOrigin('Tecu')
   @RequirePermissions('distribuidor.solicitud.take')
   @ApiOperation({
     summary: 'Tomar solicitud para verificar',
@@ -257,7 +256,6 @@ export class SolicitationsController {
    */
   @Post(':id/verificar')
   @HttpCode(HttpStatus.OK)
-  @RequireVpnOrigin('Tecu')
   @RequirePermissions('distribuidor.solicitud.verify')
   @ApiOperation({
     summary: 'Registrar dictamen de verificacion',
