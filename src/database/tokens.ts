@@ -44,3 +44,10 @@ export const MFA_CONFIG = Symbol('MFA_CONFIG');
  * Provider Symbol para `MailConfig`. Inyectado dentro de `MailModule`.
  */
 export const MAIL_CONFIG = Symbol('MAIL_CONFIG');
+
+/**
+ * Provider Symbol para `VpnOriginConfig`. Inyectado en `VpnOriginGuard`
+ * y `AuthService` (este ultimo para validar el origen permitido del
+ * usuario en `assertAllowedOrigin()`).
+ */
+export const VPN_ORIGIN_CONFIG = Symbol('VPN_ORIGIN_CONFIG');
