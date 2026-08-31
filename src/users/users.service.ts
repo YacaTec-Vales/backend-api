@@ -419,6 +419,7 @@ export class UsersService {
     const mailResult = await this.mailService.sendUserWelcome({
       to: entity.email,
       displayName: `${entity.firstName} ${entity.lastNamePaternal}`.trim(),
+      email: entity.email,
       username: entity.username ?? entity.email,
       temporaryPassword: tempPassword,
       loginUrl,

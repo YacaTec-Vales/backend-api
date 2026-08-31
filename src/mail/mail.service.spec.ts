@@ -88,6 +88,7 @@ describe('MailService', () => {
       const result = await service.sendUserWelcome({
         to: 'a@yacatec.demo',
         displayName: 'Ana',
+        email: 'a@yacatec.demo',
         username: 'ana.lopez',
         temporaryPassword: 'Tmp#1Abc',
         loginUrl: 'https://app/login',
@@ -108,6 +109,7 @@ describe('MailService', () => {
       const result = await service.sendUserWelcome({
         to: 'a@yacatec.demo',
         displayName: 'Ana',
+        email: 'a@yacatec.demo',
         username: 'ana',
         temporaryPassword: 'Tmp#1Abc',
         loginUrl: 'https://app/login',

@@ -50,6 +50,12 @@ export interface SessionRevokedEmailParams {
 export interface UserWelcomeEmailParams {
   to: string;
   displayName: string;
+  /**
+   * BUG FIX 2026-08-31: el usuario pidio que el correo incluya tambien
+   * el email (no solo username + password temporal) para que el
+   * destinatario tenga su correo como referencia.
+   */
+  email: string;
   username: string;
   temporaryPassword: string;
   loginUrl: string;
@@ -132,6 +138,7 @@ export class MailService {
   ): Promise<MailDeliveryResult> {
     return this.renderer.render('user-welcome', params.to, {
       displayName: params.displayName,
+      email: params.email,
       username: params.username,
       temporaryPassword: params.temporaryPassword,
       loginUrl: params.loginUrl,

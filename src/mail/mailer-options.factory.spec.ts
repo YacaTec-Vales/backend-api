@@ -34,6 +34,7 @@ const TEMPLATE_CONTEXT: Record<string, Record<string, unknown>> = {
   },
   'user-welcome': {
     displayName: 'Ana Prueba',
+    email: 'ana.prueba@yacatec.demo',
     username: 'distrib_0001',
     temporaryPassword: 'temp-pass-123',
     loginUrl: 'https://app.test/login',

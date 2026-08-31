@@ -286,6 +286,7 @@ export class SolicitationsAuthorizeService {
       const mailResult = await this.mailService.sendUserWelcome({
         to: userEmail,
         displayName: `${firstName} ${lastNamePaternal}`.trim(),
+        email: userEmail,
         username: `distrib_${distributorNumber.toLowerCase()}`,
         temporaryPassword: tempPassword,
         loginUrl,
