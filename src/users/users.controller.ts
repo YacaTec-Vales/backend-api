@@ -8,6 +8,7 @@
  *  - `PATCH  /users/:id`             edicion.
  *  - `DELETE /users/:id`             soft delete.
  *  - `POST   /users/:id/reset-password`    reset por admin.
+ *  - `POST   /users/:id/resend-welcome`   reenviar correo bienvenida (rate limit exponencial).
  *  - `POST   /users/:id/invalidate-sessions` invalidar sesiones.
  *  - `GET    /users/:id/permissions` detalle de permisos.
  *  - `POST   /users/:id/permissions` grant override.
@@ -43,6 +44,7 @@ import {
   ApiForbiddenResponse,
   ApiNoContentResponse,
   ApiNotFoundResponse,
+  ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiUnprocessableEntityResponse,
@@ -476,5 +478,48 @@ export class UsersController {
       permissionCode,
       ctx,
     );
+  }
+
+  /**
+   * `POST /users/:id/resend-welcome` — Reenvia el correo de bienvenida
+   * (con nueva contrasena temporal) al usuario.
+   *
+   * **Rate limit exponencial** por actor+target:
+   * - Intento 1: cooldown 5 min.
+   * - Intento 2: cooldown 10 min.
+   * - Intento 3: cooldown 20 min.
+   * - Intento N: cooldown min(5 * 2^(N-1), 1440) min (max 24h).
+   *
+   * Permisos: `user.update` O `user.read`. Permite que ADMIN, GG y GS
+   * (todos los que registran personal) puedan reenviar.
+   */
+  @Post(':id/resend-welcome')
+  @RequirePermissions('user.update', 'user.read')
+  @RequireVpnOrigin('Tecu')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Reenviar correo de bienvenida con nueva contrasena temporal',
+    description:
+      'Genera una nueva contrasena temporal, la persiste (mustChangePassword=true), ' +
+      'revoca todas las sesiones, y envia el correo de bienvenida via mailService. ' +
+      'Tiene rate limit exponencial por actor+target (5min, 10min, 20min, ...).',
+  })
+  @ApiOkResponse({
+    description: 'Email enviado (o no, si fallo SMTP).',
+    type: AdminResetPasswordResponseDto,
+  })
+  @ApiNotFoundResponse({ description: 'USERS.NOT_FOUND.', type: ErrorResponseDto })
+  @ApiConflictResponse({ description: 'USERS.CANNOT_RESET_SELF.', type: ErrorResponseDto })
+  @ApiUnprocessableEntityResponse({
+    description: 'USERS.WELCOME_RESEND_COOLDOWN (rate limit).',
+    type: ErrorResponseDto,
+  })
+  resendWelcome(
+    @CurrentUser() actor: RequestUser,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Req() req: Request,
+  ): Promise<AdminResetPasswordResponseDto> {
+    const ctx = contextFromRequest(req);
+    return this.usersService.resendWelcome(actor, id, ctx);
   }
 }
