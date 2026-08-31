@@ -169,13 +169,14 @@ jobs:
           MAIL_DRIVER: ${{ secrets.MAIL_DRIVER }}
           MAIL_FROM_NOTIFICATIONS: ${{ secrets.MAIL_FROM_NOTIFICATIONS }}
           CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
+          VPN_ORIGIN_GUARD_ENABLED: ${{ secrets.VPN_ORIGIN_GUARD_ENABLED }}
         with:
           host: ${{ secrets.STAGING_HOST }}
           username: ${{ secrets.STAGING_USER }}
           port: ${{ secrets.STAGING_PORT }}
           key: ${{ secrets.STAGING_SSH_KEY }}
           command_timeout: 10m
-          envs: RECAPTCHA_ENABLED,RECAPTCHA_SECRET_KEY,RECAPTCHA_MIN_SCORE,SMTP_HOST,SMTP_PORT,SMTP_USER,SMTP_PASSWORD,SMTP_FROM,SMTP_SECURE,MAIL_DRIVER,MAIL_FROM_NOTIFICATIONS,CORS_ORIGINS
+          envs: RECAPTCHA_ENABLED,RECAPTCHA_SECRET_KEY,RECAPTCHA_MIN_SCORE,SMTP_HOST,SMTP_PORT,SMTP_USER,SMTP_PASSWORD,SMTP_FROM,SMTP_SECURE,MAIL_DRIVER,MAIL_FROM_NOTIFICATIONS,CORS_ORIGINS,VPN_ORIGIN_GUARD_ENABLED
           script: |
             set -euo pipefail
 
@@ -206,7 +207,7 @@ jobs:
             tar -xzf release.tar.gz -C "$DEST"
             rm -f release.tar.gz
 
-            # 3b. Upsert reCAPTCHA + SMTP + CORS en EnvironmentFile
+            # 3b. Upsert reCAPTCHA + SMTP + CORS + VPN guard en EnvironmentFile
             ENV_FILE="$(systemctl cat "$SERVICE" 2>/dev/null | grep -oP '^EnvironmentFile=-?\K\S+' | head -1 || true)"
             if [ -n "$ENV_FILE" ]; then
               case "$ENV_FILE" in
@@ -226,7 +227,8 @@ jobs:
                 "SMTP_SECURE=${SMTP_SECURE:-false}" \
                 "MAIL_DRIVER=${MAIL_DRIVER:-smtp}" \
                 "MAIL_FROM_NOTIFICATIONS=${MAIL_FROM_NOTIFICATIONS:-}" \
-                "CORS_ORIGINS=${CORS_ORIGINS:-}"; do
+                "CORS_ORIGINS=${CORS_ORIGINS:-}" \
+                "VPN_ORIGIN_GUARD_ENABLED=${VPN_ORIGIN_GUARD_ENABLED:-false}"; do
                 key="${kv%%=*}"
                 if grep -q "^${key}=" "$ENV_FILE" 2>/dev/null; then
                   sed -i "s|^${key}=.*|${kv}|" "$ENV_FILE"
@@ -234,7 +236,7 @@ jobs:
                   printf '%s\n' "$kv" >> "$ENV_FILE"
                 fi
               done
-              echo "    recaptcha + smtp + cors env aplicado en $ENV_FILE (RECAPTCHA_ENABLED=${RECAPTCHA_ENABLED:-false}, SMTP_HOST=${SMTP_HOST:-})"
+              echo "    recaptcha + smtp + cors + vpn-guard env aplicado en $ENV_FILE (RECAPTCHA_ENABLED=${RECAPTCHA_ENABLED:-false}, VPN_ORIGIN_GUARD_ENABLED=${VPN_ORIGIN_GUARD_ENABLED:-false})"
             fi
 
             # 4. Restart + health check
@@ -286,13 +288,14 @@ jobs:
           MAIL_DRIVER: ${{ secrets.MAIL_DRIVER }}
           MAIL_FROM_NOTIFICATIONS: ${{ secrets.MAIL_FROM_NOTIFICATIONS }}
           CORS_ORIGINS: ${{ secrets.CORS_ORIGINS }}
+          VPN_ORIGIN_GUARD_ENABLED: ${{ secrets.VPN_ORIGIN_GUARD_ENABLED }}
         with:
           host: ${{ secrets.STAGING_HOST_APP03 }}
           username: ${{ secrets.STAGING_USER }}
           port: ${{ secrets.STAGING_PORT_APP03 }}
           key: ${{ secrets.STAGING_SSH_KEY }}
           command_timeout: 10m
-          envs: RECAPTCHA_ENABLED,RECAPTCHA_SECRET_KEY,RECAPTCHA_MIN_SCORE,SMTP_HOST,SMTP_PORT,SMTP_USER,SMTP_PASSWORD,SMTP_FROM,SMTP_SECURE,MAIL_DRIVER,MAIL_FROM_NOTIFICATIONS,CORS_ORIGINS
+          envs: RECAPTCHA_ENABLED,RECAPTCHA_SECRET_KEY,RECAPTCHA_MIN_SCORE,SMTP_HOST,SMTP_PORT,SMTP_USER,SMTP_PASSWORD,SMTP_FROM,SMTP_SECURE,MAIL_DRIVER,MAIL_FROM_NOTIFICATIONS,CORS_ORIGINS,VPN_ORIGIN_GUARD_ENABLED
           script: |
             set -euo pipefail
 
@@ -323,7 +326,7 @@ jobs:
             tar -xzf release.tar.gz -C "$DEST"
             rm -f release.tar.gz
 
-            # 3b. Upsert reCAPTCHA + SMTP + CORS en EnvironmentFile
+            # 3b. Upsert reCAPTCHA + SMTP + CORS + VPN guard en EnvironmentFile
             ENV_FILE="$(systemctl cat "$SERVICE" 2>/dev/null | grep -oP '^EnvironmentFile=-?\K\S+' | head -1 || true)"
             if [ -n "$ENV_FILE" ]; then
               case "$ENV_FILE" in
@@ -343,7 +346,8 @@ jobs:
                 "SMTP_SECURE=${SMTP_SECURE:-false}" \
                 "MAIL_DRIVER=${MAIL_DRIVER:-smtp}" \
                 "MAIL_FROM_NOTIFICATIONS=${MAIL_FROM_NOTIFICATIONS:-}" \
-                "CORS_ORIGINS=${CORS_ORIGINS:-}"; do
+                "CORS_ORIGINS=${CORS_ORIGINS:-}" \
+                "VPN_ORIGIN_GUARD_ENABLED=${VPN_ORIGIN_GUARD_ENABLED:-false}"; do
                 key="${kv%%=*}"
                 if grep -q "^${key}=" "$ENV_FILE" 2>/dev/null; then
                   sed -i "s|^${key}=.*|${kv}|" "$ENV_FILE"
@@ -351,7 +355,7 @@ jobs:
                   printf '%s\n' "$kv" >> "$ENV_FILE"
                 fi
               done
-              echo "    recaptcha + smtp + cors env aplicado en $ENV_FILE (RECAPTCHA_ENABLED=${RECAPTCHA_ENABLED:-false}, SMTP_HOST=${SMTP_HOST:-})"
+              echo "    recaptcha + smtp + cors + vpn-guard env aplicado en $ENV_FILE (RECAPTCHA_ENABLED=${RECAPTCHA_ENABLED:-false}, VPN_ORIGIN_GUARD_ENABLED=${VPN_ORIGIN_GUARD_ENABLED:-false})"
             fi
 
             # 4. Restart + health check
