@@ -40,6 +40,22 @@ import { IsAtLeastFiveDaysAfterCutoff } from './validators/payment-day-after-cut
 import { IsCompletePaymentSchedule } from './validators/payment-schedule.validator';
 
 /**
+ * Coercion permisiva: convierte strings a enteros antes de validar.
+ * El frontend a veces envia numeros como string (ej. `cutoffDay: "16"`
+ * desde inputs HTML `<input type="number">`). Acepta number, string
+ * numerico o null/undefined.
+ */
+const toInt = ({ value }: { value: unknown }): unknown => {
+  if (value === null || value === undefined || value === '') return value;
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : value;
+  }
+  return value;
+};
+
+/**
  * Convierte el folioPrefix a MAYUSCULAS antes de validar. Asi el
  * frontend puede enviar 'nor' y el backend lo acepta como 'NOR'.
  */
@@ -146,6 +162,7 @@ export class CreateBranchDto {
       'mes ni year; el sistema los calcula.',
   })
   @IsOptional()
+  @Transform(toInt)
   @IsInt({ message: 'cutoffDay debe ser un entero' })
   @Min(1, { message: 'cutoffDay minimo es 1' })
   @Max(31, { message: 'cutoffDay maximo es 31' })
@@ -160,6 +177,7 @@ export class CreateBranchDto {
       'ni year; el sistema los calcula.',
   })
   @IsOptional()
+  @Transform(toInt)
   @IsInt({ message: 'paymentDay debe ser un entero' })
   @Min(1, { message: 'paymentDay minimo es 1' })
   @Max(31, { message: 'paymentDay maximo es 31' })

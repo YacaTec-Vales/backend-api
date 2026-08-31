@@ -29,6 +29,7 @@ import {
   Max,
   Min,
 } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { IsAtLeastFiveDaysAfterCutoff } from './validators/payment-day-after-cutoff.validator';
 
 /**
@@ -36,6 +37,22 @@ import { IsAtLeastFiveDaysAfterCutoff } from './validators/payment-day-after-cut
  * de PG es flexible; el backend normaliza a HH:MM:SS.
  */
 const HHMM_REGEX = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
+
+/**
+ * Coercion permisiva: el frontend a veces envia numeros como string
+ * (ej. `cutoffDay: "16"` desde inputs HTML `<input type="number">`
+ * cuyo `value` es string). Esto convierte a numero antes de validar.
+ * Si ya es numero (o null/undefined), pasa tal cual.
+ */
+const toInt = ({ value }: { value: unknown }): unknown => {
+  if (value === null || value === undefined || value === '') return value;
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : value;
+  }
+  return value;
+};
 
 @ApiSchema({ name: 'BranchCutoffInput' })
 export class BranchCutoffInputDto {
@@ -45,6 +62,7 @@ export class BranchCutoffInputDto {
     example: 1,
   })
   @IsIn([1, 2], { message: 'position debe ser 1 o 2' })
+  @Transform(toInt)
   position!: 1 | 2;
 
   @ApiProperty({
@@ -53,6 +71,7 @@ export class BranchCutoffInputDto {
     minimum: 1,
     maximum: 31,
   })
+  @Transform(toInt)
   @IsInt({ message: 'cutoffDay debe ser un entero' })
   @Min(1, { message: 'cutoffDay minimo es 1' })
   @Max(31, { message: 'cutoffDay maximo es 31' })
@@ -64,6 +83,7 @@ export class BranchCutoffInputDto {
     minimum: 1,
     maximum: 31,
   })
+  @Transform(toInt)
   @IsInt({ message: 'paymentDay debe ser un entero' })
   @Min(1, { message: 'paymentDay minimo es 1' })
   @Max(31, { message: 'paymentDay maximo es 31' })
