@@ -4,6 +4,7 @@
   @category lifecycle
   @vars
     - displayName: nombre a mostrar en el saludo.
+    - email: correo electronico del nuevo colaborador (BUG FIX 2026-08-31).
     - username: usuario del nuevo colaborador.
     - temporaryPassword: contrasena temporal generada por el sistema.
     - loginUrl: URL absoluta del front de login.
@@ -23,6 +24,10 @@
   <div class="credentials">
     <div class="label">Usuario</div>
     <div class="value">{{username}}</div>
+    <div style="margin-top: 12px;">
+      <div class="label">Correo electronico</div>
+      <div class="value">{{email}}</div>
+    </div>
     <div style="margin-top: 12px;">
       <div class="label">Contrasena temporal</div>
       <div class="value">{{temporaryPassword}}</div>
