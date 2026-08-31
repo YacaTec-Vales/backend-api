@@ -35,6 +35,20 @@ const trimOnly = ({ value }: { value: unknown }): unknown => {
 };
 
 /**
+ * Coercion permisiva: convierte strings a enteros antes de validar.
+ * El frontend a veces envia enteros como strings (ej. `totalPeriods: "8"`).
+ */
+const toInt = ({ value }: { value: unknown }): unknown => {
+  if (value === null || value === undefined || value === '') return value;
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : value;
+  }
+  return value;
+};
+
+/**
  * DTO para alta de producto en el catalogo.
  *
  * Forma del codigo: `X/Y` donde:
@@ -73,6 +87,7 @@ export class CreateProductDto {
     example: 500000,
     multipleOf: 10000,
   })
+  @Transform(toInt)
   @IsInt({ message: 'el costo debe ser un entero (centavos)' })
   @Min(1, { message: 'el costo debe ser mayor a 0' })
   costCents!: number;
@@ -83,6 +98,7 @@ export class CreateProductDto {
     minimum: 1,
     maximum: 60,
   })
+  @Transform(toInt)
   @IsInt({ message: 'el total de quincenas debe ser un entero' })
   @Min(1, { message: 'el total de quincenas debe ser >= 1' })
   @Max(60, { message: 'el total de quincenas debe ser <= 60' })
