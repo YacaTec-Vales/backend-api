@@ -41,6 +41,7 @@ import {
 } from './services/password.service';
 import { TokenService } from './services/token.service';
 import { SessionService } from './services/session.service';
+import type { VpnOriginConfig } from '../config/vpn-origin.config';
 import { PermissionCacheService } from './services/permission-cache.service';
 import { MfaService } from '../mfa/mfa.service';
 import {
@@ -74,6 +75,7 @@ const buildUser = (
     lastNameMaternal: string;
     lockedUntil: Date | null;
     failedLoginCount: number;
+    allowedOrigin: string[];
   }> = {},
 ) => ({
   id: 'user-1',
@@ -93,6 +95,7 @@ const buildUser = (
   lastNameMaternal: 'Garcia',
   lockedUntil: null,
   failedLoginCount: 0,
+  allowedOrigin: ['public', 'vpn'],
   ...overrides,
 });
 
@@ -100,18 +103,21 @@ const baseContext = {
   ipAddress: '127.0.0.1',
   userAgent: 'jest',
   device: 'unknown' as const,
+  origin: 'unknown' as const,
 };
 
 const pochContext = {
   ipAddress: '127.0.0.1',
   userAgent: 'poch-mobile',
   device: 'Poch' as const,
+  origin: 'unknown' as const,
 };
 
 const calipxContext = {
   ipAddress: '127.0.0.1',
   userAgent: 'calipx-tablet',
   device: 'Calipx' as const,
+  origin: 'unknown' as const,
 };
 
 /**
@@ -188,6 +194,11 @@ describe('AuthService', () => {
     } as unknown as jest.Mocked<PermissionCacheService>;
     service = new AuthService(
       authConfig,
+      {
+        enabled: false,
+        override: null,
+        nodeEnv: 'development',
+      },
       userRepo,
       refreshRepo,
       passwordService,
@@ -393,7 +404,114 @@ describe('AuthService', () => {
         'access.jwt',
       );
     });
+
+    it('ADMINISTRADOR desde public con vpnOriginConfig.enabled=true y allowed_origin=[vpn] lanza ORIGIN_NOT_ALLOWED 403', async () => {
+      // Reconstruir el service con vpnOriginConfig.enabled=true.
+      service = buildServiceWithVpnOrigin({
+        enabled: true,
+        override: 'true',
+        nodeEnv: 'production',
+      });
+      userRepo.findByUsernameOrEmail.mockResolvedValue(
+        buildUser({
+          roleCode: 'ADMINISTRADOR',
+          branchId: null,
+          allowedOrigin: ['vpn'],
+        }) as never,
+      );
+      passwordService.verify.mockResolvedValue(true);
+      await expect(
+        service.login('admin', 'Demo123!utete.2026', false, {
+          ...baseContext,
+          origin: 'public',
+        }),
+      ).rejects.toMatchObject({
+        response: {
+          code: 'AUTH.ORIGIN_NOT_ALLOWED',
+          details: { receivedOrigin: 'public', allowedOrigins: ['vpn'] },
+        },
+      });
+    });
+
+    it('ADMINISTRADOR desde vpn con vpnOriginConfig.enabled=true y allowed_origin=[vpn] emite tokens (pasa el guard)', async () => {
+      service = buildServiceWithVpnOrigin({
+        enabled: true,
+        override: 'true',
+        nodeEnv: 'production',
+      });
+      userRepo.findByUsernameOrEmail.mockResolvedValue(
+        buildUser({
+          roleCode: 'ADMINISTRADOR',
+          branchId: null,
+          allowedOrigin: ['vpn'],
+        }) as never,
+      );
+      passwordService.verify.mockResolvedValue(true);
+      const result = await service.login('admin', 'Demo123!utete.2026', false, {
+        ...baseContext,
+        origin: 'vpn',
+      });
+      expect((result as { accessToken: string }).accessToken).toBe(
+        'access.jwt',
+      );
+    });
+
+    it('ADMINISTRADOR desde public con vpnOriginConfig.enabled=false (dev) pasa sin validar el origen', async () => {
+      // Default del spec: enabled=false. No hace falta reconstruir el service.
+      userRepo.findByUsernameOrEmail.mockResolvedValue(
+        buildUser({
+          roleCode: 'ADMINISTRADOR',
+          branchId: null,
+          allowedOrigin: ['vpn'],
+        }) as never,
+      );
+      passwordService.verify.mockResolvedValue(true);
+      const result = await service.login('admin', 'Demo123!utete.2026', false, {
+        ...baseContext,
+        origin: 'public',
+      });
+      expect((result as { accessToken: string }).accessToken).toBe(
+        'access.jwt',
+      );
+    });
   });
+
+  /**
+   * Helper: reconstruye el `AuthService` con un `VpnOriginConfig.enabled`
+   * custom. Util para los 3 tests de `assertAllowedOrigin`.
+   *
+   * Reusa los mocks globales (`userRepo`, `passwordService`, etc.) y solo
+   * reemplaza el provider `VPN_ORIGIN_CONFIG` que se pasa al constructor.
+   */
+  function buildServiceWithVpnOrigin(vpnOrigin: VpnOriginConfig): AuthService {
+    return new AuthService(
+      authConfig,
+      vpnOrigin,
+      userRepo,
+      refreshRepo,
+      passwordService,
+      tokenService,
+      sessionService,
+      permissionCache,
+      { get: jest.fn() } as unknown as ConfigService,
+      {
+        logEvent: jest.fn().mockResolvedValue(undefined),
+        runWithContext: jest
+          .fn()
+          .mockImplementation(
+            async <T>(
+              _ctx: unknown,
+              work: (tx: unknown) => Promise<T>,
+            ): Promise<T> => work(undefined),
+          ),
+      } as unknown as AuditLogRepository,
+      {
+        loginSuccess: jest.fn().mockResolvedValue(undefined),
+        loginFailed: jest.fn().mockResolvedValue(undefined),
+      } as unknown as LogService,
+      null,
+    );
+  }
 
   describe('verifyMfaAndLogin', () => {
     /**
@@ -413,6 +531,11 @@ describe('AuthService', () => {
       } as unknown as jest.Mocked<MfaService>;
       return new AuthService(
         authConfig,
+        {
+          enabled: false,
+          override: null,
+          nodeEnv: 'development',
+        },
         userRepo,
         refreshRepo,
         passwordService,

@@ -34,6 +34,8 @@ import { PermissionRepository } from '../database/repositories/permission.reposi
 import { AuditLogRepository } from '../database/repositories/audit-log.repository';
 import { BranchRepository } from '../database/repositories/branch.repository';
 import { MfaModule } from '../mfa/mfa.module';
+import { VPN_ORIGIN_CONFIG } from '../database/tokens';
+import type { VpnOriginConfig } from '../config/vpn-origin.config';
 
 /**
  * Provider que expone `AuthConfig` bajo el token `AUTH_CONFIG`.
@@ -45,6 +47,22 @@ const authConfigProvider: Provider = {
   inject: [ConfigService],
   useFactory: (config: ConfigService): AuthConfig =>
     config.getOrThrow<AuthConfig>('auth'),
+};
+
+/**
+ * Provider que expone `VpnOriginConfig` bajo el token `VPN_ORIGIN_CONFIG`.
+ * Inyectado en `AuthService` para validar el origen permitido del
+ * usuario en `assertAllowedOrigin()` (FASE A: VPN-only admin).
+ *
+ * El `vpnOriginConfig` factory ya esta registrado en `app.module.ts`
+ * via `ConfigModule.forRoot({ load: [..., vpnOriginConfig] })`. Aqui
+ * solo exponemos un getter bajo el symbol para inyeccion type-safe.
+ */
+const vpnOriginConfigProvider: Provider = {
+  provide: VPN_ORIGIN_CONFIG,
+  inject: [ConfigService],
+  useFactory: (config: ConfigService): VpnOriginConfig =>
+    config.getOrThrow<VpnOriginConfig>('vpnOrigin'),
 };
 
 /**
@@ -77,6 +95,7 @@ const authConfigProvider: Provider = {
   controllers: [AuthController],
   providers: [
     authConfigProvider,
+    vpnOriginConfigProvider,
     UserRepository,
     RefreshTokenRepository,
     PermissionRepository,
@@ -90,6 +109,7 @@ const authConfigProvider: Provider = {
   ],
   exports: [
     AUTH_CONFIG,
+    VPN_ORIGIN_CONFIG,
     UserRepository,
     RefreshTokenRepository,
     PermissionRepository,

@@ -208,6 +208,12 @@ export interface LoginContext {
   ipAddress: string;
   userAgent: string;
   device: Device;
+  /**
+   * Origen del request (`vpn` | `public` | `unknown`), del header
+   * `X-Origin` que pone nginx en lb-01. Usado por `AuthService.assertAllowedOrigin()`
+   * (FASE A: VPN-only admin) para validar contra `user.allowed_origin`.
+   */
+  origin: Origin;
 }
 
 /**

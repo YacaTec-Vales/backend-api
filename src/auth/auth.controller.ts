@@ -52,6 +52,7 @@ import { JwtAuthGuard, type RequestUser } from '../shared/guards/auth.guards';
 import { AllowMfaPending } from '../shared/decorators/allow-mfa-pending.decorator';
 import { AllowBeforePasswordChange } from '../shared/decorators/allow-before-password-change.decorator';
 import type { LoginContext, Device } from '../shared/types/auth.types';
+import { parseOrigin } from '../shared/utils/request-context.util';
 
 /**
  * Header HTTP que identifica el frontend desde el que se hizo la
@@ -59,6 +60,7 @@ import type { LoginContext, Device } from '../shared/types/auth.types';
  * `LoginContext.device`.
  */
 const DEVICE_HEADER = 'x-client-app';
+const ORIGIN_HEADER = 'x-origin';
 
 /**
  * Controlador de identidad. Ruta base: `/auth` (prefija `api/v1`).
@@ -292,15 +294,17 @@ export class AuthController {
   }
 
   /**
-   * Extrae `ipAddress`, `userAgent` y `device` desde el request.
+   * Extrae `ipAddress`, `userAgent`, `device` y `origin` desde el request.
    * Helper privado usado en endpoints publicos.
    */
   private contextFromRequest(req: Request): LoginContext {
     const device = this.parseDevice(req.headers[DEVICE_HEADER] as string);
+    const origin = parseOrigin(req.headers[ORIGIN_HEADER] as string);
     return {
       ipAddress: (req.ip ?? req.socket.remoteAddress ?? 'unknown').toString(),
       userAgent: (req.headers['user-agent'] as string) ?? 'unknown',
       device,
+      origin,
     };
   }
 

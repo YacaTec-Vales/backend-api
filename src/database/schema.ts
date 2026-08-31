@@ -119,6 +119,10 @@ export const users = appSchema.table('user', {
   lockedUntil: timestamp('locked_until', { withTimezone: true }),
   mfaEnabled: boolean('mfa_enabled').notNull().default(false),
   mustChangePassword: boolean('must_change_password').notNull().default(false),
+  allowedOrigin: text('allowed_origin')
+    .array()
+    .notNull()
+    .default(sql`ARRAY['public','vpn']::TEXT[]`),
 });
 
 /**

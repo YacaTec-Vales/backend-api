@@ -41,7 +41,9 @@ import { SessionService } from './session.service';
 import { PermissionCacheService } from './permission-cache.service';
 import { MfaService } from '../../mfa/mfa.service';
 import { AUTH_CONFIG } from '../../database/tokens';
+import { VPN_ORIGIN_CONFIG } from '../../database/tokens';
 import type { AuthConfig } from '../../config/auth.config';
+import type { VpnOriginConfig } from '../../config/vpn-origin.config';
 import { AuditLogRepository } from '../../database/repositories/audit-log.repository';
 import { LogService } from '../../shared/logging/log.service';
 import type { LoginContext, UserType } from '../../shared/types/auth.types';
@@ -60,6 +62,8 @@ export class AuthService {
 
   constructor(
     @Inject(AUTH_CONFIG) private readonly authConfig: AuthConfig,
+    @Inject(VPN_ORIGIN_CONFIG)
+    private readonly vpnOriginConfig: VpnOriginConfig,
     private readonly userRepo: UserRepository,
     private readonly refreshRepo: RefreshTokenRepository,
     private readonly passwordService: PasswordService,
@@ -131,6 +135,14 @@ export class AuthService {
     // Si el header `x-client-app` viene en otra app o falta, se rechaza
     // con `AUTH.WRONG_CLIENT_APP` para evitar accesos cross-device.
     this.assertDistributorAppScope(user.roleCode, context.device);
+
+    // FASE A (VPN-only admin, etc.): valida que el origen del request
+    // (header `X-Origin` que pone nginx en lb-01) este en la lista de
+    // origenes permitidos del usuario. Solo aplica si el guard esta
+    // activo (VPN_ORIGIN_GUARD_ENABLED=true o NODE_ENV=production).
+    // En dev (guard inactivo) pasa siempre para no romper el flujo
+    // de desarrollo local sin VPN ni nginx inyectando X-Origin.
+    this.assertAllowedOrigin(user.allowedOrigin, context.origin, user.roleCode);
 
     if (!user.isActive || user.deletedAt || user.userStatus !== 'ACTIVO') {
       await this.logService.loginFailed({
@@ -791,6 +803,47 @@ export class AuthService {
       message:
         'el Distribuidor solo puede iniciar sesion desde la aplicacion movil (Poch)',
       details: { receivedDevice: device, expectedDevice: 'Poch' },
+    });
+  }
+
+  /**
+   * Valida que el origen del request (header `X-Origin` que pone nginx
+   * en lb-01) este en la lista de origenes permitidos del usuario.
+   *
+   * Regla:
+   *  - Solo aplica si el guard esta activo (`VPN_ORIGIN_GUARD_ENABLED=true`
+   *    o `NODE_ENV=production`). En dev el guard esta inactivo y pasa
+   *    siempre para no romper el flujo de desarrollo local sin VPN ni
+   *    nginx inyectando `X-Origin`.
+   *  - Si el origen NO esta en `allowedOrigin`, lanza 403
+   *    `AUTH.ORIGIN_NOT_ALLOWED`.
+   *
+   * Default por rol (configurable por usuario via seed 060+ o via API):
+   *  - ADMINISTRADOR: `['vpn']` (solo VPN, seed 050_admin)
+   *  - GERENTE_GENERAL: `['public','vpn']`
+   *  - GERENTE_SUCURSAL/CAJERO/COORD/VERIF: `['public','vpn']` (default)
+   *  - DISTRIBUIDOR: `['public']` (regla explicita via assertDistributorAppScope)
+   *
+   * @param allowedOrigin - Lista de origenes permitidos del usuario.
+   * @param requestOrigin - Origen del request (header `x-origin`).
+   * @param roleCode - Para contexto del error.
+   */
+  private assertAllowedOrigin(
+    allowedOrigin: string[] | null | undefined,
+    requestOrigin: LoginContext['origin'],
+    roleCode: UserType,
+  ): void {
+    if (!this.vpnOriginConfig.enabled) return;
+    const allowed = allowedOrigin ?? ['public', 'vpn'];
+    if (allowed.includes(requestOrigin)) return;
+    throw new ForbiddenException({
+      code: 'AUTH.ORIGIN_NOT_ALLOWED',
+      message: `Esta cuenta solo puede iniciar sesion desde ${allowed.join(' o ')}. Origen recibido: ${requestOrigin}.`,
+      details: {
+        roleCode,
+        receivedOrigin: requestOrigin,
+        allowedOrigins: allowed,
+      },
     });
   }
 }
