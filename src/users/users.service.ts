@@ -1282,6 +1282,137 @@ export class UsersService {
   }): PermissionOverrideResponseDto {
     return toOverrideResponseDto(o);
   }
+
+  /**
+   * Reenvia el correo de bienvenida (con nueva contrasena temporal)
+   * a un usuario existente. Usado cuando el admin/GG/GS quiere
+   * re-enviar las credenciales porque el primer correo no llego
+   * (spam, error de tipeo del email, etc).
+   *
+   * Rate limit exponencial: la primera vez 5 minutos, segunda 10,
+   * tercera 20, cuarta 40, ..., maximo 24h. Esto previene spam
+   * accidental pero permite correcciones rapidas.
+   *
+   * @param actor - Quien solicita el reenvio (ADMIN/GG/GS).
+   * @param userId - UUID del usuario destinatario.
+   * @param ctx - Contexto HTTP (ip, ua, device) para audit.
+   * @returns emailSent flag.
+   */
+  async resendWelcome(
+    actor: RequestUser,
+    userId: string,
+    ctx: { ipAddress: string; userAgent: string; device: string },
+  ): Promise<AdminResetPasswordResponseDto> {
+    if (actor.id === userId) {
+      throw new ConflictException({
+        code: 'USERS.CANNOT_RESET_SELF',
+        message: 'no puedes reenviar credenciales a tu propia cuenta',
+      });
+    }
+    const target = await this.userRepo.findByIdWithLastSession(userId);
+    if (!target) {
+      throw new NotFoundException({
+        code: 'USERS.NOT_FOUND',
+        message: 'usuario no encontrado',
+      });
+    }
+
+    // BUG FIX 2026-08-31: rate limit exponencial para evitar spam.
+    // Cooldown = min(5 * 2^(attempts-1), 1440) minutos.
+    // attempts = numero de reenvios previos del actor al target.
+    // El primer reenvio (attempts=0) requiere esperar 5*2^0 = 5 min.
+    // El segundo (attempts=1) requiere esperar 5*2 = 10 min, etc.
+    const SIX_HOURS_AGO = new Date(Date.now() - 6 * 60 * 60 * 1000);
+    const previousAttempts =
+      await this.auditRepo.countWelcomeResendsByActorAndTarget(
+        actor.id,
+        userId,
+        SIX_HOURS_AGO,
+      );
+    if (previousAttempts > 0) {
+      // attempts+1 porque este sera el siguiente envio.
+      const cooldownMinutes = Math.min(5 * 2 ** previousAttempts, 1440);
+      // Buscar el timestamp del ultimo reenvio para calcular retryAfter.
+      const recent = await this.auditRepo.findByTargetUser(userId, previousAttempts);
+      const lastResend = recent.find(
+        (e) => e.userId === actor.id && e.action === 'USER.WELCOME_EMAIL_RESENT',
+      );
+      if (lastResend) {
+        const elapsedMs = Date.now() - lastResend.recordedAt.getTime();
+        const cooldownMs = cooldownMinutes * 60 * 1000;
+        if (elapsedMs < cooldownMs) {
+          const retryAfterSeconds = Math.ceil((cooldownMs - elapsedMs) / 1000);
+          throw new UnprocessableEntityException({
+            code: 'USERS.WELCOME_RESEND_COOLDOWN',
+            message: `debes esperar ${cooldownMinutes} minutos entre reenvios al mismo usuario. Intento ${previousAttempts + 1} de este actor.`,
+            details: {
+              retryAfterSeconds,
+              cooldownMinutes,
+              previousAttempts,
+            },
+          });
+        }
+      }
+    }
+
+    let tempPassword: string;
+    try {
+      tempPassword = this.passwordService.generateTemporaryPassword();
+    } catch (err) {
+      if (err instanceof WeakPasswordError) {
+        throw new InternalServerErrorException({
+          code: 'USERS.PASSWORD_GENERATION_FAILED',
+          message: 'no fue posible generar una contrasena temporal segura',
+        });
+      }
+      throw err;
+    }
+    const passwordHash = await this.passwordService.hash(tempPassword);
+
+    await this.auditRepo.runWithContext(
+      {
+        actorUserId: actor.id,
+        action: 'USER.WELCOME_EMAIL_RESENT',
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        device: ctx.device,
+        targetUserId: userId,
+        metadata: { previousAttempts },
+      },
+      async (tx) => {
+        await this.userRepo.setPassword(userId, passwordHash, true, tx);
+      },
+    );
+    await this.sessionService.revokeAllForUser(userId, 'welcome_resent');
+    this.permissionCache.invalidate(userId);
+
+    const loginUrl = this.config.get<string>('app.appPublicUrl') ?? '';
+    const mailResult = await this.mailService.sendUserWelcome({
+      to: target.email,
+      displayName: `${target.firstName} ${target.lastNamePaternal}`.trim(),
+      email: target.email,
+      username: target.username ?? target.email,
+      temporaryPassword: tempPassword,
+      loginUrl,
+    });
+
+    await this.auditRepo.logEvent({
+      action: mailResult.sent
+        ? 'USER.WELCOME_EMAIL_SENT'
+        : 'USER.WELCOME_EMAIL_FAILED',
+      actorUserId: actor.id,
+      targetUserId: userId,
+      tableName: 'user',
+      recordId: userId,
+      metadata: { resend: true, previousAttempts },
+      ipAddress: ctx.ipAddress,
+      userAgent: ctx.userAgent,
+      device: ctx.device,
+    });
+
+    tempPassword = '';
+    return { emailSent: mailResult.sent };
+  }
 }
 
 /**

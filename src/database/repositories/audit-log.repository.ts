@@ -40,7 +40,7 @@ import {
   InternalServerErrorException,
   Logger,
 } from '@nestjs/common';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, sql } from 'drizzle-orm';
 import {
   DRIZZLE_WRITE,
   DRIZZLE_READ,
@@ -227,5 +227,36 @@ export class AuditLogRepository {
       .where(and(eq(auditLog.userId, actorUserId)))
       .orderBy(desc(auditLog.recordedAt))
       .limit(limit);
+  }
+
+  /**
+   * Cuenta los reenvios de welcome email que un admin/GG/GS ha hecho
+   * a un usuario objetivo, en una ventana de tiempo.
+   *
+   * Usado por `UsersService.resendWelcome()` para calcular el cooldown
+   * exponencial: cuanto mas reenvios, mas tiempo de espera.
+   *
+   * @param actorUserId - UUID del actor (admin/GG/GS).
+   * @param targetUserId - UUID del usuario destinatario del welcome.
+   * @param since - Timestamp desde el cual contar.
+   * @returns Numero de reenvios en la ventana.
+   */
+  async countWelcomeResendsByActorAndTarget(
+    actorUserId: string,
+    targetUserId: string,
+    since: Date,
+  ): Promise<number> {
+    const result = await this.readDb
+      .select({ count: sql<number>`count(*)::int` })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.userId, actorUserId),
+          eq(auditLog.targetUserId, targetUserId),
+          eq(auditLog.action, 'USER.WELCOME_EMAIL_RESENT'),
+          gte(auditLog.recordedAt, since),
+        ),
+      );
+    return result[0]?.count ?? 0;
   }
 }
