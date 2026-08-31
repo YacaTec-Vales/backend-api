@@ -1333,9 +1333,13 @@ export class UsersService {
       // attempts+1 porque este sera el siguiente envio.
       const cooldownMinutes = Math.min(5 * 2 ** previousAttempts, 1440);
       // Buscar el timestamp del ultimo reenvio para calcular retryAfter.
-      const recent = await this.auditRepo.findByTargetUser(userId, previousAttempts);
+      const recent = await this.auditRepo.findByTargetUser(
+        userId,
+        previousAttempts,
+      );
       const lastResend = recent.find(
-        (e) => e.userId === actor.id && e.action === 'USER.WELCOME_EMAIL_RESENT',
+        (e) =>
+          e.userId === actor.id && e.action === 'USER.WELCOME_EMAIL_RESENT',
       );
       if (lastResend) {
         const elapsedMs = Date.now() - lastResend.recordedAt.getTime();

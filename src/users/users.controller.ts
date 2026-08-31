@@ -508,8 +508,14 @@ export class UsersController {
     description: 'Email enviado (o no, si fallo SMTP).',
     type: AdminResetPasswordResponseDto,
   })
-  @ApiNotFoundResponse({ description: 'USERS.NOT_FOUND.', type: ErrorResponseDto })
-  @ApiConflictResponse({ description: 'USERS.CANNOT_RESET_SELF.', type: ErrorResponseDto })
+  @ApiNotFoundResponse({
+    description: 'USERS.NOT_FOUND.',
+    type: ErrorResponseDto,
+  })
+  @ApiConflictResponse({
+    description: 'USERS.CANNOT_RESET_SELF.',
+    type: ErrorResponseDto,
+  })
   @ApiUnprocessableEntityResponse({
     description: 'USERS.WELCOME_RESEND_COOLDOWN (rate limit).',
     type: ErrorResponseDto,
