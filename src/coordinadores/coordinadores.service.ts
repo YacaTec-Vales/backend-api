@@ -68,7 +68,7 @@ export class CoordinadoresService {
       lastNameMaternal: dto.lastNameMaternal,
       email: dto.email,
       phone: dto.phone ?? null,
-      username: null,
+      username: dto.username ?? null,
       personalData: {},
       context: ctx,
     });
